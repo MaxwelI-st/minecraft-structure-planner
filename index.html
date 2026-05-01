@@ -3,11 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Structure Material Planner | Minecraft建築支援ツール</title>
-    <meta name="description" content="Minecraftの.mcstructureファイルを解析し、必要な資材を自動集計する高機能プランナー。拡張機能との連携で画像からの資材抽出も可能。">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+    <title>Minecraft Structure Planner</title>
     <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
@@ -15,15 +11,11 @@
         <header class="glass-card">
             <div class="logo">
                 <span class="icon">🏗️</span>
-                <h1>STRUCTURE <span>PLANNER</span></h1>
+                <h1>STRUCTURE MATERIAL <span>PLANNER</span></h1>
             </div>
             <div class="header-actions">
-                <button id="btn-projects" class="mc-btn secondary">
-                    <span>📁</span> プロジェクト
-                </button>
-                <button id="select-file-btn" class="mc-btn primary">
-                    <span>📄</span> ファイル選択
-                </button>
+                <button id="btn-projects" class="mc-btn secondary">プロジェクト一覧</button>
+                <button id="select-file-btn" class="mc-btn primary">ファイルを選択</button>
             </div>
         </header>
 
@@ -41,16 +33,14 @@
             <section id="drop-zone" class="drop-zone glass-card">
                 <div class="drop-content">
                     <div class="drop-icon">🧊</div>
-                    <h2>ストラクチャーを解析</h2>
-                    <p>.mcstructure ファイルをドロップ、またはクリップボードから貼り付け</p>
+                    <h2>Minecraft ストラクチャーを解析</h2>
+                    <p>.mcstructure ファイルをドロップ</p>
                     
                     <div class="import-actions">
-                        <button id="clipboard-import-btn" class="mc-btn primary">
-                            <span>📋</span> クリップボードから解析
-                        </button>
+                        <button id="manual-select-btn" class="mc-btn primary">ファイルを選択</button>
                         <div class="drop-hint">または</div>
-                        <button id="manual-select-btn" class="mc-btn secondary">
-                            ファイルをブラウズ
+                        <button id="clipboard-import-btn" class="mc-btn secondary">
+                            クリップボードから解析
                         </button>
                     </div>
                     <input type="file" id="file-input" accept=".mcstructure" hidden>
@@ -79,28 +69,25 @@
             <section id="results" class="results-section hidden">
                 <div class="controls-row">
                     <div class="search-box glass-card">
-                        <span>🔍</span>
-                        <input type="text" id="search-input" placeholder="ブロック名やIDで検索...">
+                        <input type="text" id="search-input" placeholder="ブロックを検索...">
                     </div>
                     
                     <div class="display-toggle glass-card">
-                        <span class="toggle-label">ID表示</span>
                         <label class="switch">
                             <input type="checkbox" id="id-toggle">
                             <span class="slider"></span>
                         </label>
+                        <span class="toggle-label">ID表示</span>
                     </div>
 
                     <div class="display-toggle glass-card">
-                        <span class="toggle-label">Wiki連携</span>
                         <label class="switch">
                             <input type="checkbox" id="wiki-toggle">
                             <span class="slider"></span>
                         </label>
+                        <span class="toggle-label">Wikiリンク</span>
                     </div>
-                </div>
 
-                <div class="category-filters-row">
                     <div class="category-filters glass-card">
                         <button class="filter-btn active" data-category="all">すべて</button>
                         <button class="filter-btn" data-category="building">建材</button>

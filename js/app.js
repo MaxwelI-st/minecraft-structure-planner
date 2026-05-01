@@ -239,11 +239,10 @@ class App {
         this.blockList.innerHTML = '';
         const fragment = document.createDocumentFragment();
         
-        filtered.forEach((item, index) => {
+        filtered.forEach(item => {
             const isPrepared = this.preparedItems.has(item.id);
             const card = document.createElement('div');
             card.className = `glass-card block-card ${isPrepared ? 'prepared' : ''}`;
-            card.style.animationDelay = `${index * 0.05}s`;
             
             const rawId = item.id.replace('minecraft:', '');
             const displayName = this.idToggle.checked ? rawId : (this.langData[item.id] || rawId);
