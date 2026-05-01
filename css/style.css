@@ -396,6 +396,3 @@ main {
     .controls-row { flex-direction: column; }
     .stats-grid { padding: 1.5rem; }
 }
-(2, 1fr);
-    }
-}
