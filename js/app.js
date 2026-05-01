@@ -29,6 +29,7 @@ class App {
         this.preparedItems = new Set();
         this.currentResults = [];
         this.currentFileName = '';
+        this.currentStats = { total: 0, unique: 0, totalSlots: 0 };
         this.projects = JSON.parse(localStorage.getItem('mc_projects') || '[]');
 
         this.init();
@@ -38,8 +39,6 @@ class App {
         try {
             const res = await fetch('./data/lang_ja.json');
             this.langData = await res.json();
-            const saved = localStorage.getItem('prepared_items');
-            this.preparedItems = new Set(saved ? JSON.parse(saved) : []);
         } catch (e) {
             console.error('データの読み込みに失敗しました', e);
             this.showToast('⚠️ 言語データの読み込みに失敗しました', 'error');
@@ -95,7 +94,9 @@ class App {
                 const id = e.target.dataset.id;
                 if (e.target.checked) this.preparedItems.add(id);
                 else this.preparedItems.delete(id);
-                localStorage.setItem('prepared_items', JSON.stringify([...this.preparedItems]));
+                
+                // プロジェクトごとに保存
+                this.saveProject(this.currentResults, this.currentStats.total, this.currentStats.unique, this.currentStats.totalSlots);
                 e.target.closest('.block-card').classList.toggle('prepared', e.target.checked);
             }
         });
@@ -110,6 +111,7 @@ class App {
             const { success, results, totalCount, uniqueCount, totalSlots, error } = e.data;
             this.hideLoading();
             if (success) {
+                this.preparedItems = new Set(); // 新規ファイル時はクリア
                 this.renderResults(results, totalCount, uniqueCount, totalSlots);
                 this.saveProject(results, totalCount, uniqueCount, totalSlots);
                 this.showToast('🎉 解析が完了しました！');
@@ -135,6 +137,7 @@ class App {
             const data = JSON.parse(text);
             if (data.source === 'MC_DOT_COUNTER') {
                 this.currentFileName = data.name || 'Extension Import';
+                this.preparedItems = new Set(); // 新規インポート時はクリア
                 this.renderResults(data.results, data.total, data.unique, data.totalSlots);
                 this.saveProject(data.results, data.total, data.unique, data.totalSlots);
                 this.showToast('🔗 拡張機能からデータを同期しました！');
@@ -154,7 +157,7 @@ class App {
         this.toastContainer.appendChild(toast);
         setTimeout(() => {
             toast.style.opacity = '0';
-            toast.style.transform = 'translateX(100px)';
+            toast.style.transform = 'translateX(50px)';
             setTimeout(() => toast.remove(), 400);
         }, 3000);
     }
@@ -173,7 +176,15 @@ class App {
 
     saveProject(results, total, unique, totalSlots) {
         if (!this.currentFileName) return;
-        const project = { name: this.currentFileName, date: Date.now(), results, total, unique, totalSlots };
+        const project = { 
+            name: this.currentFileName, 
+            date: Date.now(), 
+            results, 
+            total, 
+            unique, 
+            totalSlots,
+            prepared: [...this.preparedItems] // チェック状態をプロジェクトに含める
+        };
         const index = this.projects.findIndex(p => p.name === project.name);
         if (index > -1) this.projects[index] = project;
         else this.projects.unshift(project);
@@ -204,6 +215,7 @@ class App {
                     this.showProjects();
                 } else {
                     this.currentFileName = p.name;
+                    this.preparedItems = new Set(p.prepared || []); // プロジェクト専用のチェックを復元
                     this.renderResults(p.results, p.total, p.unique, p.totalSlots);
                     this.modal.classList.add('hidden');
                 }
@@ -215,6 +227,7 @@ class App {
 
     renderResults(results, total, unique, totalSlots) {
         this.currentResults = results;
+        this.currentStats = { total, unique, totalSlots };
         this.resultsSection.classList.remove('hidden');
         this.summarySection.classList.remove('hidden');
         this.dropZone.classList.add('hidden');
