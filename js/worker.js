@@ -36,6 +36,12 @@ self.onmessage = async (e) => {
                 // Bedrock States Flattening
                 if (blockData.states) {
                     const s = blockData.states;
+                    
+                    // 2ブロック高さのアイテム (上半分をスキップ)
+                    if (s.upper_block_bit === 1) continue;
+                    // ベッド (頭側をスキップ)
+                    if (s.head_piece_bit === 1) continue;
+
                     if (s.color) blockId = `minecraft:${s.color}_${blockId.split(':')[1]}`;
                     else if (s.stone_type) blockId = `minecraft:${s.stone_type}`;
                     else if (s.wood_type) blockId = `minecraft:${s.wood_type}_${blockId.split(':')[1]}`;
