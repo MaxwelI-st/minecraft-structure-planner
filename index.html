@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Structure Material Planner | Minecraft建築支援ツール</title>
+    <meta name="description" content="Minecraftの.mcstructureファイルを解析し、必要な資材を自動集計する高機能プランナー。拡張機能との連携で画像からの資材抽出も可能。">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+    <div id="app">
+        <header class="glass-card">
+            <div class="logo">
+                <span class="icon">🏗️</span>
+                <h1>STRUCTURE <span>PLANNER</span></h1>
+            </div>
+            <div class="header-actions">
+                <button id="btn-projects" class="mc-btn secondary">
+                    <span>📁</span> プロジェクト
+                </button>
+                <button id="select-file-btn" class="mc-btn primary">
+                    <span>📄</span> ファイル選択
+                </button>
+            </div>
+        </header>
+
+        <!-- プロジェクト管理モーダル -->
+        <div id="project-modal" class="modal hidden">
+            <div class="modal-content glass-card">
+                <h2>プロジェクト一覧</h2>
+                <div id="project-list" class="project-list"></div>
+                <button id="close-modal" class="mc-btn secondary" style="width:100%; margin-top:1rem;">閉じる</button>
+            </div>
+        </div>
+
+        <main>
+            <!-- 初期状態：ドロップエリア -->
+            <section id="drop-zone" class="drop-zone glass-card">
+                <div class="drop-content">
+                    <div class="drop-icon">🧊</div>
+                    <h2>ストラクチャーを解析</h2>
+                    <p>.mcstructure ファイルをドロップ、またはクリップボードから貼り付け</p>
+                    
+                    <div class="import-actions">
+                        <button id="clipboard-import-btn" class="mc-btn primary">
+                            <span>📋</span> クリップボードから解析
+                        </button>
+                        <div class="drop-hint">または</div>
+                        <button id="manual-select-btn" class="mc-btn secondary">
+                            ファイルをブラウズ
+                        </button>
+                    </div>
+                    <input type="file" id="file-input" accept=".mcstructure" hidden>
+                </div>
+            </section>
+
+            <!-- サマリー -->
+            <section id="summary" class="summary-section hidden">
+                <div class="glass-card stats-grid">
+                    <div class="stat-item" id="stat-total">
+                        <span class="label">総ブロック数</span>
+                        <span class="value">0</span>
+                    </div>
+                    <div class="stat-item" id="stat-unique">
+                        <span class="label">種類</span>
+                        <span class="value">0</span>
+                    </div>
+                    <div class="stat-item" id="stat-shulkers">
+                        <span class="label">シュルカー箱換算</span>
+                        <span class="value">0</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 解析結果 -->
+            <section id="results" class="results-section hidden">
+                <div class="controls-row">
+                    <div class="search-box glass-card">
+                        <span>🔍</span>
+                        <input type="text" id="search-input" placeholder="ブロック名やIDで検索...">
+                    </div>
+                    
+                    <div class="display-toggle glass-card">
+                        <span class="toggle-label">ID表示</span>
+                        <label class="switch">
+                            <input type="checkbox" id="id-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="display-toggle glass-card">
+                        <span class="toggle-label">Wiki連携</span>
+                        <label class="switch">
+                            <input type="checkbox" id="wiki-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="category-filters-row">
+                    <div class="category-filters glass-card">
+                        <button class="filter-btn active" data-category="all">すべて</button>
+                        <button class="filter-btn" data-category="building">建材</button>
+                        <button class="filter-btn" data-category="decoration">装飾</button>
+                        <button class="filter-btn" data-category="redstone">回路</button>
+                        <button class="filter-btn" data-category="nature">自然</button>
+                    </div>
+                </div>
+
+                <div id="block-list" class="block-list"></div>
+            </section>
+        </main>
+
+        <div id="toast-container"></div>
+
+        <div id="loading-overlay" class="hidden">
+            <div class="loader"></div>
+            <p>データを解析しています...</p>
+        </div>
+    </div>
+    <script type="module" src="./js/app.js"></script>
+</body>
+</html>
