@@ -103,8 +103,21 @@ a { color: inherit; text-decoration: none; }
   padding: 0 1.25rem 0.5rem;
 }
 .project-list { padding: 0 0.5rem; }
-.project-item {
+.project-item-container {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 2px;
+  border-radius: 8px;
+  transition: var(--transition);
+  position: relative;
+}
+.project-item-container:hover { background: rgba(255,255,255,0.05); }
+.project-item-container.active { background: rgba(74,222,128,0.08); }
+
+.project-item-btn {
+  flex: 1;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -114,11 +127,29 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   gap: 0.6rem;
   text-align: left;
+  min-width: 0;
   transition: var(--transition);
-  margin-bottom: 2px;
 }
-.project-item:hover { background: rgba(255,255,255,0.05); border-color: var(--border); }
-.project-item.active { background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.3); }
+.project-item-container.active .project-item-btn { border-color: rgba(74,222,128,0.3); }
+
+.project-item-delete {
+  background: transparent;
+  color: var(--muted);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  opacity: 0;
+  transition: var(--transition);
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+.project-item-container:hover .project-item-delete { opacity: 0.6; }
+.project-item-delete:hover { opacity: 1 !important; background: rgba(248,113,113,0.15); color: var(--red); }
+
 .pi-icon { font-size: 1rem; flex-shrink: 0; }
 .pi-info { flex: 1; min-width: 0; }
 .pi-name {
@@ -275,6 +306,73 @@ a { color: inherit; text-decoration: none; }
 .mc-btn.large { padding: 0.75rem 1.5rem; font-size: 0.95rem; }
 .mc-btn.full-width { width: 100%; justify-content: center; }
 .mc-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+.project-item-container {
+    position: relative;
+    border-radius: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+    overflow: hidden;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.project-item-container:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.project-item-container.active {
+    border-color: var(--primary-color);
+    background: rgba(0, 255, 149, 0.05);
+}
+
+.project-item-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px;
+    padding-right: 48px; /* ゴミ箱ボタンのためのスペースを確保 */
+    background: none;
+    border: none;
+    color: var(--text-main);
+    text-align: left;
+    cursor: pointer;
+}
+
+.project-item-container .delete-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: transparent;
+    border: none;
+    color: #ff4757;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 0;
+    z-index: 10;
+}
+
+.project-item-container:hover .delete-btn {
+    opacity: 0.6;
+}
+
+.project-item-container .delete-btn:hover {
+    background: rgba(255, 71, 87, 0.15);
+    opacity: 1;
+    transform: translateY(-50%) scale(1.1);
+}
 .icon-btn {
   background: rgba(255,255,255,0.06);
   color: var(--muted2);
@@ -448,29 +546,50 @@ a { color: inherit; text-decoration: none; }
   transition: var(--transition);
 }
 .wiki-overlay:hover { opacity: 1; }
-.prepared-label { position: absolute; top: 4px; left: 4px; z-index: 2; cursor: pointer; }
+.prepared-label { position: absolute; top: 2px; left: 2px; z-index: 2; cursor: pointer; }
 .prepared-check { display: none; }
 .check-vis {
   display: block;
-  width: 14px; height: 14px;
-  border: 1px solid var(--border2);
-  border-radius: 3px;
-  background: rgba(0,0,0,0.3);
+  width: 24px; height: 24px;
+  /* 縁取り強化：3px の二重ボーダー風 + 黒い外枠で「見える」プレッシャーを出す */
+  border: 2px solid rgba(255,255,255,0.65);
+  border-radius: 4px;
+  background: rgba(0,0,0,0.6);
   transition: var(--transition);
+  image-rendering: pixelated;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.85),
+    inset 2px 2px 0 rgba(0,0,0,0.3),
+    inset -2px -2px 0 rgba(255,255,255,0.08),
+    0 1px 3px rgba(0,0,0,0.5);
+}
+.check-vis:hover {
+  border-color: rgba(255,255,255,0.95);
+  background: rgba(0,0,0,0.75);
 }
 .prepared-check:checked + .check-vis {
-  background: var(--primary);
-  border-color: var(--primary);
+  background: var(--primary, #4ade80);
+  border-color: rgba(255,255,255,0.95);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.85),
+    inset 2px 2px 0 rgba(255,255,255,0.3),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 0 8px rgba(74,222,128,0.4);
+}
+.prepared-check:focus-visible + .check-vis {
+  outline: 2px solid var(--primary, #4ade80);
+  outline-offset: 2px;
 }
 .check-vis::after {
   content: '✓';
   display: none;
   color: #071810;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 14px;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 20px;
   text-align: center;
   width: 100%;
+  text-shadow: 1px 1px 0 rgba(255,255,255,0.2);
 }
 .prepared-check:checked + .check-vis::after { display: block; }
 .block-icon-wrap {
@@ -1054,4 +1173,14 @@ body::before {
     .v3d-canvas { height: 60vh; min-height: 300px; }
     .v3d-side-panel { flex: 0 0 auto; width: 100%; max-height: 50vh; border-left: 0; border-top: 1px solid var(--border, rgba(255,255,255,0.1)); }
     .v3d-side-panel.collapsed { margin-right: 0; margin-bottom: -50vh; }
+}
+
+
+/* ── ブロックカード ハイライト中（3D連動） ─────────────────────────────── */
+.block-card { cursor: pointer; transition: outline 0.2s, box-shadow 0.2s; }
+.block-card:hover { outline: 1px solid rgba(74, 222, 128, 0.4); }
+.block-card.highlighted {
+    outline: 2px solid var(--primary, #4ade80) !important;
+    box-shadow: 0 0 16px rgba(74, 222, 128, 0.4);
+    background: rgba(74, 222, 128, 0.06);
 }

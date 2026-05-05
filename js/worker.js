@@ -16,6 +16,7 @@ import { normalizeBedrockBlock } from './bedrock_normalize.js';
 
 self.onmessage = async (e) => {
     const { buffer, fileName } = e.data;
+    console.log('--- Worker v2.5.11: Starting Parse ---', fileName);
     try {
         const data = await decompressIfNeeded(buffer);
         const endian = detectEndian(data, fileName || '');
@@ -63,41 +64,113 @@ function parseBedrock(root) {
     if (!sizeArr || sizeArr.length < 3) throw new Error('size missing');
     const [sx, sy, sz] = sizeArr;
 
+    const layers = root.structure.block_indices || [];
     const palette = root.structure.palette?.default?.block_palette;
-    const layer = root.structure.block_indices?.[0];
-    if (!palette || !layer) throw new Error('palette or block_indices missing');
+    if (!palette || layers.length === 0) throw new Error('palette or block_indices missing');
 
     const counts = new Map();
-    const coords = [];
-    let totalCount = 0;
+    const totalMap = new Map(); // "x,y,z" -> { blockId, rawId, states }
 
-    for (let i = 0; i < layer.length; i++) {
-        const blockIndex = layer[i];
-        if (blockIndex === -1) continue;
-        const blockData = palette[blockIndex];
-        if (!blockData) continue;
+    for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
+        const layer = layers[layerIdx];
+        for (let i = 0; i < layer.length; i++) {
+            const blockIndex = layer[i];
+            if (blockIndex === -1) continue;
+            const blockData = palette[blockIndex];
+            if (!blockData) continue;
 
-        // Bedrock 汎用ID + states を最新の flat ID に正規化
-        const norm = normalizeBedrockBlock(blockData.name, blockData.states);
-        if (norm.skip) continue;
-        let blockId = norm.id;
-        let increment = norm.increment;
+            const z = i % sz;
+            const y = Math.floor(i / sz) % sy;
+            const x = Math.floor(i / (sy * sz));
+            const posKey = `${x},${y},${z}`;
 
-        // double_cut_copper_slab 等のレガシー double 対応
-        if (blockId === 'minecraft:double_cut_copper_slab') { blockId = 'minecraft:cut_copper_slab'; increment = 2; }
+            const rawId = blockData.name;
+            const rawStates = blockData.states || {};
+            const norm = normalizeBedrockBlock(rawId, rawStates);
+            if (norm.skip) continue;
 
-        if (blockId === 'minecraft:air' || blockId === 'minecraft:structure_block' || blockId === 'minecraft:structure_void') continue;
+            let blockId = norm.id;
+            
+            // 既にこの座標にブロックがある場合のマージ処理（ダブルスラブ対応 / 浸水対応）
+            const existing = totalMap.get(posKey);
+            if (existing) {
+                // 両方がハーフブロック（slab）系ならフルブロックに合成
+                const isExistingSlab = existing.blockId.includes('slab');
+                const isNewSlab = blockId.includes('slab');
 
-        counts.set(blockId, (counts.get(blockId) || 0) + increment);
-        totalCount += increment;
+                if (isExistingSlab && isNewSlab) {
+                    const baseE = existing.blockId.replace(/_slab$|slab_/, '').replace('minecraft:', '');
+                    const oldId = existing.blockId;
+                    const merged = normalizeBedrockBlock(baseE + '_double_slab', {});
+                    existing.blockId = merged.id;
+                    existing.states = {};
+                    
+                    // カウントの調整
+                    counts.set(oldId, (counts.get(oldId) || 1) - 1);
+                    if (counts.get(oldId) <= 0) counts.delete(oldId);
+                    counts.set(merged.id, (counts.get(merged.id) || 0) + 2);
+                    continue; 
+                }
+                
+                // 水(water)がレイヤー1にある場合は水没として扱う（カウントのみ）
+                if (blockId === 'minecraft:water' || blockId === 'minecraft:flowing_water') {
+                    counts.set('minecraft:water', (counts.get('minecraft:water') || 0) + 1);
+                    continue;
+                }
+                continue; 
+            }
 
-        // Bedrock: index = x * sy * sz + y * sz + z
-        const z = i % sz;
-        const y = Math.floor(i / sz) % sy;
-        const x = Math.floor(i / (sy * sz));
-        coords.push({ x, y, z, blockId, states: blockData.states || null });
+            totalMap.set(posKey, { x, y, z, blockId, rawId, states: rawStates });
+            counts.set(blockId, (counts.get(blockId) || 0) + norm.increment);
+        }
     }
-    return { coords, counts, totalCount, sx, sy, sz, edition: 'bedrock' };
+
+    const coords = Array.from(totalMap.values());
+    const totalCount = Array.from(counts.values()).reduce((a, b) => a + b, 0);
+    // ─── Face Culling（隠面消去）─────────────────────────────────────
+    // 6 面すべて不透過ブロックに囲まれていて、かつ自身も不透過なら描画から除外
+    // counts には影響しない（素材計算は引き続き全ブロック対象）
+    const visible = _faceCull(coords, sx, sy, sz);
+    return { coords: visible, counts, totalCount, sx, sy, sz, edition: 'bedrock' };
+}
+
+/** 透過判定が必要なブロック ID パターン */
+function _isTransparent(blockId) {
+    return /glass|leaves|fence|trapdoor|door|stairs|slab|carpet|wall|pane|bars|water|lava|ice|cobweb|chain|ladder|sapling|grass$|fern|vine|kelp|seagrass|torch|button|pressure_plate|sign|banner|rail|hopper|piston/.test(blockId);
+}
+
+/** 全方位の neighbor が存在する非透過ブロックをスキップ */
+function _faceCull(coords, sx, sy, sz) {
+    // 高速ルックアップ用 Set（座標を 1 整数にエンコード）
+    const occupiedOpaque = new Set();
+    for (const c of coords) {
+        if (!_isTransparent(c.blockId)) {
+            occupiedOpaque.add(c.x * sy * sz + c.y * sz + c.z);
+        }
+    }
+    const has = (x, y, z) => {
+        if (x < 0 || x >= sx || y < 0 || y >= sy || z < 0 || z >= sz) return false;
+        return occupiedOpaque.has(x * sy * sz + y * sz + z);
+    };
+
+    const out = [];
+    for (const c of coords) {
+        if (_isTransparent(c.blockId)) {
+            out.push(c);
+            continue;
+        }
+        if (has(c.x + 1, c.y, c.z)
+         && has(c.x - 1, c.y, c.z)
+         && has(c.x, c.y + 1, c.z)
+         && has(c.x, c.y - 1, c.z)
+         && has(c.x, c.y, c.z + 1)
+         && has(c.x, c.y, c.z - 1)) {
+            // 完全に囲まれている → スキップ
+            continue;
+        }
+        out.push(c);
+    }
+    return out;
 }
 
 /* ─── Java パーサー ───────────────────────────────────────────────
@@ -139,7 +212,8 @@ function parseJava(root) {
         const [x, y, z] = b.pos;
         coords.push({ x, y, z, blockId, states: props });
     }
-    return { coords, counts, totalCount, sx, sy, sz, edition: 'java' };
+    const visible = _faceCull(coords, sx, sy, sz);
+    return { coords: visible, counts, totalCount, sx, sy, sz, edition: 'java' };
 }
 
 /* ─── カテゴリ分類 ────────────────────────────────────────────── */

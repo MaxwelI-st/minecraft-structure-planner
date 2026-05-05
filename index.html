@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Silkscreen&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/style.css?v=2.0">
 
   <!-- JSZip / Three.js は遅延ロード可能だがここで先読みしてキャッシュさせる -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="window.__jszipFailed=true"></script>
@@ -72,6 +72,9 @@
       <button class="sidebar-link" id="btn-import-file">
         📂 ファイルを開く
       </button>
+      <div style="font-size:0.65rem;color:var(--muted2);padding:0.5rem;text-align:center">
+        v2.5.10 (Cache Buster Active)
+      </div>
     </div>
   </aside>
 
@@ -473,6 +476,14 @@
                 <label>全データを削除（取り消し不可）</label>
                 <button class="mc-btn danger small" id="btn-clear-all-data">🗑️ 全削除</button>
               </div>
+              <div class="setting-item danger">
+                <label>IndexedDB 完全リセット<br><span style="font-size:0.7rem;color:var(--muted2)">古い DB バージョンが残っている時に使う。プロジェクト・テクスチャパック・構造バッファ全消し。</span></label>
+                <button class="mc-btn danger small" id="btn-reset-idb">⚡ IDB完全リセット</button>
+              </div>
+              <div class="setting-item danger">
+                <label>構造解析キャッシュのみ削除<br><span style="font-size:0.7rem;color:var(--muted2)">プロジェクト情報は残し、構造ファイルの再解析（スラブ合体など）を強制します。</span></label>
+                <button class="mc-btn danger small" id="btn-clear-struct-cache">🧹 解析キャッシュ削除</button>
+              </div>
             </div>
 
             <div class="settings-section">
@@ -539,6 +550,6 @@
   </div>
 </div>
 
-<script type="module" src="./js/app.js"></script>
+<script type="module" src="./js/app.js?v=2.5.10"></script>
 </body>
 </html>

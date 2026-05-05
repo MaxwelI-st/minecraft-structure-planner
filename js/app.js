@@ -108,7 +108,7 @@ class App {
         this.currentFilter = 'all';
         this.viewer3d = null;
         this.dotArtEditor = null;
-        this.worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+        this.worker = new Worker(new URL('./worker.js?v=2.5.6', import.meta.url), { type: 'module' });
         this.pendingParseResolve = null;
         this.settingsData = JSON.parse(localStorage.getItem('mc_planner_settings') || '{}');
 
@@ -289,6 +289,33 @@ class App {
                 try { await ResourcePack.clearSavedPack(); } catch (_) {}
                 location.reload();
             }
+        };
+
+        // IndexedDB 完全削除（DB自体を消す）
+        const resetIdbBtn = document.getElementById('btn-reset-idb');
+        if (resetIdbBtn) resetIdbBtn.onclick = async () => {
+            if (!confirm('IndexedDB を完全にリセットします（すべてのプロジェクト・テクスチャパック・構造バッファが消えます）。続行しますか？')) return;
+            try { await ResourcePack.clearAllStructureBuffers(); } catch(_) {}
+            try { await ResourcePack.clearSavedPack(); } catch(_) {}
+            try {
+                // DB ごと削除（バージョン衝突対策）
+                if (typeof indexedDB !== 'undefined') {
+                    const req = indexedDB.deleteDatabase('mc-planner');
+                    await new Promise((res) => {
+                        req.onsuccess = res; req.onerror = res; req.onblocked = res;
+                        setTimeout(res, 2000);
+                    });
+                }
+            } catch(_) {}
+            try { localStorage.clear(); } catch(_) {}
+            this._toast('🗑️ IDB完全リセット完了。リロードします...');
+            setTimeout(() => location.reload(), 800);
+        };
+        $('btn-clear-struct-cache').onclick = async () => {
+            if (!confirm('構造解析キャッシュをクリアしますか？\n次回読み込み時に全ての構造が最新ロジックで再解析されます。')) return;
+            await ResourcePack.clearAllStructureBuffers();
+            this._toast('🧹 解析キャッシュをクリアしました。ページをリロードしてください。');
+            setTimeout(() => location.reload(), 1500);
         };
 
         // Dot art tab
@@ -566,6 +593,7 @@ class App {
         // 表示色モード切替
         document.querySelectorAll('input[name="viewer3d-colormode"]').forEach(r => {
             r.addEventListener('change', () => {
+                console.log(`--- App: colormode change detected: ${r.value} (checked: ${r.checked}) ---`);
                 if (!r.checked || !this.viewer3d) return;
                 this.viewer3d.setColorMode(r.value);
             });
@@ -735,16 +763,71 @@ class App {
     _setupDragDrop() {
         document.addEventListener('dragover', (e) => {
             e.preventDefault();
-            document.getElementById('drop-zone').classList.add('active');
+            const zone = document.getElementById('drop-zone');
+            if (zone) zone.classList.add('active');
         });
+
         document.addEventListener('dragleave', (e) => {
-            if (!e.relatedTarget) document.getElementById('drop-zone').classList.remove('active');
+            if (!e.relatedTarget) {
+                const zone = document.getElementById('drop-zone');
+                if (zone) zone.classList.remove('active');
+            }
         });
+
         document.addEventListener('drop', (e) => {
             e.preventDefault();
-            document.getElementById('drop-zone').classList.remove('active');
-            const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.mcstructure'));
+            const zone = document.getElementById('drop-zone');
+            if (zone) zone.classList.remove('active');
+            const files = Array.from(e.dataTransfer.files).filter(f => /\.(mcstructure|nbt)$/i.test(f.name));
             if (files.length > 0) this._handleFiles(files);
+        });
+
+        // 貼り付け (Ctrl+V) 対応
+        window.addEventListener('paste', async (e) => {
+            const items = e.clipboardData.items;
+            const files = [];
+            for (const item of items) {
+                if (item.kind === 'file') {
+                    const file = item.getAsFile();
+                    if (file && /\.(mcstructure|nbt)$/i.test(file.name)) files.push(file);
+                }
+            }
+            if (files.length > 0) {
+                this._handleFiles(files);
+                return;
+            }
+
+            // テキスト（拡張機能からのJSON）チェック
+            const text = e.clipboardData.getData('text');
+            if (!text) return;
+
+            try {
+                const data = JSON.parse(text);
+                if (data.source === 'MC_DOT_COUNTER') {
+                    const name = data.name || 'Imported Dot Art';
+                    const p = ProjectManager.create(name);
+                    
+                    // 拡張機能のデータをアプリの構造データ形式に変換
+                    // data.results は [{id, count, ...}] であることを期待
+                    ProjectManager.addStructure(p, {
+                        name: 'Dot Art Data',
+                        results: data.results,
+                        size: { x: data.width || 128, y: 1, z: data.height || 128 },
+                        totalCount: data.total,
+                        uniqueCount: data.unique,
+                        totalSlots: data.totalSlots,
+                        coords: [] // 3D用の座標データはない
+                    });
+
+                    this.projects.unshift(p);
+                    ProjectManager.save(this.projects);
+                    this._renderProjectList();
+                    this._selectProject(p.id);
+                    this._toast('🎨 ドット絵データをインポートしました', 'success');
+                }
+            } catch (err) {
+                // JSONでない場合は無視
+            }
         });
     }
 
@@ -881,17 +964,45 @@ class App {
             return;
         }
         this.projects.forEach(p => {
-            const item = document.createElement('button');
-            item.className = `project-item ${p.id === this.currentProjectId ? 'active' : ''}`;
+            const item = document.createElement('div');
+            item.className = `project-item-container ${p.id === this.currentProjectId ? 'active' : ''}`;
             const structCount = p.structures.length;
             item.innerHTML = `
-                <span class="pi-icon">📁</span>
-                <div class="pi-info">
-                    <span class="pi-name">${this._escape(p.name)}</span>
-                    <span class="pi-meta">${structCount}構造 · ${this._relDate(p.createdAt)}</span>
-                </div>
+                <button class="project-item-btn" title="${this._escape(p.name)} を選択">
+                    <span class="pi-icon">📁</span>
+                    <div class="pi-info">
+                        <span class="pi-name">${this._escape(p.name)}</span>
+                        <span class="pi-meta">${structCount}構造 · ${this._relDate(p.createdAt)}</span>
+                    </div>
+                </button>
+                <button class="delete-btn" title="プロジェクトを削除">🗑️</button>
             `;
-            item.onclick = () => this._selectProject(p.id);
+            
+            // 選択処理
+            item.querySelector('.project-item-btn').onclick = () => this._selectProject(p.id);
+            
+            // 個別削除処理
+            item.querySelector('.delete-btn').onclick = async (e) => {
+                e.stopPropagation();
+                if (confirm(`プロジェクト「${p.name}」を削除しますか？`)) {
+                    // IDBのバッファも削除
+                    if (p.structures) {
+                        for (const s of p.structures) {
+                            ResourcePack.deleteStructureBuffer(s.id).catch(()=>{});
+                            this.bufferCache.delete(s.id);
+                            this.coordsCache.delete(s.id);
+                        }
+                    }
+                    this.projects = this.projects.filter(x => x.id !== p.id);
+                    if (this.currentProjectId === p.id) {
+                        this.currentProjectId = null;
+                        this._showWelcome();
+                    }
+                    ProjectManager.save(this.projects);
+                    this._renderProjectList();
+                }
+            };
+            
             list.appendChild(item);
         });
     }
@@ -1208,6 +1319,29 @@ class App {
         if (el) el.textContent = val;
     }
 
+    /** 素材カードクリック時の 3D ハイライト切替 */
+    _toggleHighlight(blockId, card) {
+        if (!this.viewer3d || !this.viewer3d.isInitialized) {
+            this._toast('3Dビューを開始してから使えます', 'error');
+            return;
+        }
+        const current = this.viewer3d.getHighlighted();
+        document.querySelectorAll('.block-card.highlighted').forEach(c => c.classList.remove('highlighted'));
+        if (current === blockId) {
+            this.viewer3d.clearHighlight();
+            return;
+        }
+        this.viewer3d.highlightBlock(blockId);
+        if (card) card.classList.add('highlighted');
+        // 3D タブに自動切替（既に 3D の場合は何もしない）
+        if (this.currentTab !== 'viewer3d') {
+            this._toast(`🔍 ${this.langData[blockId] || blockId} をハイライト中（3Dビューに切替）`);
+            this._switchTab('viewer3d', false); // 既存 mesh は維持
+        } else {
+            this._toast(`🔍 ${this.langData[blockId] || blockId} をハイライト中`);
+        }
+    }
+
     _renderBlockList() {
         const list = document.getElementById('block-list');
         if (!this._integratedMaterials) { list.innerHTML = ''; return; }
@@ -1238,13 +1372,19 @@ class App {
             const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
 
             // 1) リソースパックがロード済みなら最優先で top 面 (or all) のテクスチャを使う
-            const packUrl = ResourcePack.isLoaded() ? (ResourcePack.getFaceUrls(item.id)?.top || null) : null;
+            // flat ID を逆引きで Bedrock 汎用ID + states に推定（精度は現状粗いが有用）
+            const guess = this._guessRawIdAndStates(item.id);
+            let packUrl = null;
+            if (ResourcePack.isLoaded()) {
+                const faceObj = ResourcePack.getFaceUrls(item.id, guess)?.top;
+                packUrl = faceObj ? (typeof faceObj === 'string' ? faceObj : faceObj.url) : null;
+            }
 
             const sources = [
                 ...(packUrl ? [packUrl] : []),
                 `https://minecraft.wiki/images/Invicon_${wikiName}.png`,
-                `https://assets.mcasset.cloud/1.21.1/assets/minecraft/textures/item/${imgId}.png`,
-                `https://assets.mcasset.cloud/1.21.1/assets/minecraft/textures/block/${imgId}.png`,
+                `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item/${imgId}.png`,
+                `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}.png`,
                 `/textures/${imgId}.png`,
                 `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2270%22>📦</text></svg>`
             ];
@@ -1255,6 +1395,11 @@ class App {
             const card = document.createElement('div');
             card.className = `block-card glass-card ${isPrepared ? 'prepared' : ''}`;
             card.dataset.id = item.id;
+            // クリックで 3D ビューにハイライト送信（トグル動作）
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.prepared-label, .wiki-overlay, .block-name')) return;
+                this._toggleHighlight(item.id, card);
+            });
 
             card.innerHTML = `
                 ${showWiki ? `<a href="${wikiUrl}" target="_blank" class="wiki-overlay" title="Wikiで開く">📖</a>` : ''}
@@ -1264,7 +1409,7 @@ class App {
                 </label>
                 <div class="block-icon-wrap">
                     <img src="${sources[0]}"
-                         onerror="const srcs=${JSON.stringify(sources).replace(/"/g, '&quot;')};let i=this._i=((this._i||0)+1);if(i&lt;srcs.length)this.src=srcs[i];"
+                         onerror="if(this.dataset.i===undefined)this.dataset.i=0;let srcs=${JSON.stringify(sources).replace(/"/g, '&quot;')};if(++this.dataset.i&lt;srcs.length)this.src=srcs[this.dataset.i];"
                          class="block-icon-img" alt="">
                 </div>
                 <div class="block-info">
@@ -1520,9 +1665,14 @@ class App {
             const info = await ResourcePack.loadFromZip(file);
             if (status) status.textContent = `✅ ${info.name} (${info.count}テクスチャ${info.isBedrock ? ' / Bedrock' : ''})`;
 
-            // realtexture モードを有効化
+            // realtexture モードを有効化し、自動で切り替え
             const realRadio = document.querySelector('input[name="viewer3d-colormode"][value="realtexture"]');
-            if (realRadio) realRadio.disabled = false;
+            if (realRadio) {
+                realRadio.disabled = false;
+                realRadio.checked = true;
+                // change イベントを手動で発火させて Viewer3D に通知
+                realRadio.dispatchEvent(new Event('change'));
+            }
 
             // 保存トグルがON で、かつアップロード由来なら IndexedDB に保存
             if (fromUpload && $('pack-save-checkbox')?.checked) {
@@ -1747,6 +1897,47 @@ class App {
         return map[rawId] || rawId;
     }
 
+    /** flat blockId → Bedrock 汎用 ID + states を推定（素材一覧アイコン用） */
+    _guessRawIdAndStates(blockId) {
+        const local = String(blockId).replace(/^minecraft:/, '').toLowerCase();
+        // 木材系
+        const woodMatch = local.match(/^(oak|spruce|birch|jungle|acacia|dark_oak)_planks$/);
+        if (woodMatch) return { rawId: 'minecraft:planks', states: { wood_type: woodMatch[1] } };
+        const slabMatch = local.match(/^(oak|spruce|birch|jungle|acacia|dark_oak)_slab$/);
+        if (slabMatch) return { rawId: 'minecraft:wooden_slab', states: { wood_type: slabMatch[1] } };
+        const oldLogMatch = local.match(/^(oak|spruce|birch|jungle)_log$/);
+        if (oldLogMatch) return { rawId: 'minecraft:log', states: { old_log_type: oldLogMatch[1] } };
+        const newLogMatch = local.match(/^(acacia|dark_oak)_log$/);
+        if (newLogMatch) return { rawId: 'minecraft:log2', states: { new_log_type: newLogMatch[1] } };
+        const oldLeafMatch = local.match(/^(oak|spruce|birch|jungle)_leaves$/);
+        if (oldLeafMatch) return { rawId: 'minecraft:leaves', states: { old_leaf_type: oldLeafMatch[1] } };
+        const newLeafMatch = local.match(/^(acacia|dark_oak)_leaves$/);
+        if (newLeafMatch) return { rawId: 'minecraft:leaves2', states: { new_leaf_type: newLeafMatch[1] } };
+        // 色系
+        const colorWoolMatch = local.match(/^(white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_(wool|carpet|concrete|concrete_powder|stained_glass|stained_glass_pane|terracotta|shulker_box|bed)$/);
+        if (colorWoolMatch) {
+            const c = colorWoolMatch[1] === 'light_gray' ? 'silver' : colorWoolMatch[1];
+            const baseMap = { wool:'wool', carpet:'carpet', concrete:'concrete', concrete_powder:'concretepowder', stained_glass:'stained_glass', stained_glass_pane:'stained_glass_pane', terracotta:'stained_hardened_clay', shulker_box:'shulker_box', bed:'bed' };
+            return { rawId: 'minecraft:' + baseMap[colorWoolMatch[2]], states: { color: c } };
+        }
+        // 石系
+        if (local === 'polished_andesite') return { rawId: 'minecraft:stone', states: { stone_type: 'andesite_smooth' } };
+        if (local === 'andesite') return { rawId: 'minecraft:stone', states: { stone_type: 'andesite' } };
+        if (local === 'polished_diorite') return { rawId: 'minecraft:stone', states: { stone_type: 'diorite_smooth' } };
+        if (local === 'diorite') return { rawId: 'minecraft:stone', states: { stone_type: 'diorite' } };
+        if (local === 'polished_granite') return { rawId: 'minecraft:stone', states: { stone_type: 'granite_smooth' } };
+        if (local === 'granite') return { rawId: 'minecraft:stone', states: { stone_type: 'granite' } };
+        // 石レンガ系
+        if (local === 'mossy_stone_bricks') return { rawId: 'minecraft:stonebrick', states: { stone_brick_type: 'mossy' } };
+        if (local === 'cracked_stone_bricks') return { rawId: 'minecraft:stonebrick', states: { stone_brick_type: 'cracked' } };
+        if (local === 'chiseled_stone_bricks') return { rawId: 'minecraft:stonebrick', states: { stone_brick_type: 'chiseled' } };
+        if (local === 'stone_bricks') return { rawId: 'minecraft:stonebrick', states: { stone_brick_type: 'default' } };
+        // dirt
+        if (local === 'coarse_dirt') return { rawId: 'minecraft:dirt', states: { dirt_type: 'coarse' } };
+        // フォールバック
+        return { rawId: blockId, states: null };
+    }
+
     _escape(str) {
         return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     }
@@ -1759,26 +1950,24 @@ class App {
         return new Date(ts).toLocaleDateString('ja-JP');
     }
 
-    _showModal(id) {
-        document.getElementById(id)?.classList.remove('hidden');
-    }
-
-    _hideModal(id) {
-        if (id) document.getElementById(id)?.classList.add('hidden');
-    }
+    _showModal(id) { document.getElementById(id)?.classList.remove('hidden'); }
+    _hideModal(id) { if (id) document.getElementById(id)?.classList.add('hidden'); }
 
     _showLoading(msg = '解析中...') {
         const overlay = document.getElementById('loading-overlay');
-        overlay.querySelector('p').textContent = msg;
+        if (!overlay) return;
+        const p = overlay.querySelector('p');
+        if (p) p.textContent = msg;
         overlay.classList.remove('hidden');
     }
 
     _hideLoading() {
-        document.getElementById('loading-overlay').classList.add('hidden');
+        document.getElementById('loading-overlay')?.classList.add('hidden');
     }
 
     _toast(msg, type = 'success') {
         const container = document.getElementById('toast-container');
+        if (!container) return;
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = msg;

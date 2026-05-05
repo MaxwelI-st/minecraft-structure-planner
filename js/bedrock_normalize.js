@@ -204,63 +204,78 @@ export function normalizeBedrockBlock(rawId, states) {
         return result;
     }
 
-    // 上半身/頭部はスキップ
-    if (s.upper_block_bit === 1) { result.skip = true; return result; }
-    if (s.head_piece_bit === 1) { result.skip = true; return result; }
+    // ステート取得ヘルパー（プレフィックスの有無、NBTオブジェクト形式の両方に対応）
+    const _get = (key) => {
+        if (!s) return undefined;
+        // 1. 直値を確認
+        let v = s[key];
+        // 2. プレフィックス付きを確認
+        if (v === undefined) v = s['minecraft:' + key];
+        
+        if (v === undefined) return undefined;
+        // 3. NBTオブジェクト形式 { value: ... } なら展開
+        if (typeof v === 'object' && v !== null && 'value' in v) return v.value;
+        return v;
+    };
 
     const local = id.replace(/^minecraft:/, '');
 
     // ─── stone_block_slab 系 ───────────────────────────────
-    if (local === 'stone_block_slab' && s.stone_slab_type !== undefined) {
-        const m = STONE_SLAB_TYPE[s.stone_slab_type] || 'stone_slab';
+    const stoneSlabType = _get('stone_slab_type');
+    if (local === 'stone_block_slab' && stoneSlabType !== undefined) {
+        const m = STONE_SLAB_TYPE[stoneSlabType] || 'stone_slab';
         result.id = 'minecraft:' + m;
         return result;
     }
-    if (local === 'double_stone_block_slab' && s.stone_slab_type !== undefined) {
-        const m = STONE_SLAB_TYPE_FULL[s.stone_slab_type] || 'stone';
+    if (local === 'double_stone_block_slab' && stoneSlabType !== undefined) {
+        const m = STONE_SLAB_TYPE_FULL[stoneSlabType] || 'stone';
         result.id = 'minecraft:' + m;
         result.increment = 2;
         return result;
     }
-    if (local === 'stone_block_slab2' && s.stone_slab_type_2 !== undefined) {
-        const m = STONE_SLAB_TYPE_2[s.stone_slab_type_2] || 'red_sandstone_slab';
+    const stoneSlabType2 = _get('stone_slab_type_2');
+    if (local === 'stone_block_slab2' && stoneSlabType2 !== undefined) {
+        const m = STONE_SLAB_TYPE_2[stoneSlabType2] || 'red_sandstone_slab';
         result.id = 'minecraft:' + m;
         return result;
     }
-    if (local === 'double_stone_block_slab2' && s.stone_slab_type_2 !== undefined) {
-        result.id = 'minecraft:' + (STONE_SLAB_TYPE_2_FULL[s.stone_slab_type_2] || 'red_sandstone');
+    if (local === 'double_stone_block_slab2' && stoneSlabType2 !== undefined) {
+        result.id = 'minecraft:' + (STONE_SLAB_TYPE_2_FULL[stoneSlabType2] || 'red_sandstone');
         result.increment = 2;
         return result;
     }
-    if (local === 'stone_block_slab3' && s.stone_slab_type_3 !== undefined) {
-        result.id = 'minecraft:' + (STONE_SLAB_TYPE_3[s.stone_slab_type_3] || 'andesite_slab');
+    const stoneSlabType3 = _get('stone_slab_type_3');
+    if (local === 'stone_block_slab3' && stoneSlabType3 !== undefined) {
+        result.id = 'minecraft:' + (STONE_SLAB_TYPE_3[stoneSlabType3] || 'andesite_slab');
         return result;
     }
-    if (local === 'double_stone_block_slab3' && s.stone_slab_type_3 !== undefined) {
-        result.id = 'minecraft:' + (STONE_SLAB_TYPE_3_FULL[s.stone_slab_type_3] || 'andesite');
+    if (local === 'double_stone_block_slab3' && stoneSlabType3 !== undefined) {
+        result.id = 'minecraft:' + (STONE_SLAB_TYPE_3_FULL[stoneSlabType3] || 'andesite');
         result.increment = 2;
         return result;
     }
-    if (local === 'stone_block_slab4' && s.stone_slab_type_4 !== undefined) {
-        result.id = 'minecraft:' + (STONE_SLAB_TYPE_4[s.stone_slab_type_4] || 'stone_slab');
+    const stoneSlabType4 = _get('stone_slab_type_4');
+    if (local === 'stone_block_slab4' && stoneSlabType4 !== undefined) {
+        result.id = 'minecraft:' + (STONE_SLAB_TYPE_4[stoneSlabType4] || 'stone_slab');
         return result;
     }
-    if (local === 'double_stone_block_slab4' && s.stone_slab_type_4 !== undefined) {
-        result.id = 'minecraft:' + (STONE_SLAB_TYPE_4_FULL[s.stone_slab_type_4] || 'stone');
+    if (local === 'double_stone_block_slab4' && stoneSlabType4 !== undefined) {
+        result.id = 'minecraft:' + (STONE_SLAB_TYPE_4_FULL[stoneSlabType4] || 'stone');
         result.increment = 2;
         return result;
     }
 
     // ─── wooden_slab + wood_type ───────────────────────────
-    if (local === 'wooden_slab' && s.wood_type !== undefined) {
-        const w = String(s.wood_type);
+    const woodType = _get('wood_type');
+    if (local === 'wooden_slab' && woodType !== undefined) {
+        const w = String(woodType);
         if (WOOD_TYPE.includes(w)) {
             result.id = `minecraft:${w}_slab`;
             return result;
         }
     }
-    if (local === 'double_wooden_slab' && s.wood_type !== undefined) {
-        const w = String(s.wood_type);
+    if (local === 'double_wooden_slab' && woodType !== undefined) {
+        const w = String(woodType);
         if (WOOD_TYPE.includes(w)) {
             result.id = `minecraft:${w}_planks`;
             result.increment = 2;
@@ -269,69 +284,79 @@ export function normalizeBedrockBlock(rawId, states) {
     }
 
     // ─── planks + wood_type ────────────────────────────────
-    if (local === 'planks' && s.wood_type !== undefined) {
-        const w = String(s.wood_type);
+    if (local === 'planks' && woodType !== undefined) {
+        const w = String(woodType);
         if (WOOD_TYPE.includes(w)) { result.id = `minecraft:${w}_planks`; return result; }
     }
 
     // ─── log + old_log_type / log2 + new_log_type ──────────
-    if (local === 'log' && s.old_log_type !== undefined) {
-        const w = String(s.old_log_type);
+    const oldLogType = _get('old_log_type');
+    if (local === 'log' && oldLogType !== undefined) {
+        const w = String(oldLogType);
         if (OLD_LOG_TYPE[w]) { result.id = 'minecraft:' + OLD_LOG_TYPE[w]; return result; }
     }
-    if (local === 'log2' && s.new_log_type !== undefined) {
-        const w = String(s.new_log_type);
+    const newLogType = _get('new_log_type');
+    if (local === 'log2' && newLogType !== undefined) {
+        const w = String(newLogType);
         if (NEW_LOG_TYPE[w]) { result.id = 'minecraft:' + NEW_LOG_TYPE[w]; return result; }
     }
 
     // ─── leaves / leaves2 ──────────────────────────────────
-    if (local === 'leaves' && s.old_leaf_type !== undefined) {
-        const t = String(s.old_leaf_type);
+    const oldLeafType = _get('old_leaf_type');
+    if (local === 'leaves' && oldLeafType !== undefined) {
+        const t = String(oldLeafType);
         if (OLD_LEAF_TYPE[t]) { result.id = 'minecraft:' + OLD_LEAF_TYPE[t]; return result; }
     }
-    if (local === 'leaves2' && s.new_leaf_type !== undefined) {
-        const t = String(s.new_leaf_type);
+    const newLeafType = _get('new_leaf_type');
+    if (local === 'leaves2' && newLeafType !== undefined) {
+        const t = String(newLeafType);
         if (NEW_LEAF_TYPE[t]) { result.id = 'minecraft:' + NEW_LEAF_TYPE[t]; return result; }
     }
 
     // ─── stone + stone_type ────────────────────────────────
-    if (local === 'stone' && s.stone_type !== undefined) {
-        const t = String(s.stone_type);
+    const stoneType = _get('stone_type');
+    if (local === 'stone' && stoneType !== undefined) {
+        const t = String(stoneType);
         if (STONE_TYPE[t]) { result.id = 'minecraft:' + STONE_TYPE[t]; return result; }
     }
 
     // ─── stonebrick + stone_brick_type ─────────────────────
-    if (local === 'stonebrick' && s.stone_brick_type !== undefined) {
-        result.id = 'minecraft:' + (STONE_BRICK_TYPE[String(s.stone_brick_type)] || 'stone_bricks');
+    const stoneBrickType = _get('stone_brick_type');
+    if (local === 'stonebrick' && stoneBrickType !== undefined) {
+        result.id = 'minecraft:' + (STONE_BRICK_TYPE[String(stoneBrickType)] || 'stone_bricks');
         return result;
     }
 
     // ─── sandstone + sand_stone_type ───────────────────────
-    if (local === 'sandstone' && s.sand_stone_type !== undefined) {
-        result.id = 'minecraft:' + (SAND_STONE_TYPE[String(s.sand_stone_type)] || 'sandstone');
+    const sandStoneType = _get('sand_stone_type');
+    if (local === 'sandstone' && sandStoneType !== undefined) {
+        result.id = 'minecraft:' + (SAND_STONE_TYPE[String(sandStoneType)] || 'sandstone');
         return result;
     }
-    if (local === 'red_sandstone' && s.sand_stone_type !== undefined) {
-        result.id = 'minecraft:' + (RED_SAND_STONE_TYPE[String(s.sand_stone_type)] || 'red_sandstone');
+    if (local === 'red_sandstone' && sandStoneType !== undefined) {
+        result.id = 'minecraft:' + (RED_SAND_STONE_TYPE[String(sandStoneType)] || 'red_sandstone');
         return result;
     }
 
     // ─── dirt + dirt_type ──────────────────────────────────
-    if (local === 'dirt' && s.dirt_type !== undefined) {
-        result.id = 'minecraft:' + (DIRT_TYPE[String(s.dirt_type)] || 'dirt');
+    const dirtType = _get('dirt_type');
+    if (local === 'dirt' && dirtType !== undefined) {
+        result.id = 'minecraft:' + (DIRT_TYPE[String(dirtType)] || 'dirt');
         return result;
     }
 
     // ─── monster_egg ───────────────────────────────────────
-    if (local === 'monster_egg' && s.monster_egg_stone_type !== undefined) {
-        result.id = 'minecraft:' + (MONSTER_EGG_TYPE[String(s.monster_egg_stone_type)] || 'infested_stone');
+    const monsterEggStoneType = _get('monster_egg_stone_type');
+    if (local === 'monster_egg' && monsterEggStoneType !== undefined) {
+        result.id = 'minecraft:' + (MONSTER_EGG_TYPE[String(monsterEggStoneType)] || 'infested_stone');
         return result;
     }
 
     // ─── color 系（color state） ───────────────────────────
-    if (s.color !== undefined && local && !local.includes(String(s.color))) {
+    const color = _get('color');
+    if (color !== undefined && local && !local.includes(String(color))) {
         // wool / carpet / concrete / concrete_powder / stained_glass / terracotta / bed
-        const colorKey = String(s.color);
+        const colorKey = String(color);
         if (COLORS.includes(colorKey)) {
             const c = colorKey === 'silver' ? 'light_gray' : colorKey;
             // local が wool / carpet / concrete 等の単体名なら接頭辞追加
@@ -355,8 +380,32 @@ export function normalizeBedrockBlock(rawId, states) {
     }
 
     // ─── double_slab 一般（汎用フォールバック） ────────────
-    if (local.startsWith('double_') && local.endsWith('_slab')) {
-        result.id = 'minecraft:' + local.replace('double_', '').replace('_slab', '');
+    // Bedrock: xxx_double_slab or double_xxx_slab
+    if (local.includes('double_slab')) {
+        let base = local.replace('double_', '').replace('_double_', '').replace('_slab', '');
+        
+        // 特殊な名称変更が必要な素材（複数形など）
+        const PLURALS = {
+            'nether_brick': 'nether_bricks',
+            'stone_brick': 'stone_bricks',
+            'quartz': 'quartz_block',
+            'prismarine_brick': 'prismarine_bricks',
+            'red_nether_brick': 'red_nether_bricks',
+            'mud_brick': 'mud_bricks',
+            'deepslate_brick': 'deepslate_bricks',
+            'deepslate_tile': 'deepslate_tiles',
+            'blackstone_brick': 'blackstone_bricks',
+            'polished_blackstone_brick': 'polished_blackstone_bricks',
+        };
+        
+        if (PLURALS[base]) {
+            base = PLURALS[base];
+        } else if (['oak','spruce','birch','jungle','acacia','dark_oak','mangrove','cherry','pale_oak','bamboo','crimson','warped'].includes(base)) {
+            // wood系なら planks に
+            base += '_planks';
+        }
+        
+        result.id = 'minecraft:' + base;
         result.increment = 2;
         return result;
     }
