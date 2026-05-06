@@ -280,8 +280,7 @@ export class Viewer3D {
             }
 
             const mesh = new THREE.InstancedMesh(geo, mat, list.length);
-            // ガラス系は透過描画のため renderOrder を上げる
-            if (_isGlass(blockId)) mesh.renderOrder = 1;
+            // ガラス系: alphaTestで透明ピクセルを抜くのでrenderOrderの特別扱い不要
             for (let i = 0; i < list.length; i++) {
                 mat4.setPosition(list[i].x, list[i].y, list[i].z);
                 mesh.setMatrixAt(i, mat4);
@@ -340,16 +339,12 @@ export class Viewer3D {
                         // ─── マテリアル設定 ──────────────────────────────
                         const matOpts = { map: tex };
 
-                        // ① ガラス系: 必ず透過設定を適用
+                        // ① ガラス系: alphaTest で透明ピクセルのみ抜く
+                        // depthWrite:false にすると奥まで透けてしまうので使わない
                         if (isGlass) {
                             matOpts.transparent = true;
-                            matOpts.alphaTest = 0.1;
-                            matOpts.depthWrite = false; // 半透明の正しい描画のため
-                        }
-
-                        // ② 草ブロック側面の葉/草テクスチャ: alphaTest で黒つぶれ防止
-                        if (isGrassBlock && faceName !== 'bottom') {
-                            matOpts.alphaTest = 0.5;
+                            matOpts.alphaTest = 0.5;  // 0.5以上の不透明度のみ描画
+                            // depthWrite は true のまま（奥が透けるのを防ぐ）
                         }
 
                         const m = new THREE.MeshLambertMaterial(matOpts);
@@ -405,8 +400,9 @@ export class Viewer3D {
         const matOpts = { color };
         if (isGlass) {
             matOpts.transparent = true;
-            matOpts.alphaTest = 0.1;
-            matOpts.opacity = 0.6;
+            matOpts.alphaTest = 0.5;
+            // フォールバック時は少し透明感を持たせる
+            matOpts.opacity = 0.85;
         }
         const mat = new THREE.MeshLambertMaterial(matOpts);
         this._matCache.set(cacheKey, mat);

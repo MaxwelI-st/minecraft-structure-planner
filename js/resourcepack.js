@@ -878,8 +878,16 @@ export function getFaceUrls(blockId, options = {}) {
         // 草ブロックの特殊処理
         if (local === 'grass_block' || local === 'grass') {
             const grassTop = _state.textures.get('grass_carried') || _state.textures.get('grass_top') || directTex;
-            const grassSide = _state.textures.get('grass_side') || _state.textures.get('grass_side_carried') || directTex;
-            const grassBottom = _state.textures.get('dirt') || directTex;
+            // grass_side.png は Bedrock resource_pack に存在しない場合がある
+            // → grass_side_carried → dirt の順でフォールバック
+            const grassSideTex = _state.textures.get('grass_side')
+                               || _state.textures.get('grass_side_carried')
+                               || _state.textures.get('dirt')
+                               || directTex;
+            const grassSide = grassSideTex;
+            const grassBottom = _state.textures.get('grass_bottom')
+                              || _state.textures.get('dirt')
+                              || directTex;
             const grassTint = 0x91bd59; // 平原バイオームカラー
             return {
                 east: { url: grassSide, tint: grassTint }, west: { url: grassSide, tint: grassTint },

@@ -64,12 +64,18 @@ export function _getState(states, key) {
     if (!states) return undefined;
     const v = states[key] ?? states['minecraft:' + key];
     if (v === undefined) return undefined;
-    
     // NBTオブジェクト { type, value } の場合は .value を返す
-    if (typeof v === 'object' && v !== null && 'value' in v) {
-        return v.value;
-    }
+    if (typeof v === 'object' && v !== null && 'value' in v) return v.value;
     return v;
+}
+
+/** _getState の拡張版: キー候補を複数受け取り最初に見つかった値を返す */
+export function _getStateAny(states, ...keys) {
+    for (const key of keys) {
+        const v = _getState(states, key);
+        if (v !== undefined) return v;
+    }
+    return undefined;
 }
 
 /** 値が 1, "1", true のいずれかであるか判定する (Bedrock のビット値・真偽値対応) */
@@ -82,7 +88,11 @@ export function _isTrue(val) {
  * ※ cardinal_direction (文字列) と direction (数値) を統合
  */
 export function _getDirection(states) {
-    const d = _getState(states, 'direction') ?? _getState(states, 'cardinal_direction') ?? _getState(states, 'facing_direction');
+    // Bedrock では 'minecraft:cardinal_direction' (プレフィックス付き) で格納される場合がある
+    // 'minecraft:cardinal_direction' は _getState('cardinal_direction') で拾える
+    // （_getState が 'minecraft:' + key を自動的に試みるため）
+    const d = _getStateAny(states,
+        'direction', 'cardinal_direction', 'facing_direction');
     if (d === undefined) return 0;
     
     // 文字列形式 ("north", "south" 等)
@@ -402,7 +412,10 @@ export function buildTrapdoorGeometry(THREE, states = {}) {
 export function buildDoorGeometry(THREE, states = {}) {
     const dir = _getDirection(states);
     const open = _isTrue(_getState(states, 'open_bit'));
-    const hinge = _isTrue(_getState(states, 'hinge_bit'));
+    // Bedrock では 'door_hinge_bit'、Java では 'hinge' を使う
+    const hinge = _isTrue(_getState(states, 'door_hinge_bit'))
+               || _isTrue(_getState(states, 'hinge_bit'))
+               || (_getState(states, 'hinge') === 'right');
 
     let placement = dir;
     if (open) {
