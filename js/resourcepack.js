@@ -737,7 +737,7 @@ function _expandBedrockTextures(blockId, rawId) {
  */
 export function getFaceUrls(blockId, options = {}) {
     if (options.debug) {
-        console.log(` --- ResourcePack v2.5.11: getFaceUrls --- [${blockId}]`);
+        console.log(` --- ResourcePack v2.5.12: getFaceUrls --- [${blockId}]`);
     }
     if (!isLoaded()) {
         console.log('   -> Pack not loaded (textures.size is 0).');
@@ -770,7 +770,7 @@ export function getFaceUrls(blockId, options = {}) {
     if (local.includes('grass') || local.includes('leaves') || 
         local.includes('vine') || local.includes('fern') || 
         local.includes('stem') || local.includes('lily_pad')) {
-        tint = 0x79c05a; 
+        tint = 0x91bd59; // 平原バイオームカラー
     }
 
     // 2. ドアの上下判定（最優先で処理、無限ループ防止のため直接処理）
@@ -803,6 +803,32 @@ export function getFaceUrls(blockId, options = {}) {
 
     // ─── (A) Bedrock 経路 ─────────────────────────────────────────────
     if (_state.isBedrock) {
+        // ─── Bedrock ドア: upper_block_bit に応じて上半 / 下半テクスチャを選択 ───
+        if (local.includes('_door') && !local.includes('item')) {
+            const isUpper = _isTrue(_getState(states, 'upper_block_bit'));
+            // Bedrock の terrain_texture.json ではドアは "door_top" / "door_bottom" キーを持つことが多い
+            // まず blocks.json の up/down エントリを探す
+            const doorExpanded = _expandBedrockTextures(sanitizedIdLower, rawId);
+            if (doorExpanded) {
+                // up=上半, down=下半 がある場合はそれを使う（Faithful/BT4 形式）
+                const doorHalfKey = isUpper ? (doorExpanded.up ?? doorExpanded.all) : (doorExpanded.down ?? doorExpanded.all);
+                const doorHalfUrl = _resolveTextureKey(doorHalfKey, variantIdx);
+                const doorEdgeKey = doorExpanded.up ?? doorExpanded.all;
+                const doorEdgeUrl = _resolveTextureKey(doorEdgeKey, variantIdx);
+                if (doorHalfUrl) {
+                    const toFO = (v) => v == null ? null : (typeof v === 'string' ? { url: v, tint: null } : v);
+                    return {
+                        east: toFO(doorHalfUrl), west: toFO(doorHalfUrl),
+                        top: toFO(doorEdgeUrl || doorHalfUrl), bottom: toFO(doorEdgeUrl || doorHalfUrl),
+                        north: toFO(doorHalfUrl), south: toFO(doorHalfUrl),
+                        found: true,
+                    };
+                }
+            }
+            // Bedrock テクスチャが見つからなければ Java アセットにフォールバック
+            // （Java VARIANTS への fallthrough は後続の Java 経路で処理される）
+        }
+
         const expanded = _expandBedrockTextures(sanitizedIdLower, rawId);
         if (expanded) {
             let useVariantIdx = variantIdx;
@@ -851,13 +877,14 @@ export function getFaceUrls(blockId, options = {}) {
         
         // 草ブロックの特殊処理
         if (local === 'grass_block' || local === 'grass') {
-            const top = _state.textures.get('grass_carried') || _state.textures.get('grass_top') || directTex;
-            const side = directTex;
-            const bottom = _state.textures.get('dirt') || directTex;
+            const grassTop = _state.textures.get('grass_carried') || _state.textures.get('grass_top') || directTex;
+            const grassSide = _state.textures.get('grass_side') || _state.textures.get('grass_side_carried') || directTex;
+            const grassBottom = _state.textures.get('dirt') || directTex;
+            const grassTint = 0x91bd59; // 平原バイオームカラー
             return {
-                east: { url: side, tint: tint }, west: { url: side, tint: tint },
-                top: { url: top, tint: tint }, bottom: { url: bottom, tint: null },
-                north: { url: side, tint: tint }, south: { url: side, tint: tint },
+                east: { url: grassSide, tint: grassTint }, west: { url: grassSide, tint: grassTint },
+                top: { url: grassTop, tint: grassTint }, bottom: { url: grassBottom, tint: null },
+                north: { url: grassSide, tint: grassTint }, south: { url: grassSide, tint: grassTint },
                 found: true
             };
         }

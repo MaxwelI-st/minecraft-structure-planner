@@ -680,14 +680,35 @@ class App {
         if (!list) return;
         const map = this.replacements.get(structureId);
         if (!map || map.size === 0) { list.innerHTML = '<em>（置換なし）</em>'; return; }
-        list.innerHTML = [...map.entries()].map(([from, to]) => {
+
+        // テクスチャURL取得ヘルパー（パック読込中なら使う）
+        const getThumbUrl = (blockId) => {
+            try {
+                if (!ResourcePack.isLoaded()) return null;
+                const urls = ResourcePack.getFaceUrls(blockId, {});
+                return urls?.top?.url || urls?.east?.url || null;
+            } catch (_) { return null; }
+        };
+
+        list.innerHTML = '';
+        for (const [from, to] of map.entries()) {
             const fn = this.langData[from] || from.replace('minecraft:','');
             const tn = this.langData[to] || to.replace('minecraft:','');
-            return `<div style="display:flex;justify-content:space-between;padding:0.15rem 0">
-                <span>${this._escape(fn)} → ${this._escape(tn)}</span>
-                <button class="mc-btn small" data-from="${from}" style="padding:0 0.4rem;font-size:0.7rem">✕</button>
-            </div>`;
-        }).join('');
+            const fromThumb = getThumbUrl(from);
+            const toThumb = getThumbUrl(to);
+            const thumbStyle = 'width:20px;height:20px;object-fit:cover;image-rendering:pixelated;border-radius:2px;vertical-align:middle;margin-right:4px;background:#333;';
+            const fromImg = fromThumb ? `<img src="${fromThumb}" style="${thumbStyle}" title="${fn}">` : '';
+            const toImg   = toThumb   ? `<img src="${toThumb}"   style="${thumbStyle}" title="${tn}">` : '';
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:0.2rem 0;gap:0.3rem;';
+            row.innerHTML = `
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    ${fromImg}${this._escape(fn)} → ${toImg}${this._escape(tn)}
+                </span>
+                <button class="mc-btn small" data-from="${from}" style="flex-shrink:0;padding:0 0.4rem;font-size:0.7rem">✕</button>
+            `;
+            list.appendChild(row);
+        }
         list.querySelectorAll('button[data-from]').forEach(b => {
             b.onclick = () => {
                 map.delete(b.dataset.from);
@@ -1687,8 +1708,15 @@ class App {
                 this._toast(`📦 リソースパック読み込み完了: ${info.count}個のテクスチャ`);
             }
 
-            // 3D 表示中なら反映
-            this.viewer3d?.refreshTextures?.();
+            // 3D 表示中なら反映（置換後テクスチャも引き直し）
+            if (this.viewer3d?.isInitialized) {
+                this._load3DView();
+            } else {
+                this.viewer3d?.refreshTextures?.();
+            }
+            // 置換リストのサムネイルを更新
+            const selVal = document.getElementById('viewer3d-structure-select')?.value;
+            if (selVal) this._renderReplaceList(selVal);
             // 素材一覧のアイコンも更新
             this._renderBlockList?.();
         } catch (err) {
@@ -1837,6 +1865,8 @@ class App {
             const colorMode = cmRadio ? cmRadio.value : 'material';
             const structureId = sel.value;
             const replacedCoords = this._applyReplacements(structureId, coords);
+            // 置換が変わるたびにマテリアルキャッシュを破棄してテクスチャを引き直す
+            this.viewer3d._matCache?.clear();
             this.viewer3d.loadStructure(replacedCoords, structure.size, { yMin, yMax, colorMode });
 
             const infoEl = document.getElementById('viewer3d-info');

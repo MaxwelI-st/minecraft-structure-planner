@@ -132,46 +132,156 @@ function cuboid(THREE, fromX, fromY, fromZ, toX, toY, toZ) {
  *
  * upside_down_bit=1 のときは Y 軸対称に反転（bottom↔top 入れ替え）。
  */
-export function buildStairsGeometry(THREE, states = {}) {
-    // 階段の weirdo_direction: 0=east, 1=west, 2=south, 3=north
+/* ─── 階段 ───────────────────────────────────────────────────
+ * weirdo_direction: 0=east(+X), 1=west(-X), 2=south(+Z), 3=north(-Z)
+ * upside_down_bit=1 のときは Y 軸対称に反転（bottom↔top 入れ替え）。
+ *
+ * コーナー判定: neighborBlocks = { n, s, w, e } 各々 { blockId, states } | null
+ */
+
+function _getStairsCornerShape(wd, upsideDown, neighborBlocks) {
+    if (!neighborBlocks) return 'straight';
+
+    const isStairs = (nb) => {
+        if (!nb || !nb.blockId) return false;
+        const id = String(nb.blockId).toLowerCase().replace(/^minecraft:/, '');
+        return id.endsWith('_stairs');
+    };
+    const getWd = (nb) => {
+        if (!nb || !nb.states) return -1;
+        const w = nb.states['weirdo_direction'] ?? nb.states['minecraft:weirdo_direction'];
+        return w !== undefined ? parseInt(w) : -1;
+    };
+    const getUpside = (nb) => {
+        if (!nb || !nb.states) return false;
+        return _isTrue(_getState(nb.states, 'upside_down_bit'));
+    };
+
+    const { n, s, w, e } = neighborBlocks;
+    // 自分の facing 方向に対して「前方・後方・左・右」の隣接を割り当てる
+    let front, back, left, right;
+    if      (wd === 0) { front = e; back = w; left = n; right = s; }
+    else if (wd === 1) { front = w; back = e; left = s; right = n; }
+    else if (wd === 2) { front = s; back = n; left = e; right = w; }
+    else               { front = n; back = s; left = w; right = e; }
+
+    if (isStairs(back) && getUpside(back) === upsideDown) {
+        const bwd = getWd(back);
+        if (bwd === ((wd + 1) % 4)) return upsideDown ? 'inner_right' : 'inner_left';
+        if (bwd === ((wd + 3) % 4)) return upsideDown ? 'inner_left'  : 'inner_right';
+    }
+    if (isStairs(front) && getUpside(front) === upsideDown) {
+        const fwd = getWd(front);
+        if (fwd === ((wd + 1) % 4)) return upsideDown ? 'outer_right' : 'outer_left';
+        if (fwd === ((wd + 3) % 4)) return upsideDown ? 'outer_left'  : 'outer_right';
+    }
+    return 'straight';
+}
+
+function _buildCornerStairsGeometry(THREE, wd, upsideDown, cornerShape) {
+    const yLow    = upsideDown ? 0.5 : 0.0;
+    const yLowEnd = upsideDown ? 1.0 : 0.5;
+    const yHigh   = upsideDown ? 0.0 : 0.5;
+    const yHighEnd= upsideDown ? 0.5 : 1.0;
+
+    const geos = [];
+    geos.push(cuboid(THREE, 0, yLow, 0, 1, yLowEnd, 1)); // ベース
+
+    const isLeft = cornerShape.endsWith('_left');
+
+    if (cornerShape.startsWith('inner')) {
+        // Inner: 上半分を3/4埋める（1/4を欠かす）→ 2つのcuboidで表現
+        // 欠けるセルは「前方×左右いずれか」の1/4
+        // wd=0(east)+inner_left → 欠け: x:0.5-1.0, z:0.0-0.5 → 残: z後半フル + z前半の西側
+        // wd=0(east)+inner_right → 欠け: x:0.5-1.0, z:0.5-1.0 → 残: z前半フル + z後半の西側
+        if (wd === 0) {
+            if (isLeft) { // 欠け: (+X, -Z)
+                geos.push(cuboid(THREE, 0, yHigh, 0.5, 1, yHighEnd, 1));    // z後半フル
+                geos.push(cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 0.5));  // z前半の-X側
+            } else {      // 欠け: (+X, +Z)
+                geos.push(cuboid(THREE, 0, yHigh, 0, 1, yHighEnd, 0.5));    // z前半フル
+                geos.push(cuboid(THREE, 0, yHigh, 0.5, 0.5, yHighEnd, 1));  // z後半の-X側
+            }
+        } else if (wd === 1) {
+            if (isLeft) { // 欠け: (-X, +Z)
+                geos.push(cuboid(THREE, 0, yHigh, 0, 1, yHighEnd, 0.5));
+                geos.push(cuboid(THREE, 0.5, yHigh, 0.5, 1, yHighEnd, 1));
+            } else {      // 欠け: (-X, -Z)
+                geos.push(cuboid(THREE, 0, yHigh, 0.5, 1, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 0.5));
+            }
+        } else if (wd === 2) {
+            if (isLeft) { // 欠け: (+Z, +X)
+                geos.push(cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 0.5));
+            } else {      // 欠け: (+Z, -X)
+                geos.push(cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 0.5));
+            }
+        } else { // wd===3
+            if (isLeft) { // 欠け: (-Z, -X)
+                geos.push(cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0, yHigh, 0.5, 0.5, yHighEnd, 1));
+            } else {      // 欠け: (-Z, +X)
+                geos.push(cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0.5, yHigh, 0.5, 1, yHighEnd, 1));
+            }
+        }
+    } else {
+        // Outer: 上半分は1/4のみ
+        if (wd === 0) {
+            geos.push(isLeft
+                ? cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 0.5)
+                : cuboid(THREE, 0.5, yHigh, 0.5, 1, yHighEnd, 1));
+        } else if (wd === 1) {
+            geos.push(isLeft
+                ? cuboid(THREE, 0, yHigh, 0.5, 0.5, yHighEnd, 1)
+                : cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 0.5));
+        } else if (wd === 2) {
+            geos.push(isLeft
+                ? cuboid(THREE, 0.5, yHigh, 0.5, 1, yHighEnd, 1)
+                : cuboid(THREE, 0, yHigh, 0.5, 0.5, yHighEnd, 1));
+        } else {
+            geos.push(isLeft
+                ? cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 0.5)
+                : cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 0.5));
+        }
+    }
+
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+export function buildStairsGeometry(THREE, states = {}, neighborBlocks = null) {
     let wd = _getState(states, 'weirdo_direction');
     if (wd === undefined) {
-        // cardinal_direction からの変換
-        const dir = _getDirection(states); // 0=S, 1=W, 2=N, 3=E
-        const map = [2, 1, 3, 0]; // S=2, W=1, N=3, E=0
+        const dir = _getDirection(states);
+        const map = [2, 1, 3, 0];
         wd = map[dir];
     } else {
         wd = parseInt(wd);
     }
     const upsideDown = _isTrue(_getState(states, 'upside_down_bit'));
 
-    // 上下反転時は yLow/yHigh を入れ替えて作る
-    const yLow  = upsideDown ? 0.5 : 0.0;   // bottom 半分の Y 範囲
+    const cornerShape = _getStairsCornerShape(wd, upsideDown, neighborBlocks);
+    if (cornerShape !== 'straight') {
+        return _buildCornerStairsGeometry(THREE, wd, upsideDown, cornerShape);
+    }
+
+    // ストレート（通常の階段）
+    const yLow    = upsideDown ? 0.5 : 0.0;
     const yLowEnd = upsideDown ? 1.0 : 0.5;
-    const yHigh = upsideDown ? 0.0 : 0.5;   // top 半分の Y 範囲
-    const yHighEnd = upsideDown ? 0.5 : 1.0;
+    const yHigh   = upsideDown ? 0.0 : 0.5;
+    const yHighEnd= upsideDown ? 0.5 : 1.0;
 
     const geos = [];
-
-    // bottom 半分（フル幅）
     geos.push(cuboid(THREE, 0, yLow, 0, 1, yLowEnd, 1));
-
-    // top 半分の小ブロック（向きに応じた半分）
-    if (wd === 0) { // east → +X 半分
-        geos.push(cuboid(THREE, 0.5, yHigh, 0, 1.0, yHighEnd, 1));
-    } else if (wd === 1) { // west → -X 半分
-        geos.push(cuboid(THREE, 0.0, yHigh, 0, 0.5, yHighEnd, 1));
-    } else if (wd === 2) { // south → +Z 半分
-        geos.push(cuboid(THREE, 0, yHigh, 0.5, 1, yHighEnd, 1.0));
-    } else if (wd === 3) { // north → -Z 半分
-        geos.push(cuboid(THREE, 0, yHigh, 0.0, 1, yHighEnd, 0.5));
-    }
+    if      (wd === 0) geos.push(cuboid(THREE, 0.5, yHigh, 0,   1.0, yHighEnd, 1));
+    else if (wd === 1) geos.push(cuboid(THREE, 0.0, yHigh, 0,   0.5, yHighEnd, 1));
+    else if (wd === 2) geos.push(cuboid(THREE, 0,   yHigh, 0.5, 1,   yHighEnd, 1.0));
+    else               geos.push(cuboid(THREE, 0,   yHigh, 0.0, 1,   yHighEnd, 0.5));
 
     return _mergeBufferGeometries(THREE, geos);
 }
-
-/* ─── ハーフブロック（slab）──────────────────────────────────
- * top_slot_bit (新)/ vertical_half='top'(旧) → 上半分
  * それ以外 → 下半分
  */
 export function buildSlabGeometry(THREE, states = {}) {
@@ -272,24 +382,41 @@ export function buildTrapdoorGeometry(THREE, states = {}) {
 }
 
 /* ─── ドア（縦長 1×2×0.1875、頭部スキップは worker.js で済） ─── */
+/*
+ * direction (Bedrock):  0=south (+Z 向きに開口), 1=west, 2=north, 3=east
+ * hinge_bit:            0=左ヒンジ, 1=右ヒンジ
+ * open_bit:             0=閉, 1=開
+ *
+ * 【ヒンジ位置と回転の対応】
+ *   閉じた状態のドア板の「壁」は direction に沿った面に貼り付く：
+ *     dir=0(south): Z=1 側の薄板（Z 軸に垂直）
+ *     dir=1(west) : X=0 側の薄板
+ *     dir=2(north): Z=0 側の薄板
+ *     dir=3(east) : X=1 側の薄板
+ *
+ *   開いた状態は、ヒンジを軸にY軸で ±90度 回転させる：
+ *     hinge_bit=0 (左ヒンジ): +90度回転 → direction を +1 (時計回り) に見せる
+ *     hinge_bit=1 (右ヒンジ): -90度回転 → direction を -1 に見せる
+ */
 export function buildDoorGeometry(THREE, states = {}) {
     const dir = _getDirection(states);
-    // プランナーで見栄えを良くするため、常に閉じた状態にする
-    const open = false; 
+    const open = _isTrue(_getState(states, 'open_bit'));
     const hinge = _isTrue(_getState(states, 'hinge_bit'));
-    
-    let placement = dir; 
+
+    let placement = dir;
     if (open) {
-        const offset = hinge ? -1 : 1;
+        // hinge_bit=0: 左ヒンジ → -1方向 (反時計回り) に開く
+        // hinge_bit=1: 右ヒンジ → +1方向 (時計回り) に開く
+        const offset = hinge ? 1 : -1;
         placement = (dir + offset + 4) % 4;
     }
 
-    const t = 3/16; 
+    const t = 3 / 16;
     switch (placement) {
-        case 0: return cuboid(THREE, 0, 0, 1-t, 1, 1, 1);
-        case 1: return cuboid(THREE, 0, 0, 0,   t, 1, 1);
-        case 2: return cuboid(THREE, 0, 0, 0,   1, 1, t);
-        case 3: return cuboid(THREE, 1-t, 0, 0, 1, 1, 1);
+        case 0: return cuboid(THREE, 0,   0, 1-t, 1,   1, 1);   // south: Z+ 側
+        case 1: return cuboid(THREE, 0,   0, 0,   t,   1, 1);   // west:  X- 側
+        case 2: return cuboid(THREE, 0,   0, 0,   1,   1, t);   // north: Z- 側
+        case 3: return cuboid(THREE, 1-t, 0, 0,   1,   1, 1);   // east:  X+ 側
     }
     return cuboid(THREE, 0, 0, 1-t, 1, 1, 1);
 }
@@ -358,10 +485,14 @@ export function buildSmallGeometry(THREE) {
 }
 
 /* ─── 公開：形状取得 ─────────────────────────────────────── */
-export function resolveGeometry(THREE, blockId, states = {}, neighbors = {}) {
+/**
+ * @param {object} neighbors - フェンス/壁/ペイン用の接続フラグ { n, s, w, e }
+ * @param {object} neighborBlocks - 階段コーナー判定用 { n, s, w, e } 各 { blockId, states }
+ */
+export function resolveGeometry(THREE, blockId, states = {}, neighbors = {}, neighborBlocks = null) {
     const shape = classifyShape(blockId, states);
     switch (shape) {
-        case 'stairs':         return buildStairsGeometry(THREE, states);
+        case 'stairs':         return buildStairsGeometry(THREE, states, neighborBlocks);
         case 'slab':           return buildSlabGeometry(THREE, states);
         case 'fence':          return buildFenceGeometry(THREE, states, neighbors);
         case 'wall':           return buildWallGeometry(THREE, states, neighbors);
