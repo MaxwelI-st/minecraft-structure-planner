@@ -282,6 +282,7 @@ export function buildStairsGeometry(THREE, states = {}, neighborBlocks = null) {
 
     return _mergeBufferGeometries(THREE, geos);
 }
+/* ─── スラブ ───────────────────────────────────────────────────
  * それ以外 → 下半分
  */
 export function buildSlabGeometry(THREE, states = {}) {
