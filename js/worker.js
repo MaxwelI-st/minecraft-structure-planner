@@ -1,22 +1,17 @@
 /**
- * worker.js - .mcstructure (Bedrock LE) / .nbt (Java BE) 両対応
+ * worker.js - Bedrock Edition .mcstructure 専用パーサー
  *
  * Bedrock .mcstructure:
  *   root.size = [sx, sy, sz]
  *   root.structure.block_indices[0] = [palette_idx...]    （x*sy*sz + y*sz + z）
  *   root.structure.palette.default.block_palette = [{name, states, version}]
- *
- * Java .nbt (structure block format):
- *   root.size = [sx, sy, sz]
- *   root.palette = [{Name, Properties}]
- *   root.blocks = [{pos:[x,y,z], state:idx}]
  */
 import { NBTParser, decompressIfNeeded, detectEndian } from './nbt.js';
 import { normalizeBedrockBlock } from './bedrock_normalize.js';
 
 self.onmessage = async (e) => {
     const { buffer, fileName } = e.data;
-    console.log('--- Worker v2.5.11: Starting Parse ---', fileName);
+    console.log('--- Worker v2.5.12: Starting Parse ---', fileName);
     try {
         const data = await decompressIfNeeded(buffer);
         const endian = detectEndian(data, fileName || '');
@@ -24,16 +19,13 @@ self.onmessage = async (e) => {
         const result = parser.parse();
         if (!result || !result.value) throw new Error('NBT root not found');
 
-        // 形式判定
+        // 形式判定（統合版 .mcstructure 専用）
         const root = result.value;
-        let normalized;
-        if (root.structure && root.structure.block_indices) {
-            normalized = parseBedrock(root);
-        } else if (root.palette && root.blocks) {
-            normalized = parseJava(root);
-        } else {
-            throw new Error('未知のフォーマット (Bedrock/Java NBT 両方とも不一致)');
+        if (!root.structure || !root.structure.block_indices) {
+            throw new Error('非対応フォーマットです。Bedrock Edition の .mcstructure ファイルを使用してください。');
         }
+        let normalized;
+        normalized = parseBedrock(root);
 
         const { coords, counts, totalCount, sx, sy, sz, edition } = normalized;
         const results = Array.from(counts.entries()).map(([id, count]) => {
@@ -173,48 +165,6 @@ function _faceCull(coords, sx, sy, sz) {
     return out;
 }
 
-/* ─── Java パーサー ───────────────────────────────────────────────
- * Java の structure NBT 形式：
- *   - palette: [{ Name: 'minecraft:stone', Properties: {...} }, ...]
- *   - blocks: [{ pos: [x,y,z], state: idx, nbt: {...} }, ...]
- * もしくは litematica 系の場合は root の中に Regions が入る（未対応）
- *
- * 二段スラブ等の上半身判定は Properties.half === 'upper' / Properties.part === 'head' を見る。
- */
-function parseJava(root) {
-    const sizeArr = root.size;
-    if (!sizeArr || sizeArr.length < 3) throw new Error('Java NBT: size missing');
-    const [sx, sy, sz] = sizeArr;
-
-    const palette = root.palette;
-    const blocks = root.blocks;
-
-    const counts = new Map();
-    const coords = [];
-    let totalCount = 0;
-
-    for (const b of blocks) {
-        if (!b || !b.pos || b.state === undefined) continue;
-        const entry = palette[b.state];
-        if (!entry) continue;
-        let blockId = entry.Name;
-        const props = entry.Properties || {};
-
-        // 上半身/頭部の重複除去
-        if (props.half === 'upper') continue;
-        if (props.part === 'head') continue;
-
-        if (blockId === 'minecraft:air' || blockId === 'minecraft:structure_block' || blockId === 'minecraft:structure_void') continue;
-
-        counts.set(blockId, (counts.get(blockId) || 0) + 1);
-        totalCount++;
-
-        const [x, y, z] = b.pos;
-        coords.push({ x, y, z, blockId, states: props });
-    }
-    const visible = _faceCull(coords, sx, sy, sz);
-    return { coords: visible, counts, totalCount, sx, sy, sz, edition: 'java' };
-}
 
 /* ─── カテゴリ分類 ────────────────────────────────────────────── */
 function getCategory(id) {

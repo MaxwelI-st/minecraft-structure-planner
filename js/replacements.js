@@ -142,7 +142,13 @@ export function applyToCoords(coords, replacementMap) {
     if (!replacementMap || replacementMap.size === 0) return coords;
     return coords.map(c => {
         const to = replacementMap.get(c.blockId);
-        return to ? { ...c, blockId: to } : c;
+        if (!to) return c;
+        // rawId のみ新しいブロックIDに合わせて更新する。
+        // rawId が古いままだと resourcepack.js の _expandBedrockTextures() が
+        // rawId を優先して古いブロックのテクスチャを引いてしまう。
+        // states は保持する（階段の向きなどを引き継ぐため）。
+        const newRawId = to.replace(/^minecraft:/, '');
+        return { ...c, blockId: to, rawId: newRawId };
     });
 }
 

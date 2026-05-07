@@ -112,6 +112,8 @@ export class Viewer3D {
         this.colorMode = 'material';
         this._matCache = new Map();
         this._lastCoords = null; this._lastSize = null; this._lastOptions = null;
+        // 置換を再適用して再描画が必要な場合に呼び出すコールバック（app.js がセット）
+        this.onNeedsReload = null;
     }
 
     async init() {
@@ -158,25 +160,94 @@ export class Viewer3D {
 
     _setupControls() {
         const el = this.renderer.domElement;
+
+        // ─── 回転（左ドラッグ）─────────────────────────────────────────────
         const orbitBy = (dx, dy) => {
             this.spherical.theta -= dx * 0.01;
             this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi + dy * 0.01));
             this._updateCamera();
         };
-        let isDragging = false;
+
+        // ─── パン（右ドラッグ / 中ボタンドラッグ）────────────────────────────
+        // 球面座標からカメラのローカル右ベクトルと上ベクトルを計算してターゲットを移動
+        const panBy = (dx, dy) => {
+            const speed = this.spherical.radius * 0.0012;
+            const { theta, phi } = this.spherical;
+            // カメラから見た右方向（世界座標）
+            const rx =  Math.cos(theta);
+            const ry =  0;
+            const rz = -Math.sin(theta);
+            // カメラから見た上方向（世界座標、ティルトを考慮）
+            const ux = Math.sin(theta) * Math.cos(phi);
+            const uy = -Math.sin(phi);
+            const uz = Math.cos(theta) * Math.cos(phi);
+            this.target.x += (-dx * rx + dy * ux) * speed;
+            this.target.y +=  dy * uy * speed;
+            this.target.z += (-dx * rz + dy * uz) * speed;
+            this._updateCamera();
+        };
+
+        let dragMode = null; // 'orbit' | 'pan' | null
         let prevMouse = { x: 0, y: 0 };
-        el.addEventListener('mousedown', (e) => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+
+        el.addEventListener('mousedown', (e) => {
+            // 左ボタン=回転、右/中ボタン=パン
+            dragMode = (e.button === 0) ? 'orbit' : 'pan';
+            prevMouse = { x: e.clientX, y: e.clientY };
+            e.preventDefault();
+        });
         window.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            orbitBy(e.clientX - prevMouse.x, e.clientY - prevMouse.y);
+            if (!dragMode) return;
+            const dx = e.clientX - prevMouse.x;
+            const dy = e.clientY - prevMouse.y;
+            if (dragMode === 'orbit') orbitBy(dx, dy);
+            else                      panBy(dx, dy);
             prevMouse = { x: e.clientX, y: e.clientY };
         });
-        window.addEventListener('mouseup', () => { isDragging = false; });
+        window.addEventListener('mouseup', () => { dragMode = null; });
+        // 右クリックメニューを抑制
+        el.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // ─── ズーム（ホイール）────────────────────────────────────────────
         el.addEventListener('wheel', (e) => {
             e.preventDefault();
             this.spherical.radius = Math.max(2, Math.min(500, this.spherical.radius * (e.deltaY > 0 ? 1.1 : 0.9)));
             this._updateCamera();
         }, { passive: false });
+
+        // ─── タッチ操作（スマホ・タブレット）────────────────────────────────
+        let touches = [];
+        let prevPinchDist = null;
+        el.addEventListener('touchstart', (e) => {
+            touches = Array.from(e.touches);
+            prevPinchDist = null;
+            e.preventDefault();
+        }, { passive: false });
+        el.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const t = Array.from(e.touches);
+            if (t.length === 1 && touches.length === 1) {
+                // 1本指: 回転
+                orbitBy(t[0].clientX - touches[0].clientX, t[0].clientY - touches[0].clientY);
+            } else if (t.length === 2 && touches.length === 2) {
+                // 2本指: ピンチでズーム
+                const dist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+                if (prevPinchDist !== null) {
+                    const ratio = prevPinchDist / dist;
+                    this.spherical.radius = Math.max(2, Math.min(500, this.spherical.radius * ratio));
+                    this._updateCamera();
+                }
+                prevPinchDist = dist;
+                // 2本指の中点移動でパン
+                const cx = (t[0].clientX + t[1].clientX) / 2;
+                const cy = (t[0].clientY + t[1].clientY) / 2;
+                const pcx = (touches[0].clientX + touches[1].clientX) / 2;
+                const pcy = (touches[0].clientY + touches[1].clientY) / 2;
+                panBy(cx - pcx, cy - pcy);
+            }
+            touches = t;
+        }, { passive: false });
+        el.addEventListener('touchend', (e) => { touches = Array.from(e.touches); prevPinchDist = null; }, { passive: false });
     }
 
     _updateCamera() {
@@ -318,7 +389,6 @@ export class Viewer3D {
             } else {
                 const urls = getFaceUrls(blockId, { rawId, states });
                 if (urls && urls.found) {
-                    console.log(`      -> Viewer3D: [${blockId}] texture found:`, urls);
                     const loader = new THREE.TextureLoader();
 
                     /**
@@ -371,7 +441,7 @@ export class Viewer3D {
                         // 草ブロックの各面に対してバイオームカラーを適切に適用
                         // top / east / west / north / south: tint あり（グレースケール→緑）
                         // bottom (dirt): tint なし
-                        const applyGrassTint = (face) => isGrassBlock && face !== 'bottom';
+                        const applyGrassTint = (face) => isGrassBlock && face === 'top';
                         const arr = [
                             mkMat(urls.east,   'east',   applyGrassTint('east')),
                             mkMat(urls.west,   'west',   applyGrassTint('west')),
@@ -383,8 +453,16 @@ export class Viewer3D {
                         this._matCache.set(cacheKey, arr);
                         return arr;
                     } else {
-                        // 特殊形状（階段・スラブ・ドアなど）は上面優先の単一マテリアル
-                        const mainFace = urls.top || urls.north || urls.east;
+                        // 特殊形状（階段・スラブ・ドアなど）の単一マテリアル
+                        // ドアは north/east/west が正面テクスチャ（top は3/16の薄い端面なので避ける）
+                        // トラップドア・フェンスゲートなども同様に north 優先
+                        let mainFace;
+                        if (shape === 'door' || shape === 'trapdoor' || shape === 'fence_gate') {
+                            mainFace = urls.north || urls.east || urls.south || urls.west || urls.top;
+                        } else {
+                            // 階段・スラブ等は上面テクスチャが最も見栄えよい
+                            mainFace = urls.top || urls.north || urls.east;
+                        }
                         const mat = mkMat(mainFace, 'main');
                         this._matCache.set(cacheKey, mat);
                         return mat;
@@ -412,14 +490,21 @@ export class Viewer3D {
     setColorMode(mode) {
         this.colorMode = mode;
         this._matCache.clear();
-        if (this._lastCoords) {
+        // 置換を再適用するためにapp.js側の再描画コールバックを呼ぶ
+        if (this.onNeedsReload) {
+            this.onNeedsReload();
+        } else if (this._lastCoords) {
+            // フォールバック（コールバック未設定の場合）
             this.loadStructure(this._lastCoords, this._lastSize, this._lastOptions);
         }
     }
     refreshTextures() {
         // テクスチャパックが更新された場合、キャッシュを全破棄して再描画
         this._matCache.clear();
-        if (this._lastCoords) {
+        // 置換を再適用するためにapp.js側の再描画コールバックを呼ぶ
+        if (this.onNeedsReload) {
+            this.onNeedsReload();
+        } else if (this._lastCoords) {
             this.loadStructure(this._lastCoords, this._lastSize, this._lastOptions || {});
         }
     }

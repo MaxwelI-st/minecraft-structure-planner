@@ -353,13 +353,16 @@ export function normalizeBedrockBlock(rawId, states) {
     }
 
     // ─── color 系（color state） ───────────────────────────
-    const color = _get('color');
+    let color = _get('color');
+    // Bedrock では数字 (0-15) で来る場合が多いので変換
+    if (typeof color === 'number') {
+        color = COLORS[color] || 'white';
+    }
+    
     if (color !== undefined && local && !local.includes(String(color))) {
-        // wool / carpet / concrete / concrete_powder / stained_glass / terracotta / bed
         const colorKey = String(color);
         if (COLORS.includes(colorKey)) {
             const c = colorKey === 'silver' ? 'light_gray' : colorKey;
-            // local が wool / carpet / concrete 等の単体名なら接頭辞追加
             const flatTargets = {
                 'wool':           `${c}_wool`,
                 'carpet':         `${c}_carpet`,
@@ -371,11 +374,27 @@ export function normalizeBedrockBlock(rawId, states) {
                 'stained_hardened_clay': `${c}_terracotta`,
                 'shulker_box':    `${c}_shulker_box`,
                 'bed':            `${c}_bed`,
+                'terracotta':     `${c}_terracotta`,
             };
             if (flatTargets[local]) {
                 result.id = 'minecraft:' + flatTargets[local];
                 return result;
             }
+        }
+    } else if (color === undefined) {
+        // デフォルト値ガード
+        const DEFAULT_IDS = {
+            'wool': 'white_wool', 'carpet': 'white_carpet', 'concrete': 'white_concrete',
+            'concrete_powder': 'white_concrete_powder', 'concretepowder': 'white_concrete_powder',
+            'stained_glass': 'white_stained_glass', 'stained_glass_pane': 'white_stained_glass_pane',
+            'stained_hardened_clay': 'white_terracotta', 'shulker_box': 'white_shulker_box',
+            'bed': 'white_bed', 'terracotta': 'white_terracotta',
+            'trapdoor': 'oak_trapdoor', 'fence': 'oak_fence', 'fence_gate': 'oak_fence_gate',
+            'wooden_button': 'oak_button', 'wooden_pressure_plate': 'oak_pressure_plate'
+        };
+        if (DEFAULT_IDS[local]) {
+            result.id = 'minecraft:' + DEFAULT_IDS[local];
+            return result;
         }
     }
 

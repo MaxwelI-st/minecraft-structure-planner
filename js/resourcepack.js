@@ -22,6 +22,10 @@ import { normalizeBedrockBlock } from './bedrock_normalize.js';
 
 // ─── Java版アセットの定数定義 ───────────────────────────────────────────
 const ASSETS_BASE = 'https://assets.mcasset.cloud/1.20.1/assets/minecraft/textures/block/';
+let _useJavaFallback = false; // デフォルトでは Java アセットを使用しない
+
+export function setUseJavaFallback(val) { _useJavaFallback = !!val; }
+
 const JAVA_VARIANTS = {
     'hay_block': { top: 'hay_block_top', side: 'hay_block_side' },
     'grass_block': { top: 'grass_block_top', side: 'grass_block_side', bottom: 'dirt' },
@@ -84,6 +88,8 @@ if (typeof window !== 'undefined') {
             bedrockTerrain: null,
             /** 元パックが Bedrock か */
             isBedrock: false,
+            /** Bedrock item_texture.json の texture_data（item name → textures） */
+            bedrockItems: null,
         };
     }
 }
@@ -94,6 +100,7 @@ const _state = typeof window !== 'undefined' ? window.__MC_RESOURCE_PACK_STATE__
     bedrockBlocks: null,
     bedrockTerrain: null,
     isBedrock: false,
+    bedrockItems: null,
 };
 
 /* ─── Java 用 多面オーバーライド ───────────────────────────────────────── */
@@ -433,6 +440,17 @@ export async function loadFromZip(file) {
 
 
 
+    const itFile = zip.file('textures/item_texture.json')
+                || zip.file('resource_pack/textures/item_texture.json');
+    if (itFile) {
+        try {
+            const itJson = _parseLooseJSON(await itFile.async('text'));
+            _state.bedrockItems = itJson.texture_data || null;
+        } catch (e) {
+            console.warn('item_texture.json parse failed:', e.message);
+        }
+    }
+
     _state.name = (file.name || 'pack').replace(/\.(zip|jar|mcpack)$/i, '');
     if (textureCount === 0) throw new Error('PNG が見つかりませんでした');
 
@@ -451,6 +469,7 @@ export function clear() {
     _state.textures.clear();
     _state.fullPath.clear();
     _state.bedrockBlocks = null;
+    _state.bedrockItems = null;
     _state.bedrockTerrain = null;
     _state.isBedrock = false;
     _state.name = '';
@@ -459,6 +478,76 @@ export function clear() {
 export function getName() { return _state.name; }
 export function getTextureCount() { return _state.textures.size; }
 export function isLoaded() { return _state.textures.size > 0; }
+
+/* ─── item_texture.json エントリ → パス文字列 ──────────────────────────── */
+function _getItemPath(key, variantIdx = 0) {
+    const entry = _state.bedrockItems?.[key];
+    if (!entry) return null;
+    let path = entry.textures;
+    if (Array.isArray(path)) path = path[Math.min(variantIdx, path.length - 1)];
+    return typeof path === 'string' ? path : null;
+}
+
+/**
+ * blockId に対応するアイテムアイコン用テクスチャ URL を返す。
+ * item_texture.json に定義されているブロック（ドア・看板・ベッド等）は
+ * そのアイテムアイコンを優先し、無ければ null を返す（呼び出し元でブロック上面等を代替する）。
+ */
+export function getItemTextureUrl(blockId) {
+    if (!isLoaded() || !_state.bedrockItems) return null;
+    const local = String(blockId).toLowerCase().replace(/^minecraft:/, '');
+
+    // 直接マッチ
+    let itemPath = _getItemPath(local, 0);
+
+    // カラー付きブロック（例: white_wool → wool[0], red_bed → bed[14]）
+    if (!itemPath) {
+        const COLOR_ORDER = ['white','orange','magenta','light_blue','yellow','lime','pink','gray','silver','cyan','purple','blue','brown','green','red','black'];
+        const colorMatch = local.match(/^(white|orange|magenta|light_blue|yellow|lime|pink|gray|light_gray|cyan|purple|blue|brown|green|red|black)_(.+)$/);
+        if (colorMatch) {
+            const color = colorMatch[1] === 'light_gray' ? 'silver' : colorMatch[1];
+            const base = colorMatch[2];
+            const colorIdx = COLOR_ORDER.indexOf(color);
+            itemPath = _getItemPath(base, colorIdx >= 0 ? colorIdx : 0);
+        }
+    }
+
+    // 看板の特殊マッピング（oak_sign → sign, dark_oak_sign → sign_darkoak 等）
+    if (!itemPath) {
+        const SIGN_MAP = {
+            'oak_sign': 'sign',
+            'dark_oak_sign': 'sign_darkoak',
+            'jungle_sign': 'sign_jungle',
+            'spruce_sign': 'sign_spruce',
+            'birch_sign': 'sign_birch',
+            'acacia_sign': 'sign_acacia',
+            'mangrove_sign': 'sign_mangrove',
+            'cherry_sign': 'sign_cherry',
+            'bamboo_sign': 'sign_bamboo',
+            'crimson_sign': 'sign_crimson',
+            'warped_sign': 'sign_warped',
+        };
+        if (SIGN_MAP[local]) itemPath = _getItemPath(SIGN_MAP[local], 0);
+    }
+
+    // つるし看板（hanging sign）
+    if (!itemPath) {
+        const hangMatch = local.match(/^(oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|bamboo|crimson|warped|pale_oak)_hanging_sign$/);
+        if (hangMatch) {
+            const w = hangMatch[1].replace('dark_oak', 'darkoak').replace('pale_oak', 'palewood');
+            itemPath = _getItemPath('sign_' + w + '_hanging', 0)
+                    || _getItemPath(w + '_hanging_sign', 0);
+        }
+    }
+
+    if (!itemPath) return null;
+
+    const lower = itemPath.toLowerCase();
+    return _state.fullPath.get(lower)
+        || _state.fullPath.get('resource_pack/' + lower)
+        || _state.textures.get(_baseName(lower))
+        || null;
+}
 
 /* ─── テクスチャ名 → URL の解決（Bedrock の terrain_texture を介す）────── */
 function _resolveTextureKey(key, variantIdx = 0) {
@@ -711,11 +800,8 @@ function _expandBedrockTextures(blockId, rawId) {
     const tex = entry.textures || entry.carried_textures;
     if (!tex) return null;
     // 戻り値に fallback フラグを混ぜる：getFaceUrls で variantIdx を再計算するため
-    if (typeof tex === 'string') {
+    if (typeof tex === 'string' || Array.isArray(tex)) {
         return { all: tex, _fallback: fallbackUsed };
-    }
-    if (typeof tex === 'string') {
-        return { all: tex };
     }
     if (typeof tex === 'object') {
         return {
@@ -736,9 +822,6 @@ function _expandBedrockTextures(blockId, rawId) {
  * blockId → 6面テクスチャ URL（BoxGeometry の groups 順）
  */
 export function getFaceUrls(blockId, options = {}) {
-    if (options.debug) {
-        console.log(` --- ResourcePack v2.5.12: getFaceUrls --- [${blockId}]`);
-    }
     if (!isLoaded()) {
         console.log('   -> Pack not loaded (textures.size is 0).');
         return null;
@@ -848,7 +931,6 @@ export function getFaceUrls(blockId, options = {}) {
             const south  = _resolveTextureKey(expanded.south, useVariantIdx) || side;
 
             if (top || side) {
-                console.log(`   -> Found in Bedrock dict: ${sanitizedIdLower}`);
                 const toFaceObj = (v) => v == null ? null : (typeof v === 'string' ? { url: v, tint: null } : v);
                 const hard = _hardcodedTintFor(idLower);
                 const apply = (face) => {
@@ -880,19 +962,16 @@ export function getFaceUrls(blockId, options = {}) {
             const grassTop = _state.textures.get('grass_carried') || _state.textures.get('grass_top') || directTex;
             // grass_side.png は Bedrock resource_pack に存在しない場合がある
             // → grass_side_carried → dirt の順でフォールバック
-            const grassSideTex = _state.textures.get('grass_side')
-                               || _state.textures.get('grass_side_carried')
-                               || _state.textures.get('dirt')
-                               || directTex;
-            const grassSide = grassSideTex;
-            const grassBottom = _state.textures.get('grass_bottom')
-                              || _state.textures.get('dirt')
-                              || directTex;
+            const grassSide = _state.textures.get('grass_side') || _state.textures.get('grass_side_carried');
+            const dirt = _state.textures.get('dirt') || directTex;
             const grassTint = 0x91bd59; // 平原バイオームカラー
             return {
-                east: { url: grassSide, tint: grassTint }, west: { url: grassSide, tint: grassTint },
-                top: { url: grassTop, tint: grassTint }, bottom: { url: grassBottom, tint: null },
-                north: { url: grassSide, tint: grassTint }, south: { url: grassSide, tint: grassTint },
+                east: { url: grassSide || dirt, tint: grassSide ? grassTint : null },
+                west: { url: grassSide || dirt, tint: grassSide ? grassTint : null },
+                top: { url: grassTop || dirt, tint: grassTop ? grassTint : null },
+                bottom: { url: dirt, tint: null },
+                north: { url: grassSide || dirt, tint: grassSide ? grassTint : null },
+                south: { url: grassSide || dirt, tint: grassSide ? grassTint : null },
                 found: true
             };
         }
@@ -909,6 +988,7 @@ export function getFaceUrls(blockId, options = {}) {
             [/_fence_gate$/, '_fence'],
             [/_trapdoor$/, ''],
         ];
+        let currentFileId = local;
         for (const [re, repl] of FILE_REPLACEMENTS) {
             const nextId = currentFileId.replace(re, repl).replace('__', '_').replace(/^_|_$/g, '');
             if (nextId !== currentFileId) {
@@ -925,7 +1005,10 @@ export function getFaceUrls(blockId, options = {}) {
     }
 
     // ─── (B-2) オンライン Java Assets (assets.mcasset.cloud) へのフォールバック
-    console.log(`   -> Falling back to Java online assets for: ${local}`);
+    if (!_useJavaFallback) {
+        // テクスチャ未発見（リソースパック非読み込み時は正常）
+        return null; 
+    }
     
     // すべて normalizeBedrockBlock に任せる（一貫性のため）
     const normResult = normalizeBedrockBlock(blockId, options.states || {});
@@ -969,12 +1052,12 @@ export function getFaceUrls(blockId, options = {}) {
             };
         }
 
-        // 草ブロックの場合、上面(top)と側面(side)の一部に色をつけ、底面(bottom=土)にはつけない
+        // 草ブロックの場合、上面(top)のみに色をつけ、側面と底面は土にする
         if (javaBaseId === 'grass_block') {
             return { 
-                east: normU(s, tint), west: normU(s, tint), 
+                east: normU(b, null), west: normU(b, null), 
                 top: normU(t, tint), bottom: normU(b, null), 
-                north: normU(f, tint), south: normU(s, tint), 
+                north: normU(b, null), south: normU(b, null), 
                 found: true 
             };
         }
@@ -985,6 +1068,59 @@ export function getFaceUrls(blockId, options = {}) {
     const fallbackUrl = ASSETS_BASE + javaBaseId + '.png';
     const f = normU(fallbackUrl, tint);
     return { east: f, west: f, top: f, bottom: f, north: f, south: f, found: true };
+}
+
+
+export function getTextureUrl(key) {
+    if (!key) return null;
+    const lower = key.toLowerCase();
+    const raw = lower.replace(/^minecraft:/, '');
+
+    // 1) Bedrock item_texture.json 経由での解決
+    if (_state.bedrockItems && (_state.bedrockItems[raw] || _state.bedrockItems[lower])) {
+        const entry = _state.bedrockItems[raw] || _state.bedrockItems[lower];
+        let path = entry.textures;
+        if (Array.isArray(path)) path = path[0];
+        if (typeof path === 'object' && path !== null) path = path.path;
+        if (typeof path === 'string') {
+            let lp = path.toLowerCase();
+            if (!lp.endsWith('.png') && !lp.endsWith('.tga')) lp += '.png';
+            const url = _state.fullPath.get(lp) || _state.fullPath.get('resource_pack/' + lp) || _state.textures.get(_baseName(lp));
+            if (url) return url;
+        }
+    }
+
+    // 2) 直接パスや textures/items/ textures/blocks/ から探す
+    return _state.fullPath.get(lower) 
+        || _state.fullPath.get('textures/items/' + lower)
+        || _state.fullPath.get('textures/blocks/' + lower)
+        || _state.fullPath.get('textures/items/' + raw)
+        || _state.fullPath.get('textures/blocks/' + raw)
+        || _state.fullPath.get('resource_pack/textures/items/' + raw)
+        || _state.fullPath.get('resource_pack/textures/blocks/' + raw)
+        || _state.textures.get(_baseName(lower));
+}
+
+/**
+ * ブロックIDから最適なアイコン用URLを解決する（Bedrockリソースパック優先）
+ */
+export function getBestIconUrl(blockId, states = {}) {
+    if (!isLoaded()) return null;
+
+    // 1) アイテムテクスチャとして探す（アイテムらしい見た目を優先）
+    const itemUrl = getItemTextureUrl(blockId);
+    if (itemUrl) return itemUrl;
+    
+    // 2) 6面テクスチャ解決から代表的な面を試す（ブロックの面テクスチャ）
+    const faces = getFaceUrls(blockId, { states });
+    if (faces && faces.found) {
+        // front > top > side > all の順で試行
+        const f = faces.front || faces.top || faces.side || faces.all || faces.north || faces.east;
+        if (f && f.url) return f.url;
+    }
+
+    // 3) それでも見つからない場合、汎用的な getTextureUrl
+    return getTextureUrl(blockId);
 }
 
 export function listAvailable() { return Array.from(_state.textures.keys()).sort(); }

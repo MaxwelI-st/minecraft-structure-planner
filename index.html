@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#0a0f1a">
   <meta name="color-scheme" content="dark">
   <title>Structure Material Planner — Minecraft 建築素材プランナー</title>
-  <meta name="description" content=".mcstructure / .nbt を解析して必要素材を計算。ドット絵生成、3Dビュー、コストダウン置換、リソースパック対応。">
+  <meta name="description" content="Bedrock Edition .mcstructure を解析して必要素材を計算。ドット絵生成、3Dビュー、コストダウン置換、リソースパック対応。">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="Structure Material Planner">
-  <meta property="og:description" content="Minecraft の建築素材を自動計算。.mcstructure / .nbt 対応、3Dビュー、コストダウン置換、画像→ドット絵生成。">
+  <meta property="og:description" content="Minecraft 統合版の建築素材を自動計算。.mcstructure 対応、3Dビュー、コストダウン置換、画像→ドット絵生成。">
   <meta property="og:locale" content="ja_JP">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Structure Material Planner">
@@ -43,7 +43,7 @@
 <div id="toast-container" class="toast-container"></div>
 
 <!-- ─── Hidden File Input ────────────────────────────────────── -->
-<input type="file" id="file-input" accept=".mcstructure,.nbt" class="hidden">
+<input type="file" id="file-input" accept=".mcstructure" class="hidden">
 
 <!-- ─── App Layout ───────────────────────────────────────────── -->
 <div class="app-layout">
@@ -86,9 +86,9 @@
       <div class="welcome-content">
         <div class="welcome-icon">🏗️</div>
         <h2>Structure&nbsp;Planner</h2>
-        <p>.mcstructure / .nbt を解析して<br>素材管理・3D表示・ドット絵作成をまとめて管理</p>
+        <p>.mcstructure を解析して<br>素材管理・3D表示・ドット絵作成をまとめて管理</p>
         <div class="welcome-actions">
-          <button class="mc-btn primary large" id="btn-drop-file">📂 .mcstructure / .nbt を開く</button>
+          <button class="mc-btn primary large" id="btn-drop-file">📂 .mcstructure を開く</button>
           <button class="mc-btn secondary large" id="btn-create-project-welcome">＋ 新規プロジェクト</button>
         </div>
         <div class="drop-hint-area" id="drop-zone">
@@ -202,6 +202,14 @@
 
             <!-- Left: Toolbar -->
             <div class="dotart-toolbar">
+              <div class="toolbar-section" style="margin-bottom:0.5rem">
+                <div class="toolbar-label" style="font-size:0.75rem; opacity:0.8">モード</div>
+                <div style="display:flex; gap:0.3rem">
+                  <button id="btn-dotart-mode-edit" class="mc-btn secondary small" style="flex:1">✏️ 編集</button>
+                  <button id="btn-dotart-mode-view" class="mc-btn primary small" style="flex:1">🔍 全体</button>
+                </div>
+              </div>
+
               <div class="toolbar-section">
                 <div class="toolbar-label">グリッドサイズ</div>
                 <div class="size-controls">
@@ -242,7 +250,6 @@
                       <option value="1">Scale 1 (256×256)</option>
                       <option value="2">Scale 2 (512×512)</option>
                       <option value="3">Scale 3 (1024×1024)</option>
-                      <option value="4">Scale 4 (2048×2048)</option>
                     </select>
                   </label>
                   <label class="v3d-field" style="font-size:0.75rem">
@@ -286,18 +293,19 @@
                     パレット:
                     <select id="img2dot-filter" class="control-select" style="margin-left:0.3rem;font-size:0.72rem">
                       <option value="all">全ブロック</option>
-                      <option value="wool_only">羊毛のみ</option>
-                      <option value="concrete_only">コンクリートのみ</option>
-                      <option value="terracotta_only">テラコッタのみ</option>
+                      <option value="clean_only" selected>ノイズの少ないブロックのみ</option>
                       <option value="wool_concrete_terracotta">羊毛＋コンクリ＋テラコッタ</option>
+                      <option value="survival_friendly">サバイバル現実的</option>
                       <option value="no_ore">鉱石ブロック除外</option>
-                      <option value="survival_friendly" selected>サバイバル現実的</option>
-                      <option value="building_blocks">建材のみ</option>
                     </select>
                   </label>
                   <label class="toggle-item" style="font-size:0.7rem">
                     <input type="checkbox" id="img2dot-dither" checked>
                     <span class="toggle-label">ディザリング (滑らかさUP)</span>
+                  </label>
+                  <label class="toggle-item" style="font-size:0.7rem">
+                    <input type="checkbox" id="img2dot-trim" checked>
+                    <span class="toggle-label">自動トリミング（余白削減）</span>
                   </label>
                 </div>
               </div>
@@ -412,13 +420,27 @@
                 </div>
               </details>
 
-              <details class="v3d-section" data-section="replace">
+              <details class="v3d-section" data-section="replace" open>
                 <summary>🔁 ブロック編集</summary>
                 <div class="v3d-section-body">
                   <div class="v3d-field">
                     <span>素材A → 素材B</span>
-                    <select id="replace-from" class="control-select"></select>
-                    <select id="replace-to" class="control-select"></select>
+                    <div class="v3d-field-row" style="margin-bottom: 0.3rem;">
+                      <button type="button" id="replace-from-btn" class="picker-display" style="width:100%;text-align:left;">
+                        <span id="replace-from-icon-wrap" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">📦</span>
+                        <span id="replace-from-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;">現在の構造から選択...</span>
+                        <span style="color:var(--muted2);font-size:0.65rem;flex-shrink:0;">▾</span>
+                      </button>
+                      <input type="hidden" id="replace-from" value="">
+                    </div>
+                    <div class="v3d-field-row" style="margin-bottom: 0.4rem;">
+                      <button type="button" id="replace-to-btn" class="picker-display" style="width:100%;text-align:left;">
+                        <span id="replace-to-icon-wrap" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">📦</span>
+                        <span id="replace-to-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;">置換先を選択...</span>
+                        <span style="color:var(--muted2);font-size:0.65rem;flex-shrink:0;">▾</span>
+                      </button>
+                      <input type="hidden" id="replace-to" value="">
+                    </div>
                     <div style="display:flex;gap:0.3rem">
                       <button class="mc-btn primary small" id="btn-replace-add">追加</button>
                       <button class="mc-btn secondary small" id="btn-replace-reset">リセット</button>
@@ -459,6 +481,19 @@
               <div class="setting-item">
                 <label>ストレージ使用量</label>
                 <span id="setting-storage-size" style="font-family:var(--font-mono);color:var(--muted2)">—</span>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h3>表示設定</h3>
+              <div class="setting-item">
+                <label class="toggle-item" style="gap:0.5rem">
+                  <input type="checkbox" id="setting-java-fallback">
+                  <div style="display:flex;flex-direction:column">
+                    <span>Java版オンラインアセットのフォールバック</span>
+                    <span style="font-size:0.7rem;color:var(--muted2)">リソースパック未読み込み時に mcasset.cloud から取得します。</span>
+                  </div>
+                </label>
               </div>
             </div>
 
@@ -550,6 +585,38 @@
   </div>
 </div>
 
-<script type="module" src="./js/app.js?v=2.5.10"></script>
+<!-- ─── Modal: ブロック選択 ─────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="modal-block-selector">
+  <div class="modal glass-card selector-modal">
+    <div class="modal-header">
+      <div class="header-main">
+        <h3 id="block-selector-title">ブロック選択</h3>
+        <p class="header-sub" id="block-selector-sub">ブロックを選んでください</p>
+      </div>
+      <button class="modal-close" data-modal="modal-block-selector">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="selector-controls">
+        <div class="search-wrap">
+          <input type="text" id="block-selector-search" class="mc-input" placeholder="🔍 ブロック名を検索（例：石、木、階段...）">
+        </div>
+        <div class="selector-tabs">
+          <button class="tab-pill" data-cat="current">現在のブロック</button>
+          <button class="tab-pill active" data-cat="all">すべて</button>
+          <button class="tab-pill" data-cat="full">フルブロック</button>
+          <button class="tab-pill" data-cat="stairs">階段</button>
+          <button class="tab-pill" data-cat="slabs">ハーフ</button>
+          <button class="tab-pill" data-cat="fences">柵/壁</button>
+          <button class="tab-pill" data-cat="misc">装飾/他</button>
+        </div>
+      </div>
+      <div class="block-selector-grid" id="block-selector-grid">
+        <!-- JSで動的に生成 -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./js/app.js?v=2.5.12"></script>
 </body>
 </html>

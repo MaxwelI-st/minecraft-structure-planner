@@ -21,7 +21,6 @@
 /** ブロックID から形状種別を判定 */
 export function classifyShape(blockId, states = {}) {
     const id = String(blockId).toLowerCase().replace(/^minecraft:/, '');
-    if (id === 'stone') console.log('--- BlockShapes v2.5.2: classifyShape ---', id);
     
     // ダブルスラブ判定：ID名または states の bit 値
     if (id.includes('double')) return 'cube';
@@ -85,30 +84,41 @@ export function _isTrue(val) {
 
 /** 
  * 方向を統一して返す (0=south, 1=west, 2=north, 3=east)
- * ※ cardinal_direction (文字列) と direction (数値) を統合
+ * ※ 'direction'(0-3直接)・'cardinal_direction'(文字列)・'facing_direction'(2=N,3=S,4=W,5=E)
+ *    をキーごとに正しくマッピング。混合すると direction=3(east) が south に化けるバグを防ぐ。
  */
 export function _getDirection(states) {
-    // Bedrock では 'minecraft:cardinal_direction' (プレフィックス付き) で格納される場合がある
-    // 'minecraft:cardinal_direction' は _getState('cardinal_direction') で拾える
-    // （_getState が 'minecraft:' + key を自動的に試みるため）
-    const d = _getStateAny(states,
-        'direction', 'cardinal_direction', 'facing_direction');
-    if (d === undefined) return 0;
-    
-    // 文字列形式 ("north", "south" 等)
-    if (typeof d === 'string') {
-        const map = { south: 0, west: 1, north: 2, east: 3, down: 4, up: 5 };
-        return map[d.toLowerCase()] ?? 0;
+    if (!states) return 0;
+    const STR_MAP = { south: 0, west: 1, north: 2, east: 3, down: 4, up: 5 };
+
+    // 1. 'direction' — Bedrock ドア/トラップドア/フェンスゲート等は 0=south, 1=west, 2=north, 3=east
+    const dir = _getState(states, 'direction');
+    if (dir !== undefined) {
+        if (typeof dir === 'string') return STR_MAP[dir.toLowerCase()] ?? 0;
+        const n = typeof dir === 'number' ? dir : parseInt(dir);
+        return (isNaN(n) ? 0 : n) % 4;  // 0-3 をそのまま使う
     }
-    
-    // 数値形式 (Bedrock facing_direction: 2=N, 3=S, 4=W, 5=E)
-    if (typeof d === 'number') {
-        if (d === 2) return 2; // North
-        if (d === 3) return 0; // South
-        if (d === 4) return 1; // West
-        if (d === 5) return 3; // East
-        return d % 4;
+
+    // 2. 'cardinal_direction' — 文字列 "north" / "south" 等
+    const card = _getState(states, 'cardinal_direction');
+    if (card !== undefined) {
+        if (typeof card === 'string') return STR_MAP[card.toLowerCase()] ?? 0;
+        const n = typeof card === 'number' ? card : parseInt(card);
+        return (isNaN(n) ? 0 : n) % 4;
     }
+
+    // 3. 'facing_direction' — Bedrock 数値: 2=N, 3=S, 4=W, 5=E (ピストン・ディスペンサー等)
+    const facing = _getState(states, 'facing_direction');
+    if (facing !== undefined) {
+        if (typeof facing === 'string') return STR_MAP[facing.toLowerCase()] ?? 0;
+        const n = typeof facing === 'number' ? facing : parseInt(facing);
+        if (n === 2) return 2; // North
+        if (n === 3) return 0; // South
+        if (n === 4) return 1; // West
+        if (n === 5) return 3; // East
+        return (isNaN(n) ? 0 : n) % 4;
+    }
+
     return 0;
 }
 
@@ -167,23 +177,34 @@ function _getStairsCornerShape(wd, upsideDown, neighborBlocks) {
         return _isTrue(_getState(nb.states, 'upside_down_bit'));
     };
 
-    const { n, s, w, e } = neighborBlocks;
-    // 自分の facing 方向に対して「前方・後方・左・右」の隣接を割り当てる
-    let front, back, left, right;
-    if      (wd === 0) { front = e; back = w; left = n; right = s; }
-    else if (wd === 1) { front = w; back = e; left = s; right = n; }
-    else if (wd === 2) { front = s; back = n; left = e; right = w; }
-    else               { front = n; back = s; left = w; right = e; }
+    // weirdo_direction: 0=east, 1=west, 2=south, 3=north
+    // 時計回り (CW):   east→south→west→north→east = [2,3,1,0]
+    // 反時計回り (CCW): east→north→west→south→east = [3,2,0,1]
+    const CW  = [2, 3, 1, 0];
+    const CCW = [3, 2, 0, 1];
 
+    const { n, s, w, e } = neighborBlocks;
+    // 自分の facing 方向に対して front（段上がる側）と back（後ろ）を割り当てる
+    // weirdo_direction は「ステップが高くなる方向」= 段の上側が front 側にある
+    let front, back;
+    if      (wd === 0) { front = e; back = w; }
+    else if (wd === 1) { front = w; back = e; }
+    else if (wd === 2) { front = s; back = n; }
+    else               { front = n; back = s; }
+
+    // ─── inner コーナー判定（back 側の隣接階段が垂直方向を向いている場合）───
+    // Java Edition 準拠: back 隣接が CCW を向く → inner_left / CW → inner_right
     if (isStairs(back) && getUpside(back) === upsideDown) {
         const bwd = getWd(back);
-        if (bwd === ((wd + 1) % 4)) return upsideDown ? 'inner_right' : 'inner_left';
-        if (bwd === ((wd + 3) % 4)) return upsideDown ? 'inner_left'  : 'inner_right';
+        if (bwd === CCW[wd]) return upsideDown ? 'inner_right' : 'inner_left';
+        if (bwd === CW[wd])  return upsideDown ? 'inner_left'  : 'inner_right';
     }
+    // ─── outer コーナー判定（front 側の隣接階段が垂直方向を向いている場合）──
+    // Java Edition 準拠: front 隣接が CCW を向く → outer_left / CW → outer_right
     if (isStairs(front) && getUpside(front) === upsideDown) {
         const fwd = getWd(front);
-        if (fwd === ((wd + 1) % 4)) return upsideDown ? 'outer_right' : 'outer_left';
-        if (fwd === ((wd + 3) % 4)) return upsideDown ? 'outer_left'  : 'outer_right';
+        if (fwd === CCW[wd]) return upsideDown ? 'outer_right' : 'outer_left';
+        if (fwd === CW[wd])  return upsideDown ? 'outer_left'  : 'outer_right';
     }
     return 'straight';
 }
@@ -373,8 +394,9 @@ export function buildWallGeometry(THREE, states = {}, neighbors = {}) {
  * open_bit: 0=水平 / 1=垂直に立つ
  */
 export function buildTrapdoorGeometry(THREE, states = {}) {
-    const open = _isTrue(_getState(states, 'open_bit'));
-    const upsideDown = _isTrue(_getState(states, 'upside_down_bit'));
+    // Bedrock: 'open_bit' (byte 0/1)、新形式では 'open' の場合もある
+    const open = _isTrue(_getStateAny(states, 'open_bit', 'open'));
+    const upsideDown = _isTrue(_getStateAny(states, 'upside_down_bit', 'upside_down'));
     const dir = _getDirection(states);
 
     if (!open) {
@@ -411,7 +433,7 @@ export function buildTrapdoorGeometry(THREE, states = {}) {
  */
 export function buildDoorGeometry(THREE, states = {}) {
     const dir = _getDirection(states);
-    const open = _isTrue(_getState(states, 'open_bit'));
+    const open = _isTrue(_getStateAny(states, 'open_bit', 'open'));
     // Bedrock では 'door_hinge_bit'、Java では 'hinge' を使う
     const hinge = _isTrue(_getState(states, 'door_hinge_bit'))
                || _isTrue(_getState(states, 'hinge_bit'))
@@ -441,7 +463,7 @@ export function buildDoorGeometry(THREE, states = {}) {
  */
 export function buildFenceGateGeometry(THREE, states = {}) {
     const dir = _getDirection(states);
-    const open = _isTrue(_getState(states, 'open_bit'));
+    const open = _isTrue(_getStateAny(states, 'open_bit', 'open'));
 
     if (open) {
         // 開いた時は壁に張り付く小ポスト 2 つ
