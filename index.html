@@ -115,8 +115,8 @@
       <!-- Tab Navigation -->
       <nav class="tab-nav">
         <button class="tab-btn active" data-tab="materials">📦 素材一覧</button>
-        <button class="tab-btn" data-tab="dotart">🎨 ドット絵</button>
         <button class="tab-btn" data-tab="viewer3d">🧊 3Dビュー</button>
+        <button class="tab-btn" data-tab="dotart">🎨 ドット絵</button>
         <button class="tab-btn" data-tab="settings">⚙️ 設定</button>
       </nav>
 
@@ -304,6 +304,16 @@
                     <span class="toggle-label">ディザリング (滑らかさUP)</span>
                   </label>
                   <label class="toggle-item" style="font-size:0.7rem">
+                    <input type="checkbox" id="img2dot-noise" checked>
+                    <span class="toggle-label">ノイズ除去（孤立ピクセル削除）</span>
+                  </label>
+                  <label class="toggle-item" style="font-size:0.7rem;gap:0.3rem;align-items:center">
+                    <span>ぼかし:</span>
+                    <input type="range" id="img2dot-blur" min="0" max="2" step="0.25" value="0"
+                      style="width:70px;vertical-align:middle">
+                    <span id="img2dot-blur-val" style="min-width:1.8em;text-align:right">0</span>px
+                  </label>
+                  <label class="toggle-item" style="font-size:0.7rem">
                     <input type="checkbox" id="img2dot-trim" checked>
                     <span class="toggle-label">自動トリミング（余白削減）</span>
                   </label>
@@ -341,6 +351,7 @@
               <!-- フローティング操作ボタン -->
               <div class="v3d-fab-row">
                 <button class="mc-btn primary" id="btn-load-3d">🧊 3D表示を開始</button>
+                <button class="mc-btn secondary" id="btn-reload-3d" title="3Dビューを再読込" style="display:none">🔄</button>
                 <button class="mc-btn secondary" id="btn-reset-camera" title="カメラリセット (R)">📷</button>
                 <button class="icon-btn v3d-panel-toggle" id="btn-toggle-3d-panel" title="設定パネル開閉">⚙️</button>
               </div>
@@ -447,6 +458,13 @@
                     </div>
                     <div id="replace-list" class="v3d-replace-list"></div>
                   </div>
+                  <div class="v3d-field">
+                    <span>🖼️ テクスチャ読み込み状態</span>
+                    <div id="v3d-texture-status" class="v3d-status-box">
+                      <div class="status-summary">— / —</div>
+                      <div class="status-detail">パックが読み込まれていません</div>
+                    </div>
+                  </div>
                   <hr class="v3d-sep">
                   <div class="v3d-field">
                     <span>💰 コストダウン一括置換</span>
@@ -500,11 +518,11 @@
             <div class="settings-section">
               <h3>データ管理</h3>
               <div class="setting-item">
-                <label>全プロジェクトをJSONでバックアップ</label>
+                <label>プロジェクト設定のバックアップ (JSON)<br><span style="font-size:0.7rem;color:var(--muted2)">※構造ファイル(.mcstructure)やリソースパックは含まれません。復元後に再読み込みが必要です。</span></label>
                 <button class="mc-btn secondary small" id="btn-export-all">📤 エクスポート</button>
               </div>
               <div class="setting-item">
-                <label>JSONからプロジェクトを復元</label>
+                <label>JSONから設定を復元</label>
                 <button class="mc-btn secondary small" id="btn-import-data">📥 インポート</button>
               </div>
               <div class="setting-item danger">
@@ -600,14 +618,16 @@
         <div class="search-wrap">
           <input type="text" id="block-selector-search" class="mc-input" placeholder="🔍 ブロック名を検索（例：石、木、階段...）">
         </div>
-        <div class="selector-tabs">
+        <div class="selector-tabs" id="block-selector-tabs">
           <button class="tab-pill" data-cat="current">現在のブロック</button>
-          <button class="tab-pill active" data-cat="all">すべて</button>
-          <button class="tab-pill" data-cat="full">フルブロック</button>
-          <button class="tab-pill" data-cat="stairs">階段</button>
-          <button class="tab-pill" data-cat="slabs">ハーフ</button>
-          <button class="tab-pill" data-cat="fences">柵/壁</button>
-          <button class="tab-pill" data-cat="misc">装飾/他</button>
+          <button class="tab-pill active" data-cat="stone">石材・地盤</button>
+          <button class="tab-pill" data-cat="building">鉱石・素材</button>
+          <button class="tab-pill" data-cat="wood">木材</button>
+          <button class="tab-pill" data-cat="glass">ガラス</button>
+          <button class="tab-pill" data-cat="light">光源</button>
+          <button class="tab-pill" data-cat="plants">植物</button>
+          <button class="tab-pill" data-cat="functional">建材・機能</button>
+          <button class="tab-pill" data-cat="other">その他</button>
         </div>
       </div>
       <div class="block-selector-grid" id="block-selector-grid">
@@ -617,6 +637,7 @@
   </div>
 </div>
 
-<script type="module" src="./js/app.js?v=2.5.12"></script>
+<script type="module" src="./js/app.js?v=2.6.0"></script>
 </body>
 </html>
+   

@@ -1438,20 +1438,56 @@ body::before {
     opacity: 1;
 }
 
-.viewer3d-info-floating:empty { display: none; }
-.viewer3d-info-floating .info-text { margin: 0; color: #4ade80; }
-.viewer3d-info-floating .warning-text { margin: 0; color: #fbbf24; }
-.v3d-fab-row {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    display: flex;
-    gap: 0.5rem;
-    z-index: 5;
+/* ── ブロックカード 補足（Affordance & Highlight） ────────────────────── */
+.block-card {
+    position: relative;
+    cursor: pointer;
+    transition: outline 0.2s, box-shadow 0.2s, background 0.2s;
+    user-select: none;
 }
-.v3d-panel-toggle { background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); }
+/* 3D ハイライト対象であることを示すヒント（ホバー時に右下へ） */
+.block-card::after {
+    content: '🧊';
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    font-size: 0.65rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+.block-card:hover::after { opacity: 0.5; }
+.block-card:hover { outline: 1px solid rgba(74, 222, 128, 0.4); }
 
-/* モバイル: サイドパネルを下に */
+.block-card.highlighted {
+    outline: 2px solid var(--primary, #4ade80) !important;
+    box-shadow: 0 0 16px rgba(74, 222, 128, 0.4);
+    background: rgba(74, 222, 128, 0.08) !important;
+}
+.block-card.highlighted::after { opacity: 1; color: var(--primary); }
+
+/* --- Texture Status UI --- */
+.v3d-status-box {
+    background: rgba(0,0,0,0.2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 0.6rem;
+    margin-top: 0.25rem;
+}
+.v3d-status-box .status-summary {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 0.2rem;
+}
+.v3d-status-box .status-detail {
+    font-size: 0.7rem;
+    color: var(--muted2);
+    line-height: 1.4;
+}
+
+/* ── Mobile Responsive (Consolidated) ──────────────────────────────────── */
 @media (max-width: 900px) {
     .v3d-flex { flex-direction: column !important; height: auto; }
     .v3d-canvas { height: 60vh; min-height: 300px; }
@@ -1459,12 +1495,28 @@ body::before {
     .v3d-side-panel.collapsed { margin-right: 0; margin-bottom: -50vh; }
 }
 
-
-/* ── ブロックカード ハイライト中（3D連動） ─────────────────── */
-.block-card { cursor: pointer; transition: outline 0.2s, box-shadow 0.2s; }
-.block-card:hover { outline: 1px solid rgba(74, 222, 128, 0.4); }
-.block-card.highlighted {
-    outline: 2px solid var(--primary, #4ade80) !important;
-    box-shadow: 0 0 16px rgba(74, 222, 128, 0.4);
-    background: rgba(74, 222, 128, 0.06);
+@media (max-width: 768px) {
+    .app-layout { flex-direction: column; }
+    .sidebar { width: 100%; max-height: 30vh; flex-direction: row; flex-wrap: wrap; height: auto; min-height: 60px; }
+    .sidebar-header { padding: 0.5rem 1rem; border-bottom: 0; }
+    .sidebar-actions { padding: 0.5rem; flex: 1; }
+    .sidebar-section { flex: 1 1 100%; max-height: 150px; }
+    .sidebar-footer { display: none; }
+    
+    .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .stat-value { font-size: 1.8rem !important; }
+    .block-count { font-size: 1.2rem !important; }
+    .controls-bar { flex-wrap: wrap; gap: 0.5rem; }
+    
+    .dotart-layout { display: flex; flex-direction: column; height: auto; }
+    .dotart-toolbar { width: 100% !important; max-width: none !important; height: auto; max-height: 40vh; }
+    .dotart-canvas-area { width: 100%; height: 50vh; overflow: auto; }
+    .dotart-materials { width: 100% !important; height: auto; max-height: 30vh; }
 }
+
+@media (max-width: 480px) {
+    .project-header { flex-direction: column; align-items: flex-start; }
+    .stats-grid { grid-template-columns: 1fr !important; }
+    .tab-btn { padding: 0.5rem 0.75rem; font-size: 0.75rem; }
+}
+
