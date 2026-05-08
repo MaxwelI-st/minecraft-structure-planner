@@ -715,25 +715,18 @@ class App {
         const currentResults = structure?.results || [];
 
         grid.innerHTML = '';
-        // カテゴリ切替時は複数選択バーを必ず除去
         document.getElementById('multi-select-bar')?.remove();
 
         if (category === 'current') {
-            // アイコングリッド（現在のブロック：fromモードは複数選択可）
             const isFromMode = this._blockSelectorMode === 'from';
             grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.5rem;overflow-y:auto;';
             const repMap = this.replacements.get(sel);
             let blocks = currentResults.filter(r => {
-                // すでに削除(airに置換)されているブロックはピッカーに出さない
                 if (repMap) {
                     const normRId = normalizeId(r.id);
                     const to = repMap.get(normRId) || repMap.get('minecraft:' + normRId.replace('minecraft:', '')) || repMap.get(normRId.replace('minecraft:', ''));
-                    if (to) {
-                        const lowTo = to.toLowerCase();
-                        if (lowTo === 'minecraft:air' || lowTo === 'air') return false;
-                    }
+                    if (to && (to.toLowerCase() === 'minecraft:air' || to.toLowerCase() === 'air')) return false;
                 }
-                
                 if (search) {
                     const n = this.langData?.[r.id] || r.id.replace('minecraft:', '');
                     return n.toLowerCase().includes(search) || r.id.includes(search);
@@ -746,191 +739,167 @@ class App {
                 return;
             }
 
-            // fromモード: 複数選択バー（グリッドの外に固定）
             if (isFromMode) {
                 const bar = document.createElement('div');
                 bar.id = 'multi-select-bar';
                 bar.style.cssText = 'display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;background:var(--surface2);border-top:1px solid var(--border);border-radius:0 0 8px 8px;';
                 bar.innerHTML = `
-                    <span id="multi-select-count" style="flex:1;font-size:0.8rem;color:var(--muted2);">0件選択中</span>
-                    <button id="multi-select-clear" class="mc-btn small" style="font-size:0.75rem;">クリア</button>
-                    <button id="multi-select-confirm" class="mc-btn small" style="font-size:0.75rem;background:var(--accent);">この選択を置換元に設定 →</button>
+                    <span id="multi-select-count" style="flex:1;font-size:0.8rem;color:var(--muted2);">${this._fromSelections.size}件選択中</span>
+                    <button id="multi-select-clear" class="mc-btn small">クリア</button>
+                    <button id="multi-select-confirm" class="mc-btn small" style="background:var(--accent);">確定 →</button>
                 `;
                 grid.parentElement.appendChild(bar);
-
-                bar.querySelector('#multi-select-clear').onclick = () => {
-                    this._fromSelections.clear();
-                    this._renderBlockSelectorGrid('current');
-                };
+                bar.querySelector('#multi-select-clear').onclick = () => { this._fromSelections.clear(); this._renderBlockSelectorGrid('current'); };
                 bar.querySelector('#multi-select-confirm').onclick = () => {
-                    if (!this._fromSelections.size) {
-                        this._toast('ブロックを1件以上選択してください', 'error');
-                        return;
-                    }
+                    if (!this._fromSelections.size) return this._toast('ブロックを選択してください', 'error');
                     const ids = [...this._fromSelections];
-                    const names = ids.map(id => this.langData?.[id] || id.replace('minecraft:', ''));
-                    const displayName = ids.length === 1 ? names[0] : `${ids.length}件選択`;
-                    // replace-fromにカンマ区切りで全IDを格納
                     document.getElementById('replace-from').value = ids.join(',');
-                    const nameEl = document.getElementById('replace-from-name');
-                    const iconWrap = document.getElementById('replace-from-icon-wrap');
-                    if (nameEl) nameEl.textContent = displayName;
-                    if (iconWrap && ids.length === 1) {
-                        const rawId2 = ids[0].replace('minecraft:', '');
-                        const imgId2 = this._bedrockToJava(rawId2);
-                        const wikiName2 = imgId2.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
-                        const packUrl2 = ResourcePack.isLoaded() ? ResourcePack.getItemTextureUrl(ids[0]) : null;
-                        const resolvedUrl = packUrl2 || `https://minecraft.wiki/images/Invicon_${wikiName2}.png`;
-                        iconWrap.innerHTML = `<img src="${resolvedUrl}" style="width:20px;height:20px;image-rendering:pixelated;object-fit:contain;" onerror="this.parentNode.textContent='🧱'">`;
-                    } else if (iconWrap) {
-                        iconWrap.textContent = `📦×${ids.length}`;
-                    }
+                    document.getElementById('replace-from-name').textContent = ids.length === 1 ? (this.langData?.[ids[0]] || ids[0].replace('minecraft:','')) : `${ids.length}件選択`;
                     this._hideModal('modal-block-selector');
                 };
             }
 
-            const updateBar = () => {
-                const countEl = document.getElementById('multi-select-count');
-                if (countEl) countEl.textContent = `${this._fromSelections.size}件選択中`;
-            };
-
             for (const r of blocks) {
                 const name = this.langData?.[r.id] || r.id.replace('minecraft:', '');
-                const rawId = r.id.replace('minecraft:', '');
-                const imgId = this._bedrockToJava(rawId);
-                const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
-
-                const packUrl = ResourcePack.isLoaded() ? ResourcePack.getItemTextureUrl(r.id) : null;
-                const faceUrl = ResourcePack.isLoaded() ? (() => {
-                    const f = ResourcePack.getFaceUrls(r.id, {})?.top;
-                    return f ? (typeof f === 'string' ? f : f?.url) : null;
-                })() : null;
-                const chosenUrl = packUrl || faceUrl || null;
-
-                const allSrcs = [
-                    ...(packUrl ? [packUrl] : []),
-                    `https://minecraft.wiki/images/Invicon_${wikiName}.png`,
-                    `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item/${imgId}.png`,
-                    ...(faceUrl ? [faceUrl] : []),
-                    `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}.png`,
-                ];
-                const firstSrc = allSrcs.shift() || '';
-                const fallbacks = allSrcs;
-                const fbJson = JSON.stringify(fallbacks).replace(/"/g, '&quot;');
-                const imgHtml = firstSrc
-                    ? `<img class="block-pick-icon" src="${this._escape(firstSrc)}" alt="${this._escape(name)}"
-                          data-fb="${fbJson}"
-                          onerror="var fb=JSON.parse(this.dataset.fb||'[]');if(fb.length){this.src=fb.shift();this.dataset.fb=JSON.stringify(fb)}else{this.parentNode.innerHTML='📦'}">`
-                    : `<span style="font-size:1.5rem">📦</span>`;
-
                 const card = document.createElement('button');
-                card.type = 'button';
                 card.className = 'block-pick-card';
-                card.dataset.id = r.id;
-                // fromモード: 選択中ならハイライト
-                if (isFromMode && this._fromSelections.has(r.id)) {
-                    card.style.outline = '2px solid var(--accent)';
-                    card.style.background = 'rgba(99,179,237,0.15)';
-                }
-                const checkHtml = isFromMode ? `<span class="pick-check" style="position:absolute;top:3px;right:3px;font-size:0.7rem;color:var(--accent);">${this._fromSelections.has(r.id) ? '✔' : ''}</span>` : '';
-                card.style.position = 'relative';
-                card.innerHTML = `
-                    <div class="block-pick-icon-wrap">${imgHtml}</div>
-                    <span class="block-pick-name">${this._escape(name)}</span>
-                    ${checkHtml}
-                `;
-                card.addEventListener('click', () => {
+                if (isFromMode && this._fromSelections.has(r.id)) { card.style.outline = '2px solid var(--accent)'; card.style.background = 'rgba(99,179,237,0.15)'; }
+                const check = isFromMode ? `<span class="pick-check" style="position:absolute;top:3px;right:3px;font-size:0.7rem;color:var(--accent);">${this._fromSelections.has(r.id) ? '✔' : ''}</span>` : '';
+                card.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(r.id)}</div><span class="block-pick-name">${this._escape(name)}</span>${check}`;
+                card.onclick = () => {
                     if (isFromMode) {
-                        // 複数選択トグル
-                        if (this._fromSelections.has(r.id)) {
-                            this._fromSelections.delete(r.id);
-                            card.style.outline = '';
-                            card.style.background = '';
-                            const chk = card.querySelector('.pick-check');
-                            if (chk) chk.textContent = '';
-                        } else {
-                            this._fromSelections.add(r.id);
-                            card.style.outline = '2px solid var(--accent)';
-                            card.style.background = 'rgba(99,179,237,0.15)';
-                            const chk = card.querySelector('.pick-check');
-                            if (chk) chk.textContent = '✔';
-                        }
-                        updateBar();
+                        if (this._fromSelections.has(r.id)) { this._fromSelections.delete(r.id); card.style.outline = ''; card.style.background = ''; card.querySelector('.pick-check').textContent = ''; }
+                        else { this._fromSelections.add(r.id); card.style.outline = '2px solid var(--accent)'; card.style.background = 'rgba(99,179,237,0.15)'; card.querySelector('.pick-check').textContent = '✔'; }
+                        document.getElementById('multi-select-count').textContent = `${this._fromSelections.size}件選択中`;
                     } else {
-                        const imgEl = card.querySelector('img');
-                        this._selectBlockFromModal(r.id, name, imgEl?.src || chosenUrl);
+                        this._selectBlockFromModal(r.id, name, card.querySelector('img')?.src);
                     }
-                });
+                };
                 grid.appendChild(card);
             }
         } else {
-            // カタログカテゴリ: アイコングリッド（置換先ピッカー）
-            // 先頭に「削除」ボタンを表示
-            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.5rem;overflow-y:auto;';
+            // カタログ
+            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));grid-auto-rows:min-content;gap:0.5rem;overflow-y:auto;align-items:start;align-content:start;';
 
-            // 削除ボタン（minecraft:air に置換）
+            // 1) 削除ボタン
             const delCard = document.createElement('button');
-            delCard.type = 'button';
             delCard.className = 'block-pick-card';
-            delCard.style.cssText = 'border:1.5px dashed var(--danger,#e55);';
-            delCard.innerHTML = `
-                <div class="block-pick-icon-wrap" style="font-size:1.6rem">🗑️</div>
-                <span class="block-pick-name" style="color:var(--danger,#e55)">このブロックを削除</span>
-            `;
-            delCard.addEventListener('click', () => this._selectBlockFromModal('minecraft:air', '削除（air）', null));
+            delCard.style.border = '1.5px dashed var(--danger,#e55)';
+            delCard.innerHTML = `<div class="block-pick-icon-wrap" style="font-size:1.6rem">🗑️</div><span class="block-pick-name" style="color:var(--danger,#e55)">削除 (air)</span>`;
+            delCard.onclick = () => this._selectBlockFromModal('minecraft:air', '削除（air）', null);
             grid.appendChild(delCard);
 
-            const ids = this._getBlockCatalogEntries(category, search);
-            if (!ids.length) {
-                const p = document.createElement('p');
-                p.style.cssText = 'color:var(--muted2);text-align:center;padding:2rem;grid-column:1/-1';
-                p.textContent = 'ブロックが見つかりません';
-                grid.appendChild(p);
-                return;
+            // 2) 錆止め変換ボタン (specialタブのみ)
+            if (category === 'special') {
+                const waxCard = document.createElement('button');
+                waxCard.className = 'block-pick-card';
+                waxCard.style.border = '1.5px solid var(--accent)';
+                waxCard.innerHTML = `<div class="block-pick-icon-wrap" style="font-size:1.6rem">🛡️</div><span class="block-pick-name" style="color:var(--accent)">置換元を錆止め版にする</span>`;
+                waxCard.onclick = () => this._onWaxButtonClicked();
+                grid.appendChild(waxCard);
             }
 
-            for (const blockId of ids) {
-                const rawId = blockId.replace('minecraft:', '');
-                const name  = this.langData?.[blockId] || rawId;
-                const imgId = this._bedrockToJava(rawId);
-                const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
-                const packUrl = ResourcePack.isLoaded() ? ResourcePack.getItemTextureUrl(blockId) : null;
-                const faceUrl = ResourcePack.isLoaded() ? (() => {
-                    const f = ResourcePack.getFaceUrls(blockId, {})?.top;
-                    return f ? (typeof f === 'string' ? f : f?.url) : null;
-                })() : null;
+            const allIds = this._getBlockCatalogEntries(category, search);
+            // 「すべて」タブの時だけフォルダ分けを行う
+            const { groups, standalone } = (category === 'all' && !search) ? this._processBlockGroups(allIds) : { groups: {}, standalone: allIds };
 
-                const allSrcs = [
-                    ...(packUrl ? [packUrl] : []),
-                    `https://minecraft.wiki/images/Invicon_${wikiName}.png`,
-                    `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item/${imgId}.png`,
-                    ...(faceUrl ? [faceUrl] : []),
-                    `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}.png`,
-                ];
-                const firstSrc = allSrcs.shift() || '';
-                const fallbacks = allSrcs;
-                const fbJson = JSON.stringify(fallbacks).replace(/"/g, '&quot;');
-                const imgHtml = firstSrc
-                    ? `<img class="block-pick-icon" src="${this._escape(firstSrc)}" alt="${this._escape(name)}"
-                          data-fb="${fbJson}"
-                          onerror="var fb=JSON.parse(this.dataset.fb||'[]');if(fb.length){this.src=fb.shift();this.dataset.fb=JSON.stringify(fb)}else{this.parentNode.innerHTML='📦'}">`
-                    : `<span style="font-size:1.5rem">📦</span>`;
-
-                const card = document.createElement('button');
-                card.type = 'button';
-                card.className = 'block-pick-card';
-                card.dataset.id = blockId;
-                card.innerHTML = `
-                    <div class="block-pick-icon-wrap">${imgHtml}</div>
-                    <span class="block-pick-name">${this._escape(name)}</span>
-                `;
-                card.addEventListener('click', () => {
-                    const imgEl = card.querySelector('img');
-                    this._selectBlockFromModal(blockId, name, imgEl?.src || null);
-                });
-                grid.appendChild(card);
+            for (const [gName, gIds] of Object.entries(groups)) {
+                if (gIds.length <= 1) { standalone.push(...gIds); continue; }
+                const folder = document.createElement('button');
+                folder.className = 'block-pick-card folder-card';
+                folder.style.background = 'rgba(255,255,255,0.05)';
+                folder.innerHTML = `<div class="block-pick-icon-wrap" style="font-size:1.6rem">📁</div><span class="block-pick-name" style="font-weight:bold">${gName}</span><small style="font-size:0.6rem;color:var(--muted2)">${gIds.length}個</small>`;
+                folder.onclick = () => {
+                    grid.innerHTML = '';
+                    const backBtn = document.createElement('button');
+                    backBtn.className = 'block-pick-card';
+                    backBtn.style.cssText = 'grid-column:1/-1;background:var(--surface3);height:30px;padding:0;font-size:0.8rem;';
+                    backBtn.textContent = `← 戻る (${gName})`;
+                    backBtn.onclick = () => this._renderBlockSelectorGrid(category);
+                    grid.appendChild(backBtn);
+                    
+                    for (const bid of gIds) this._renderBlockCard(grid, bid);
+                };
+                grid.appendChild(folder);
             }
+            for (const bid of standalone) this._renderBlockCard(grid, bid);
         }
+    }
+
+    _renderBlockCard(grid, blockId) {
+        const name = this.langData?.[blockId] || blockId.replace('minecraft:', '');
+        const card = document.createElement('button');
+        card.className = 'block-pick-card';
+        card.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(blockId)}</div><span class="block-pick-name">${this._escape(name)}</span>`;
+        card.onclick = () => this._selectBlockFromModal(blockId, name, card.querySelector('img')?.src);
+        grid.appendChild(card);
+    }
+
+    _onWaxButtonClicked() {
+        const fromVal = document.getElementById('replace-from').value;
+        if (!fromVal) return this._toast('置換元を先に選んでください', 'error');
+        const ids = fromVal.split(',');
+        const waxedIds = ids.map(id => {
+            if (id.startsWith('minecraft:waxed_')) return id;
+            return 'minecraft:waxed_' + id.replace('minecraft:', '');
+        });
+        const toId = waxedIds.join(',');
+        const toName = waxedIds.length === 1 ? (this.langData?.[waxedIds[0]] || waxedIds[0].replace('minecraft:','')) : `${waxedIds.length}件を錆止め`;
+        document.getElementById('replace-to').value = toId;
+        document.getElementById('replace-to-name').textContent = toName;
+        this._hideModal('modal-block-selector');
+        this._toast('🛡️ 錆止め状態にセットしました');
+    }
+
+    _processBlockGroups(ids) {
+        const groups = {}, standalone = [];
+        for (const id of ids) {
+            const local = id.replace(/^minecraft:/, '');
+            let g = null;
+            if (local.includes('wool')) g = '羊毛 (16色)';
+            else if (local.includes('concrete_powder')) g = 'コンクリートパウダー';
+            else if (local.includes('concrete')) g = 'コンクリート';
+            else if (local.includes('terracotta')) g = 'テラコッタ';
+            else if (local.includes('glass')) g = 'ガラス系';
+            else if (local.includes('shulker_box')) g = 'シュルカーボックス';
+            else if (local.includes('candle')) g = 'ロウソク';
+            else if (local.includes('cobblestone')) g = '丸石シリーズ';
+            else if (local.includes('stone_brick')) g = '石レンガシリーズ';
+            else if (local.includes('deepslate')) g = '深層岩シリーズ';
+            else if (local.includes('tuff')) g = '凝灰岩シリーズ';
+            else if (local.includes('copper')) g = '銅ブロック';
+            else if (local.includes('oak')) g = 'オーク材';
+            else if (local.includes('spruce')) g = 'トウヒ材';
+            else if (local.includes('birch')) g = 'シラカバ材';
+            
+            if (g) { if (!groups[g]) groups[g] = []; groups[g].push(id); }
+            else standalone.push(id);
+        }
+        return { groups, standalone };
+    }
+
+    _getBlockIconHtml(blockId, states = {}) {
+        const id = String(blockId);
+        const local = id.replace(/^minecraft:/, '');
+        if (ResourcePack.isLoaded()) {
+            const packUrl = ResourcePack.getBestIconUrl(id, states);
+            if (packUrl) return `<img src="${packUrl}" class="block-pick-icon" alt="${local}">`;
+        }
+        const imgId = this._bedrockToJava(local);
+        const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
+        
+        const isBlock = /_block$|_ore$|_stone$|_planks$|_log$|_wood$|terracotta$|wool$|glass$|concrete$/.test(imgId);
+        const f = isBlock ? 'block' : 'item', s = isBlock ? 'item' : 'block';
+        
+        const srcs = [
+            `https://minecraft.wiki/images/Invicon_${wikiName}.png`,
+            `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item/${imgId}.png`,
+            `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}.png`
+        ];
+        if (isBlock) srcs.push(`https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}_top.png`);
+
+        const first = srcs.shift(), fb = JSON.stringify(srcs).replace(/"/g, '&quot;');
+        return `<img class="block-pick-icon" src="${first}" alt="${local}" data-fb="${fb}" onerror="var fb=JSON.parse(this.dataset.fb||'[]');if(fb.length){this.src=fb.shift();this.dataset.fb=JSON.stringify(fb)}else{this.parentNode.innerHTML='📦'}">`;
     }
 
     _selectBlockFromModal(id, name, imgUrl) {

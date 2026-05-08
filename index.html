@@ -618,16 +618,14 @@
         <div class="search-wrap">
           <input type="text" id="block-selector-search" class="mc-input" placeholder="🔍 ブロック名を検索（例：石、木、階段...）">
         </div>
-        <div class="selector-tabs" id="block-selector-tabs">
-          <button class="tab-pill" data-cat="current">現在のブロック</button>
-          <button class="tab-pill active" data-cat="stone">石材・地盤</button>
-          <button class="tab-pill" data-cat="building">鉱石・素材</button>
-          <button class="tab-pill" data-cat="wood">木材</button>
-          <button class="tab-pill" data-cat="glass">ガラス</button>
-          <button class="tab-pill" data-cat="light">光源</button>
-          <button class="tab-pill" data-cat="plants">植物</button>
-          <button class="tab-pill" data-cat="functional">建材・機能</button>
-          <button class="tab-pill" data-cat="other">その他</button>
+        <div class="tab-pills" style="flex-wrap: wrap; gap: 4px;" id="block-selector-tabs">
+          <button class="tab-pill active" data-cat="current">現在のブロック</button>
+          <button class="tab-pill" data-cat="all">すべて</button>
+          <button class="tab-pill" data-cat="full">フルブロック</button>
+          <button class="tab-pill" data-cat="slab">ハーフ</button>
+          <button class="tab-pill" data-cat="stairs">階段</button>
+          <button class="tab-pill" data-cat="deco">装飾</button>
+          <button class="tab-pill" data-cat="special">特殊・変換</button>
         </div>
       </div>
       <div class="block-selector-grid" id="block-selector-grid">
