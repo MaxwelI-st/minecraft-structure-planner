@@ -1,16 +1,12 @@
 /**
  * viewer3d.js - Three.js based 3D structure viewer
- * Version: v2.5.12 (Fix: door open/close, glass transparency, grass biome color, corner stairs)
+ * Version: v2.6.0 (Fix: door open/close, glass transparency, grass biome color, corner stairs)
  */
 
 import { getFaceUrls, isLoaded as packIsLoaded, getName as packName } from './resourcepack.js';
 import { resolveGeometry, classifyShape } from './blockshapes.js';
 import { normalizeBedrockBlock } from './bedrock_normalize.js';
 import { _getState, _isTrue } from './blockshapes.js';
-
-console.log('##########################################');
-console.log('###  Viewer v2.5.12: NEW VERSION LOADED  ###');
-console.log('##########################################');
 
 // ─── バイオームカラー定数 ──────────────────────────────────────────────────
 // 平原バイオーム準拠（Minecraft 標準）
@@ -63,6 +59,11 @@ function _isGrassBlock(blockId) {
     return local === 'grass_block' || local === 'grass';
 }
 
+/** 透過判定が必要なブロック ID パターン */
+function _isTransparent(blockId) {
+    return /glass|leaves|fence|trapdoor|door|stairs|slab|carpet|wall|pane|bars|water|lava|ice|cobweb|chain|ladder|sapling|grass$|fern|vine|kelp|seagrass|torch|button|pressure_plate|sign|banner|rail|hopper|piston/.test(blockId);
+}
+
 const BLOCK_COLORS = {
     grass_block: 0x79c05a, grass: 0x79c05a, dirt: 0x866043, stone: 0x7a7a7a,
     cobblestone: 0x9a9a9a, mossy_cobblestone: 0x6a7a6a,
@@ -98,6 +99,10 @@ function _shapeSignature(blockId, states) {
     else if (shape === 'trapdoor') keys.push('open_bit', 'upside_down_bit', 'direction');
     else if (shape === 'door') keys.push('open_bit', 'direction', 'hinge_bit', 'upper_block_bit');
     else if (shape === 'fence_gate') keys.push('open_bit', 'direction');
+    else if (shape === 'lantern') keys.push('hanging_bit', 'hanging');
+    else if (shape === 'chain')   keys.push('pillar_axis', 'axis');
+    else if (shape === 'hopper')  keys.push('facing_direction', 'facing');
+    else if (shape === 'anvil')   keys.push('direction', 'facing_direction');
     const sigParts = keys.map(k => k + '=' + (states[k] ?? ''));
     return blockId + '|' + sigParts.join(',');
 }
@@ -112,6 +117,7 @@ export class Viewer3D {
         this.colorMode = 'material';
         this._matCache = new Map();
         this._lastCoords = null; this._lastSize = null; this._lastOptions = null;
+        this._highlightedBlockId = null;
         // 置換を再適用して再描画が必要な場合に呼び出すコールバック（app.js がセット）
         this.onNeedsReload = null;
     }
@@ -122,6 +128,39 @@ export class Viewer3D {
         this._setupScene();
         this._setupControls();
         this.isInitialized = true;
+    }
+
+    /** WebGL リソースとイベントの解放 */
+    destroy() {
+        if (!this.isInitialized) return;
+        
+        // メッシュとジオメトリ・マテリアルの破棄
+        this.meshes.forEach(m => {
+            if (m.geometry) m.geometry.dispose();
+            if (m.material) {
+                if (Array.isArray(m.material)) {
+                    m.material.forEach(mat => mat.dispose());
+                } else {
+                    m.material.dispose();
+                }
+            }
+            this.scene.remove(m);
+        });
+        this.meshes = [];
+        this._matCache.clear();
+
+        if (this.renderer) {
+            this.renderer.dispose();
+            if (this.renderer.domElement && this.renderer.domElement.parentNode) {
+                this.renderer.domElement.remove();
+            }
+        }
+        
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.isInitialized = false;
+        console.log('Viewer3D destroyed');
     }
 
     _loadThree() {
@@ -279,31 +318,59 @@ export class Viewer3D {
             if (mesh.geometry?.dispose) mesh.geometry.dispose();
         }
         this.meshes = [];
-        const filtered = coords.filter(c => c.y >= yMin && c.y <= yMax);
+
+        // Yフィルタおよび Air 除去を適用
+        const filtered = coords.filter(c => {
+            if (c.y < yMin || c.y > yMax) return false;
+            const bid = c.blockId.toLowerCase();
+            if (bid === 'minecraft:air' || bid === 'air') return false;
+            return true;
+        });
         if (filtered.length === 0) return;
 
         // ─── 隣接ブロック検索用マップ ─────────────────────────────────────
         // キー: "x,y,z" → ブロック情報 { blockId, states }
         const blockMap = new Map();
-        for (const c of filtered) blockMap.set(`${c.x},${c.y},${c.z}`, c);
+        for (const c of coords) blockMap.set(`${c.x},${c.y},${c.z}`, c);
 
         /** 座標 (x,y,z) のブロックを取得する関数 */
         const getBlock = (x, y, z) => blockMap.get(`${x},${y},${z}`) || null;
 
-        // ─── 接続フラグ用 Set（フェンス・壁・ペイン用）─────────────────────
-        const posMap = new Set();
-        for (const c of filtered) posMap.add(`${c.x},${c.y},${c.z}`);
+        // ─── 断面表示（スライス）でも中身が詰まって見えるようにするための動的カリング ───
+        // 1. 現在のフィルタ（Y軸など）を通過したブロックのみを Set に入れる
+        const visiblePosSet = new Set();
+        const opaquePosSet = new Set();
+        for (const c of filtered) {
+            visiblePosSet.add(`${c.x},${c.y},${c.z}`);
+            if (!_isTransparent(c.blockId)) {
+                opaquePosSet.add(`${c.x},${c.y},${c.z}`);
+            }
+        }
+
+        /** 周囲が不透過ブロックで囲まれているか判定（カリング用） */
+        const isOccluded = (x, y, z) => opaquePosSet.has(`${x},${y},${z}`);
 
         // ─── 形状シグネチャでグループ化（同一形状をまとめて InstancedMesh へ）
         // 階段はコーナー形状が隣接依存なので、シグネチャに隣接情報も含める
         const groups = new Map();
         for (const c of filtered) {
-            // フェンス/壁/ペイン用の接続フラグ（boolean）
+            // 全方位が「現在表示されている不透過ブロック」に囲まれているなら、そのブロック自体を描画しない
+            // （ただし透過ブロックは常に描画）
+            const trans = _isTransparent(c.blockId);
+            if (!trans &&
+                isOccluded(c.x + 1, c.y, c.z) && isOccluded(c.x - 1, c.y, c.z) &&
+                isOccluded(c.x, c.y + 1, c.z) && isOccluded(c.x, c.y - 1, c.z) &&
+                isOccluded(c.x, c.y, c.z + 1) && isOccluded(c.x, c.y, c.z - 1)
+            ) {
+                continue; // 完全に隠れているので描画スキップ
+            }
+
+            // フェンス/壁/ペイン用の接続フラグ（これは「現在表示されているか」で判定）
             const neighbors = {
-                n: posMap.has(`${c.x},${c.y},${c.z - 1}`),
-                s: posMap.has(`${c.x},${c.y},${c.z + 1}`),
-                w: posMap.has(`${c.x - 1},${c.y},${c.z}`),
-                e: posMap.has(`${c.x + 1},${c.y},${c.z}`)
+                n: visiblePosSet.has(`${c.x},${c.y},${c.z - 1}`),
+                s: visiblePosSet.has(`${c.x},${c.y},${c.z + 1}`),
+                w: visiblePosSet.has(`${c.x - 1},${c.y},${c.z}`),
+                e: visiblePosSet.has(`${c.x + 1},${c.y},${c.z}`)
             };
 
             // 階段コーナー判定用の隣接ブロック情報（blockId + states 付き）
@@ -336,9 +403,25 @@ export class Viewer3D {
         const boxGeo = new THREE.BoxGeometry(1, 1, 1);
         const mat4 = new THREE.Matrix4();
 
+        // テクスチャ統計の初期化
+        this.textureStats = { success: 0, missing: 0, missingIds: new Set() };
+
         for (const grp of groups.values()) {
             const { blockId, rawId, states, neighbors, neighborBlocks, list } = grp;
             const mat = this._buildMaterial(THREE, blockId, rawId, states);
+            
+            // 統計の更新
+            const isReal = (this.colorMode === 'realtexture');
+            if (isReal) {
+                const urls = getFaceUrls(blockId, { rawId, states });
+                if (urls && urls.found) {
+                    this.textureStats.success += list.length;
+                } else {
+                    this.textureStats.missing += list.length;
+                    this.textureStats.missingIds.add(blockId);
+                }
+            }
+
             let geo = boxGeo;
             try {
                 // resolveGeometry に neighborBlocks を渡してコーナー階段を有効化
@@ -351,12 +434,19 @@ export class Viewer3D {
             }
 
             const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+            mesh.userData = { blockId };
             // ガラス系: alphaTestで透明ピクセルを抜くのでrenderOrderの特別扱い不要
+            const isHighlighted = (this._highlightedBlockId === blockId);
+            const hlColor = new THREE.Color(0xffff00); // 黄色でハイライト
+            const normalColor = new THREE.Color(0xffffff);
+
             for (let i = 0; i < list.length; i++) {
                 mat4.setPosition(list[i].x, list[i].y, list[i].z);
                 mesh.setMatrixAt(i, mat4);
+                mesh.setColorAt(i, isHighlighted ? hlColor : normalColor);
             }
             mesh.instanceMatrix.needsUpdate = true;
+            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
             this.scene.add(mesh);
             this.meshes.push(mesh);
         }
@@ -511,5 +601,118 @@ export class Viewer3D {
     resetCamera() {
         this.spherical = { theta: 0.5, phi: 0.8, radius: 50 };
         this._updateCamera();
+    }
+
+    /** 床タイプの設定 */
+    setFloorType(type) {
+        if (!this.scene) return;
+        if (this.floor) {
+            this.scene.remove(this.floor);
+            this.floor = null;
+        }
+
+        const THREE = window.THREE;
+        if (type === 'none') return;
+
+        let color = 0x222222;
+        let gridColor = 0x444444;
+        let opacity = 1.0;
+        let showPlane = true;
+
+        switch (type) {
+            case 'grid': // 透明グリッド
+                gridColor = 0x000000;
+                showPlane = false;
+                break;
+            case 'grass': 
+                color = 0x5e8a4d; // Minecraft grass
+                gridColor = 0xffffff; 
+                break;
+            case 'snow':  
+                color = 0xffffff; 
+                gridColor = 0x888888; 
+                break;
+            case 'stone': 
+                color = 0x5a5a5a; 
+                gridColor = 0xffffff; 
+                break;
+            case 'nether':
+                color = 0x4a1010; // Crimson/Netherrack
+                gridColor = 0xffffff; 
+                break;
+            case 'end':   
+                color = 0xd8d6a3; // End stone
+                gridColor = 0x444444; 
+                break;
+            case 'water': 
+                color = 0x1a4a8a; 
+                gridColor = 0xffffff; 
+                opacity = 0.5;
+                break;
+            default:      
+                color = 0x111111; 
+                gridColor = 0x333333; 
+                break;
+        }
+
+        this.floor = new THREE.Group();
+
+        // 1. 板ポリゴン（表示する場合のみ）
+        if (showPlane) {
+            const geo = new THREE.PlaneGeometry(200, 200);
+            const mat = new THREE.MeshLambertMaterial({ 
+                color: color, 
+                side: THREE.DoubleSide,
+                transparent: (opacity < 1.0),
+                opacity: opacity
+            });
+            const plane = new THREE.Mesh(geo, mat);
+            plane.rotation.x = Math.PI / 2;
+            plane.position.y = -0.02; // 重なり防止
+            this.floor.add(plane);
+        }
+
+        // 2. グリッド（位置把握用）
+        const grid = new THREE.GridHelper(200, 40, gridColor, gridColor);
+        if (grid.material) {
+            grid.material.transparent = true;
+            grid.material.opacity = (type === 'grid' ? 0.4 : 0.15); // 透明グリッドモードでは少し濃くする
+        }
+        grid.position.y = 0;
+        this.floor.add(grid);
+
+        this.scene.add(this.floor);
+    }
+
+    // ─── ハイライト（素材一覧との連動） ────────────────────────────────────
+    getHighlighted() { return this._highlightedBlockId; }
+
+    highlightBlock(blockId) {
+        this._highlightedBlockId = blockId;
+        const THREE = window.THREE;
+        if (!THREE) return;
+        const hlColor = new THREE.Color(0xffff00);
+        const normalColor = new THREE.Color(0xffffff);
+
+        for (const m of this.meshes) {
+            const isMatch = (m.userData?.blockId === blockId);
+            for (let i = 0; i < m.count; i++) {
+                m.setColorAt(i, isMatch ? hlColor : normalColor);
+            }
+            if (m.instanceColor) m.instanceColor.needsUpdate = true;
+        }
+    }
+
+    clearHighlight() {
+        this._highlightedBlockId = null;
+        const THREE = window.THREE;
+        if (!THREE) return;
+        const normalColor = new THREE.Color(0xffffff);
+        for (const m of this.meshes) {
+            for (let i = 0; i < m.count; i++) {
+                m.setColorAt(i, normalColor);
+            }
+            if (m.instanceColor) m.instanceColor.needsUpdate = true;
+        }
     }
 }

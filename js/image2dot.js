@@ -141,32 +141,33 @@ function _passesFilter(blockId, filter) {
     return true;
 }
 
-/* ─── 最近傍探索（CIELAB マンハッタン距離） ─── */
-// minecraft-dot.pictures のロジックに倣い、人間の知覚に近い LAB 空間での差を計算
+/* ─── 最近傍探索（CIELAB 加重ユークリッド距離） ─── */
+// L*（明度）を 2.5 倍重視 → 同じ明度帯に寄せることで顔などの均一感を改善
 function _nearestLab(targetLab, palette) {
     let best = null;
     let bestD = Infinity;
 
     for (const p of palette) {
-        // L1ノルム（マンハッタン距離）
-        let d = Math.abs(targetLab[0] - p.lab[0]) + 
-                Math.abs(targetLab[1] - p.lab[1]) + 
-                Math.abs(targetLab[2] - p.lab[2]);
+        // 加重ユークリッド距離: L* を 2.5x, a*/b* を 1x
+        const dL = (targetLab[0] - p.lab[0]) * 1.8;
+        const da = (targetLab[1] - p.lab[1]);
+        const db = (targetLab[2] - p.lab[2]);
+        let d = Math.sqrt(dL * dL + da * da + db * db);
 
         // 彩度（Chroma）の差によるペナルティ
         // これにより、肌などの地味な色部分に鮮やかな「黄色羊毛」などが混ざるのを防ぐ
         const pChroma = Math.sqrt(p.lab[1] * p.lab[1] + p.lab[2] * p.lab[2]);
         const tChroma = Math.sqrt(targetLab[1] * targetLab[1] + targetLab[2] * targetLab[2]);
         const chromaDiff = Math.abs(pChroma - tChroma);
-        d += chromaDiff * 1.5; // 彩度の差を重み付けして距離に加算
+        d += chromaDiff * 1.0; // 彩度ペナルティ
 
         // 滑らかなブロック（羊毛、コンクリート、テラコッタ）を強力に優先
         const isSmooth = /_wool|_concrete|terracotta/.test(p.id);
         if (isSmooth) {
-            d *= 0.85; 
+            d *= 0.82;
         } else {
             if (/gravel|dirt|grass_block|cobblestone|moss|raw_|ore|log|leaves/.test(p.id)) {
-                d *= 1.4; 
+                d *= 1.5;
             }
         }
 
@@ -176,6 +177,36 @@ function _nearestLab(targetLab, palette) {
         }
     }
     return best;
+}
+
+/* ─── ノイズ除去（4近傍 孤立ピクセル除去） ──────────────────────────── */
+// 周囲4近傍すべてが異なれば多数決置換。細い線・エッジは保護する
+function _noiseReduce(grid, gridW, gridH, passes = 1) {
+    let cur = grid;
+    for (let pass = 0; pass < passes; pass++) {
+        const next = cur.map(row => [...row]);
+        for (let y = 0; y < gridH; y++) {
+            for (let x = 0; x < gridW; x++) {
+                const self = cur[y][x];
+                if (!self) continue;
+                const n4 = [];
+                if (y > 0 && cur[y-1][x]) n4.push(cur[y-1][x]);
+                if (y < gridH-1 && cur[y+1][x]) n4.push(cur[y+1][x]);
+                if (x > 0 && cur[y][x-1]) n4.push(cur[y][x-1]);
+                if (x < gridW-1 && cur[y][x+1]) n4.push(cur[y][x+1]);
+                // 4近傍すべてが self と異なる場合のみ置換（孤立ピクセル）
+                if (n4.length === 4 && n4.every(n => n !== self)) {
+                    const freq = new Map();
+                    for (const n of n4) freq.set(n, (freq.get(n)||0)+1);
+                    let best = self, bc = 0;
+                    for (const [id, c] of freq) if (c > bc) { bc = c; best = id; }
+                    next[y][x] = best;
+                }
+            }
+        }
+        cur = next;
+    }
+    return cur;
 }
 
 /* ─── ガンマ補正＆コントラスト ────────────────────────────────────────── */
@@ -207,6 +238,8 @@ export function convert(image, opts = {}) {
         gamma = 1,
         dithering = false,
         autoTrim = true,
+        preBlur = 0,        // 描画前のぼかし強度（px）。0 で無効
+        noiseReduction = true, // 孤立ピクセル除去
     } = opts;
 
     const palette = buildPalette(mode, paletteFilter);
@@ -219,6 +252,8 @@ export function convert(image, opts = {}) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
+    // プリぼかし（デフォルト0: 無効）
+    if (preBlur > 0) ctx.filter = `blur(${preBlur}px)`;
 
     if (autoTrim) {
         const tempCanvas = document.createElement('canvas');
@@ -385,7 +420,19 @@ export function convert(image, opts = {}) {
         }
     }
 
-    return { grid, counts, palette };
+    // ノイズ除去パス（孤立した異色ピクセルを近傍多数決で置換）
+    const finalGrid = noiseReduction ? _noiseReduce(grid, gridW, gridH) : grid;
+
+    // ノイズ除去後にカウントを再集計
+    const finalCounts = new Map();
+    for (let y = 0; y < gridH; y++) {
+        for (let x = 0; x < gridW; x++) {
+            const id = finalGrid[y][x];
+            if (id) finalCounts.set(id, (finalCounts.get(id) || 0) + 1);
+        }
+    }
+
+    return { grid: finalGrid, counts: finalCounts, palette };
 }
 
 /* ─── プリセットフィルタ（UI で使いやすいよう公開） ───────────────────── */

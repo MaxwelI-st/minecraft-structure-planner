@@ -18,10 +18,10 @@
  * ────────────────────────────────────────────────────────────────────────────
  */
 
-import { normalizeBedrockBlock } from './bedrock_normalize.js';
+import { normalizeBedrockBlock, normalizeId } from './bedrock_normalize.js';
 
 // ─── Java版アセットの定数定義 ───────────────────────────────────────────
-const ASSETS_BASE = 'https://assets.mcasset.cloud/1.20.1/assets/minecraft/textures/block/';
+const ASSETS_BASE = 'https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/';
 let _useJavaFallback = false; // デフォルトでは Java アセットを使用しない
 
 export function setUseJavaFallback(val) { _useJavaFallback = !!val; }
@@ -495,7 +495,7 @@ function _getItemPath(key, variantIdx = 0) {
  */
 export function getItemTextureUrl(blockId) {
     if (!isLoaded() || !_state.bedrockItems) return null;
-    const local = String(blockId).toLowerCase().replace(/^minecraft:/, '');
+    const local = normalizeId(blockId).replace(/^minecraft:/, '');
 
     // 直接マッチ
     let itemPath = _getItemPath(local, 0);
@@ -692,7 +692,7 @@ function _expandBedrockTextures(blockId, rawId) {
     if (!_state.bedrockBlocks) return { entry: null, fallbackUsed: false };
     
     // 1. 最初にサニタイズを完了させる
-    const idLower = blockId.toLowerCase();
+    const idLower = normalizeId(blockId);
     let local = idLower.replace(/^minecraft:/, '');
     let fallbackUsed = false;
 
@@ -823,11 +823,10 @@ function _expandBedrockTextures(blockId, rawId) {
  */
 export function getFaceUrls(blockId, options = {}) {
     if (!isLoaded()) {
-        console.log('   -> Pack not loaded (textures.size is 0).');
         return null;
     }
     const { rawId = null, states = null } = options;
-    const idLower = String(blockId).toLowerCase();
+    const idLower = normalizeId(blockId);
     let local = idLower.replace(/^minecraft:/, '');
 
     // normalizeBedrockBlock を使用して正規化（一貫性のため）
@@ -1073,7 +1072,7 @@ export function getFaceUrls(blockId, options = {}) {
 
 export function getTextureUrl(key) {
     if (!key) return null;
-    const lower = key.toLowerCase();
+    const lower = normalizeId(key);
     const raw = lower.replace(/^minecraft:/, '');
 
     // 1) Bedrock item_texture.json 経由での解決
@@ -1106,13 +1105,14 @@ export function getTextureUrl(key) {
  */
 export function getBestIconUrl(blockId, states = {}) {
     if (!isLoaded()) return null;
+    const localId = normalizeId(blockId);
 
     // 1) アイテムテクスチャとして探す（アイテムらしい見た目を優先）
-    const itemUrl = getItemTextureUrl(blockId);
+    const itemUrl = getItemTextureUrl(localId);
     if (itemUrl) return itemUrl;
     
     // 2) 6面テクスチャ解決から代表的な面を試す（ブロックの面テクスチャ）
-    const faces = getFaceUrls(blockId, { states });
+    const faces = getFaceUrls(localId, { states });
     if (faces && faces.found) {
         // front > top > side > all の順で試行
         const f = faces.front || faces.top || faces.side || faces.all || faces.north || faces.east;
@@ -1120,7 +1120,7 @@ export function getBestIconUrl(blockId, states = {}) {
     }
 
     // 3) それでも見つからない場合、汎用的な getTextureUrl
-    return getTextureUrl(blockId);
+    return getTextureUrl(localId);
 }
 
 export function listAvailable() { return Array.from(_state.textures.keys()).sort(); }
