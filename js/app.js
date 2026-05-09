@@ -1284,7 +1284,7 @@ class App {
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                     ${fromImg}${this._escape(fn)} → ${toImg}${this._escape(tn)}
                 </span>
-                <button class="mc-btn small" data-from="${from}" style="flex-shrink:0;padding:0 0.4rem;font-size:0.7rem">✕</button>
+                <button class="mc-btn secondary small" data-from="${from}" style="flex-shrink:0;padding:0 0.4rem;font-size:0.7rem">✕</button>
             `;
             list.appendChild(row);
         }

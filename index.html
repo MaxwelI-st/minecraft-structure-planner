@@ -278,42 +278,55 @@
                   <button class="mc-btn accent small full-width" id="btn-dotart-to-struct" title="現在のドット絵を素材計算に含める">➕ 構造として追加</button>
                 </div>
                 <input type="file" id="img2dot-file" accept="image/*" hidden>
-                <div style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.4rem">
-                  <label class="toggle-item" style="font-size:0.7rem">
-                    モード:
-                    <select id="img2dot-mode" class="control-select" style="margin-left:0.3rem;font-size:0.72rem">
+                <div style="display:flex;flex-direction:column;gap:0.4rem;margin-top:0.4rem">
+                  <div class="v3d-field">
+                    <span style="font-size:0.7rem">モード:</span>
+                    <select id="img2dot-mode" class="control-select" style="font-size:0.72rem">
                       <option value="visual">見た目（ブロック色）</option>
                       <option value="mapcolor">マップ表示色</option>
                     </select>
-                  </label>
-                  <label class="toggle-item" style="font-size:0.7rem">
-                    パレット:
-                    <select id="img2dot-filter" class="control-select" style="margin-left:0.3rem;font-size:0.72rem">
+                  </div>
+                  <div class="v3d-field">
+                    <span style="font-size:0.7rem">パレット:</span>
+                    <select id="img2dot-filter" class="control-select" style="font-size:0.72rem">
                       <option value="all">全ブロック</option>
                       <option value="clean_only" selected>ノイズの少ないブロックのみ</option>
                       <option value="wool_concrete_terracotta">羊毛＋コンクリ＋テラコッタ</option>
                       <option value="survival_friendly">サバイバル現実的</option>
                       <option value="no_ore">鉱石ブロック除外</option>
                     </select>
-                  </label>
-                  <label class="toggle-item" style="font-size:0.7rem">
-                    <input type="checkbox" id="img2dot-dither" checked>
-                    <span class="toggle-label">ディザリング (滑らかさUP)</span>
-                  </label>
-                  <label class="toggle-item" style="font-size:0.7rem">
-                    <input type="checkbox" id="img2dot-noise" checked>
-                    <span class="toggle-label">ノイズ除去（孤立ピクセル削除）</span>
-                  </label>
-                  <label class="toggle-item" style="font-size:0.7rem;gap:0.3rem;align-items:center">
-                    <span>ぼかし:</span>
-                    <input type="range" id="img2dot-blur" min="0" max="2" step="0.25" value="0"
-                      style="width:70px;vertical-align:middle">
-                    <span id="img2dot-blur-val" style="min-width:1.8em;text-align:right">0</span>px
-                  </label>
-                  <label class="toggle-item" style="font-size:0.7rem">
-                    <input type="checkbox" id="img2dot-trim" checked>
-                    <span class="toggle-label">自動トリミング（余白削減）</span>
-                  </label>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+                    <div class="v3d-field">
+                      <span style="font-size:0.65rem">コントラスト: <span id="img2dot-contrast-val">1.0</span></span>
+                      <input type="range" id="img2dot-contrast" min="0.5" max="2.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="v3d-field">
+                      <span style="font-size:0.65rem">彩度: <span id="img2dot-saturation-val">1.0</span></span>
+                      <input type="range" id="img2dot-saturation" min="0.0" max="2.0" step="0.1" value="1.0">
+                    </div>
+                  </div>
+
+                  <div class="v3d-field">
+                    <span style="font-size:0.65rem">ディザリング: <span id="img2dot-dither-val">0.0</span></span>
+                    <input type="range" id="img2dot-dither" min="0.0" max="1.0" step="0.05" value="0.0">
+                  </div>
+
+                  <div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:0.2rem">
+                    <label class="toggle-item" style="font-size:0.7rem">
+                      <input type="checkbox" id="img2dot-air">
+                      <span class="toggle-label">背景透過(Air)</span>
+                    </label>
+                    <label class="toggle-item" style="font-size:0.7rem">
+                      <input type="checkbox" id="img2dot-trim" checked>
+                      <span class="toggle-label">自動切抜</span>
+                    </label>
+                    <label class="toggle-item" style="font-size:0.7rem">
+                      <input type="checkbox" id="img2dot-noise" checked>
+                      <span class="toggle-label">ノイズ除去</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>

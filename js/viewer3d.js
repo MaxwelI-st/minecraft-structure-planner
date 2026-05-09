@@ -709,6 +709,10 @@ export class Viewer3D {
                 gridColor = 0xffffff; 
                 opacity = 0.5;
                 break;
+            case 'sand':
+                color = 0xd2b48c; // Sandy beige
+                gridColor = 0x8b7e66;
+                break;
             default:      
                 color = 0x111111; 
                 gridColor = 0x333333; 
