@@ -222,12 +222,16 @@
                 <div class="tool-buttons">
                   <button class="tool-btn active" data-tool="pen"    title="ペン">✏️</button>
                   <button class="tool-btn"         data-tool="fill"   title="塗りつぶし">🪣</button>
+                  <button class="tool-btn"         data-tool="replace" title="一括置換">🪄</button>
                   <button class="tool-btn"         data-tool="eraser" title="消しゴム">🧹</button>
                 </div>
               </div>
 
               <div class="toolbar-section">
-                <div class="toolbar-label">ブロック</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem">
+                  <div class="toolbar-label" style="margin-bottom:0">ブロック</div>
+                  <button class="mc-btn secondary small" id="btn-palette-change" style="padding:1px 6px;font-size:0.65rem">🎨 変更/追加</button>
+                </div>
                 <div class="block-palette" id="block-palette"></div>
               </div>
 

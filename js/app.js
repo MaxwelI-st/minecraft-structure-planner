@@ -749,14 +749,21 @@ class App {
                 if (firstCatTab) firstCatTab.classList.add('active');
                 this._showModal('modal-block-selector');
                 this._renderBlockSelectorGrid(firstCatTab?.dataset.cat || 'stone');
-            } else if (this._blockSelectorMode === 'dotart') {
+            } else if (this._blockSelectorMode === 'dotart' || this._blockSelectorMode === 'palette') {
                 const title = $('block-selector-title');
                 const sub   = $('block-selector-sub');
-                if (title) title.textContent = 'ドット絵ブロックの一括置換';
-                if (sub)   sub.textContent   = '新しいブロックをカタログから選んでください';
-                // ドット絵モード: dotartタブのみ表示（他カタログタブは非表示）
-                tabs.forEach(t => { t.style.display = (t.dataset.cat === 'dotart') ? '' : 'none'; });
-                const firstCatTab = [...tabs].find(t => t.dataset.cat === 'dotart');
+                if (this._blockSelectorMode === 'dotart') {
+                    if (title) title.textContent = 'ドット絵ブロックの一括置換';
+                    if (sub)   sub.textContent   = '新しいブロックをカタログから選んでください';
+                } else {
+                    if (title) title.textContent = 'パレットに追加するブロックを選択';
+                    if (sub)   sub.textContent   = '描画に使用したいブロックを選んでください';
+                }
+                // ドット絵/パレットモード: 全てのカタログタブを表示
+                tabs.forEach(t => {
+                    t.style.display = (t.dataset.cat === 'current') ? 'none' : '';
+                });
+                const firstCatTab = [...tabs].find(t => t.dataset.cat === 'wool' || t.dataset.cat === 'dotart' || t.dataset.cat === 'stone');
                 tabs.forEach(t => t.classList.remove('active'));
                 if (firstCatTab) firstCatTab.classList.add('active');
                 this._showModal('modal-block-selector');
@@ -1200,6 +1207,16 @@ class App {
             }
             this._hideModal('modal-block-selector');
             this._dotArtReplaceOldId = null;
+            return;
+        }
+        if (this._blockSelectorMode === 'palette') {
+            if (this.dotArtEditor) {
+                this.dotArtEditor.setBlock(id);
+                // パレットに一時的に追加（UI表示用）
+                this._addTempPaletteBlock(id, name);
+                this._toast(`🎨 パレットにセット: ${name}`);
+            }
+            this._hideModal('modal-block-selector');
             return;
         }
         const which = this._blockSelectorMode === 'from' ? 'replace-from' : 'replace-to';
@@ -2257,6 +2274,15 @@ class App {
             }
         };
 
+        // パレット変更
+        const btnPal = $('btn-palette-change');
+        if (btnPal) {
+            btnPal.onclick = () => {
+                this._blockSelectorMode = 'palette';
+                this._openBlockSelector();
+            };
+        }
+
         // クリア
         $('btn-clear-canvas').onclick = () => {
             if (confirm('キャンバスをクリアしますか？')) ed.clear();
@@ -2381,6 +2407,41 @@ class App {
         ProjectManager.save(this.projects);
         this._toast(`➕ 「${name}」を構造リストに追加しました`);
         this._renderMaterialsTab();
+    }
+
+    _addTempPaletteBlock(id, name) {
+        const $ = id => document.getElementById(id);
+        const paletteBox = $('block-palette');
+        if (!paletteBox) return;
+
+        // 重複チェック
+        const existing = [...paletteBox.querySelectorAll('.palette-btn')].find(b => b.dataset.id === id);
+        if (existing) {
+            existing.click();
+            return;
+        }
+
+        const btn = document.createElement('button');
+        btn.className = 'palette-btn active';
+        btn.dataset.id = id;
+        btn.title = name;
+        
+        // アイコン表示
+        const iconUrl = ResourcePack.isLoaded() ? ResourcePack.getItemTextureUrl(id) : null;
+        if (iconUrl) {
+            btn.innerHTML = `<img src="${iconUrl}" style="width:100%;height:100%;image-rendering:pixelated;object-fit:contain;">`;
+        } else {
+            btn.style.backgroundColor = '#888';
+            btn.textContent = '🧱';
+        }
+
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        btn.onclick = () => {
+            document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (this.dotArtEditor) this.dotArtEditor.setBlock(id);
+        };
+        paletteBox.insertBefore(btn, paletteBox.firstChild);
     }
 
     _renderDotArtMaterials(counts) {
