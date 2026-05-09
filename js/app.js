@@ -3003,15 +3003,15 @@ class App {
             const s = document.createElement('style');
             s.id = 'tour-style';
             s.textContent = [
-                '#tour-overlay{display:none;position:fixed;inset:0;z-index:9000}',
+                '#tour-overlay{position:fixed;inset:0;z-index:9000;pointer-events:none}',
                 '#tour-overlay.active{display:block}',
-                '#tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.01);z-index:9001;cursor:default}',
-                '#tour-spotlight{position:fixed;z-index:9002;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.72);border-radius:6px}',
-                /* フローティング説明カード（スポットライト付近） */
-                '#tour-card{position:fixed;z-index:9003;pointer-events:none;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:12px;padding:1rem 1.2rem;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.65)}',
+                '#tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.01);z-index:9001;pointer-events:none}',
+                '#tour-spotlight{position:fixed;z-index:9002;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.65);border-radius:6px}',
+                /* フローティング説明カード */
+                '#tour-card{position:fixed;z-index:9003;pointer-events:all;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:12px;padding:1rem 1.2rem;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.65)}',
                 '#tour-title{font-size:1rem;font-weight:700;margin:0 0 0.5rem;color:var(--text,#e2e8f0)}',
                 '#tour-body{font-size:0.86rem;color:var(--muted,#c8d4e8);margin:0;line-height:1.65;white-space:pre-line}',
-                /* 固定ナビバー（画面下中央） */
+                /* 固定ナビバー */
                 '#tour-nav-bar{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:9004;display:flex;gap:0.6rem;align-items:center;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:16px;padding:0.7rem 1.2rem;box-shadow:0 4px 28px rgba(0,0,0,0.65);pointer-events:all;white-space:nowrap}',
                 '#tour-step-ind{font-size:0.9rem;color:var(--accent,#63b3ed);font-family:monospace;padding:0 0.6rem;min-width:54px;text-align:center;letter-spacing:.04em}',
                 '#tour-prev-btn,#tour-next-btn{font-size:0.9rem!important;padding:0.48rem 1.1rem!important;min-width:84px}',
@@ -3079,12 +3079,12 @@ class App {
                 { target: '#layer-min',                      pos: 'left',   title: '⑦ 断面フィルター',          body: 'Y/X/Z 各軸の最小・最大スライダーを動かすと' + nl + 'その範囲だけを切り出して3D表示できます。' + nl + '内部構造の確認に便利です。↺ リセットで全体に戻ります。' }
             ],
             dotart: [
-                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像から設計図を作る',  body: 'お気に入りの画像を選んでください。' + nl + 'マイクラのブロックに自動で置き換わります！' },
-                { target: '#dotart-size-mode',           pos: 'bottom', title: '② サイズを決める',       body: '「地図モード」なら実際のマイクラ地図のサイズに。' + nl + '「カスタム」なら好きな大きさに調整できます。' },
-                { target: '#dotart-canvas',              pos: 'right',  title: '③ ここに完成図が出ます',  body: '変換されたドット絵がここに表示されます。' + nl + 'マウス操作で、拡大・縮小して確認しましょう。' },
-                { target: '.tool-buttons',               pos: 'right',  title: '④ 自由にお絵描き・修正',  body: 'ペンや消しゴムで直接描き込めます。' + nl + '魔法の杖 (🪄) を使うと、同じ色の場所を一気に置換できて便利です！' },
-                { target: '#btn-palette-change',         pos: 'left',   title: '⑤ 好きなブロックを追加',  body: 'カタログから、ドット絵に使いたいブロックを' + nl + '自由に追加してパレットを増やせます。' },
-                { target: '#dotart-materials',           pos: 'left',   title: '⑥ 必要素材のチェック',    body: '使われているブロックの合計数がここに出ます。' + nl + '「素材一覧」タブに反映させて建築の準備をしましょう！' }
+                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像を選んで自動変換',  body: 'まずはこのボタンで画像を選びましょう。' + nl + '一瞬でマイクラのドット絵に変換されます！' },
+                { target: '#dotart-size-mode',           pos: 'bottom', title: '② サイズを微調整する',  body: '思ったより大きい/小さい時はここで。' + nl + '設定を変えて「✨ 再生成」を押せば即座に反映されます。' },
+                { target: '#dotart-canvas',              pos: 'right',  title: '③ 変換されたドット絵',  body: 'ここに結果が表示されます。' + nl + '細かい部分はペンや消しゴムで直接直せます。' },
+                { target: '.tool-buttons',               pos: 'right',  title: '④ 便利な「一括置換」',   body: '魔法の杖 (🪄) ツールを使うと、' + nl + '特定の色を別のブロックに一気に置き換えられます。' },
+                { target: '#btn-palette-change',         pos: 'left',   title: '⑤ パレットを自由に増やす',body: 'カタログから好きなブロックを選んで、' + nl + '自分だけのパレットを組み立てましょう。' },
+                { target: '#dotart-materials',           pos: 'left',   title: '⑥ 必要なブロックを確認',  body: '最後はここで合計数を確認。' + nl + '「構造として追加」すれば、建築リストに合算されます！' }
             ],
             settings: [
                 { target: '#panel-settings', pos: 'top', title: '⚙️ 設定',
@@ -3217,7 +3217,7 @@ class App {
             else { this._closeTour(); return; }
         }
 
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 
         // スポットライト・カードの目標座標を計算してスプリングの目標に設定
         const computeTargets = () => {
