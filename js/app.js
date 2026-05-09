@@ -2332,13 +2332,6 @@ class App {
         $('map-tiles-x').addEventListener('input', updateMapPreview);
         $('map-tiles-y').addEventListener('input', updateMapPreview);
 
-        // 3D更新
-        $('btn-reload-3d').onclick = (e) => {
-            e.stopPropagation(); // summaryの開閉を防ぐ
-            this._load3DView();
-            this._toast('🔄 3Dビューを更新しました');
-        };
-
         // スライダーの数値表示更新
         ['contrast', 'saturation', 'dither'].forEach(id => {
             const range = $(`img2dot-${id}`);
@@ -3086,12 +3079,12 @@ class App {
                 { target: '#layer-min',                      pos: 'left',   title: '⑦ 断面フィルター',          body: 'Y/X/Z 各軸の最小・最大スライダーを動かすと' + nl + 'その範囲だけを切り出して3D表示できます。' + nl + '内部構造の確認に便利です。↺ リセットで全体に戻ります。' }
             ],
             dotart: [
-                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像から自動生成',      body: '画像からMinecraftブロックのドット絵を生成します。' + nl + '一度読み込めば、サイズを変えて「✨ 再生成」も可能です。' },
-                { target: '#dotart-size-mode',           pos: 'bottom', title: '② サイズ設定',           body: '地図アートなら「地図モード」、自由な大きさなら「カスタム」を選択してください。' },
-                { target: '#btn-dotart-mode-edit',       pos: 'bottom', title: '③ 編集モード',           body: '「編集」でドット単位の修正、「全体」で完成図の確認ができます。' },
-                { target: '.tool-buttons',               pos: 'right',  title: '④ ツール',               body: 'ペン・塗りつぶし・一括置換 (🪄) ・消しゴムが使えます。' + nl + '一括置換は特定ブロックを別の種類に全部変えられます。' },
-                { target: '#btn-palette-change',         pos: 'left',   title: '⑤ パレット変更',         body: '「🎨 変更/追加」ボタンから、カタログの全ブロックを' + nl + 'パレットに自由に追加できます。' },
-                { target: '#dotart-materials',           pos: 'left',   title: '⑥ 使用素材リスト',        body: '必要な素材が自動計算されます。' + nl + 'リストの項目をクリックでも一括置換を起動できます。' }
+                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像から設計図を作る',  body: 'お気に入りの画像を選んでください。' + nl + 'マイクラのブロックに自動で置き換わります！' },
+                { target: '#dotart-size-mode',           pos: 'bottom', title: '② サイズを決める',       body: '「地図モード」なら実際のマイクラ地図のサイズに。' + nl + '「カスタム」なら好きな大きさに調整できます。' },
+                { target: '#dotart-canvas',              pos: 'right',  title: '③ ここに完成図が出ます',  body: '変換されたドット絵がここに表示されます。' + nl + 'マウス操作で、拡大・縮小して確認しましょう。' },
+                { target: '.tool-buttons',               pos: 'right',  title: '④ 自由にお絵描き・修正',  body: 'ペンや消しゴムで直接描き込めます。' + nl + '魔法の杖 (🪄) を使うと、同じ色の場所を一気に置換できて便利です！' },
+                { target: '#btn-palette-change',         pos: 'left',   title: '⑤ 好きなブロックを追加',  body: 'カタログから、ドット絵に使いたいブロックを' + nl + '自由に追加してパレットを増やせます。' },
+                { target: '#dotart-materials',           pos: 'left',   title: '⑥ 必要素材のチェック',    body: '使われているブロックの合計数がここに出ます。' + nl + '「素材一覧」タブに反映させて建築の準備をしましょう！' }
             ],
             settings: [
                 { target: '#panel-settings', pos: 'top', title: '⚙️ 設定',
