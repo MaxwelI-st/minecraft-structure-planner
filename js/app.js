@@ -2269,8 +2269,12 @@ class App {
             const w = parseInt($('grid-width').value);
             const h = parseInt($('grid-height').value);
             if (w >= 8 && w <= 2048 && h >= 8 && h <= 2048) {
-                ed.resize(w, h);
-                this._toast(`📏 グリッドを ${w}x${h} にリサイズ`);
+                if (this.dotArtEditor) {
+                    this.dotArtEditor.resize(w, h);
+                    this._toast(`📏 グリッドを ${w}x${h} にリサイズ`);
+                }
+            } else {
+                this._toast('サイズは 8 〜 2048 の範囲で指定してください', 'error');
             }
         };
 
@@ -2293,8 +2297,46 @@ class App {
         $('btn-img2dot-pick').onclick = () => fileIn.click();
         fileIn.onchange = (e) => {
             const f = e.target.files[0];
-            if (f) this._img2dotConvert(f);
+            if (f) {
+                this._lastDotArtFile = f;
+                $('btn-img2dot-apply').disabled = false;
+                this._img2dotConvert(f);
+            }
             e.target.value = '';
+        };
+
+        // 再生成
+        $('btn-img2dot-apply').onclick = () => {
+            if (this._lastDotArtFile) this._img2dotConvert(this._lastDotArtFile);
+        };
+
+        // サイズモード切替
+        const sizeMode = $('dotart-size-mode');
+        const mapCtrls = $('dotart-map-size-controls');
+        const cusCtrls = $('dotart-custom-size-controls');
+        sizeMode.onchange = () => {
+            const isMap = sizeMode.value === 'map';
+            mapCtrls.style.display = isMap ? 'flex' : 'none';
+            cusCtrls.style.display = isMap ? 'none' : 'flex';
+        };
+
+        // 地図サイズプレビュー
+        const updateMapPreview = () => {
+            const scale = parseInt($('map-scale').value);
+            const tx = parseInt($('map-tiles-x').value) || 1;
+            const ty = parseInt($('map-tiles-y').value) || 1;
+            const unit = 128 * Math.pow(2, scale);
+            $('map-size-preview').textContent = `計算後のサイズ: ${unit * tx} × ${unit * ty}`;
+        };
+        $('map-scale').addEventListener('change', updateMapPreview);
+        $('map-tiles-x').addEventListener('input', updateMapPreview);
+        $('map-tiles-y').addEventListener('input', updateMapPreview);
+
+        // 3D更新
+        $('btn-reload-3d').onclick = (e) => {
+            e.stopPropagation(); // summaryの開閉を防ぐ
+            this._load3DView();
+            this._toast('🔄 3Dビューを更新しました');
         };
 
         // スライダーの数値表示更新
@@ -2339,14 +2381,21 @@ class App {
             const m = await import('./image2dot.js');
             const img = await m.loadImage(file);
 
-            // 統合版地図仕様の読み取り
-            const scale = parseInt(document.getElementById('map-scale').value);
-            const tilesX = parseInt(document.getElementById('map-tiles-x').value) || 1;
-            const tilesY = parseInt(document.getElementById('map-tiles-y').value) || 1;
-            
-            const unitSize = m.MAP_BASE_SIZE * Math.pow(2, scale);
-            const gridW = unitSize * tilesX;
-            const gridH = unitSize * tilesY;
+            // サイズ決定モードの読み取り
+            const sizeMode = document.getElementById('dotart-size-mode').value;
+            let gridW, gridH;
+
+            if (sizeMode === 'map') {
+                const scale = parseInt(document.getElementById('map-scale').value);
+                const tilesX = parseInt(document.getElementById('map-tiles-x').value) || 1;
+                const tilesY = parseInt(document.getElementById('map-tiles-y').value) || 1;
+                const unitSize = m.MAP_BASE_SIZE * Math.pow(2, scale);
+                gridW = unitSize * tilesX;
+                gridH = unitSize * tilesY;
+            } else {
+                gridW = parseInt(document.getElementById('grid-width').value) || 32;
+                gridH = parseInt(document.getElementById('grid-height').value) || 32;
+            }
 
             const mode = document.getElementById('img2dot-mode').value;
             const filterKey = document.getElementById('img2dot-filter').value;
@@ -3037,12 +3086,12 @@ class App {
                 { target: '#layer-min',                      pos: 'left',   title: '⑦ 断面フィルター',          body: 'Y/X/Z 各軸の最小・最大スライダーを動かすと' + nl + 'その範囲だけを切り出して3D表示できます。' + nl + '内部構造の確認に便利です。↺ リセットで全体に戻ります。' }
             ],
             dotart: [
-                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像から自動生成',      body: '画像ファイルをアップロードすると、Minecraftブロックで' + nl + 'できたドット絵に自動変換されます。' },
-                { target: '#img2dot-mode',               pos: 'bottom', title: '② 変換モード',           body: '「見た目」は3D建築向け。' + nl + '「マップ表示色」は地図アートとして正確な色になります。' },
-                { target: '#dotart-canvas',              pos: 'right',  title: '③ キャンバス',           body: '変換結果がここに表示されます。' + nl + 'ペン・塗りつぶし・消しゴムツールで手描き編集もできます。' },
-                { target: '#dotart-materials',           pos: 'left',   title: '④ 使用素材リスト',        body: '使われているブロックと必要数が一覧表示されます。' + nl + 'クリックすると別ブロックに一括置換できます。' },
-                { target: '#btn-export-dotart',          pos: 'top',    title: '⑤ 素材計算',            body: 'ドット絵の素材を「素材一覧」タブに反映させます。' + nl + '建築で必要な数を自動計算できます。' },
-                { target: '#btn-export-png',             pos: 'top',    title: '⑥ PNG保存',             body: 'ドット絵をPNG画像としてダウンロードできます。' }
+                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像から自動生成',      body: '画像からMinecraftブロックのドット絵を生成します。' + nl + '一度読み込めば、サイズを変えて「✨ 再生成」も可能です。' },
+                { target: '#dotart-size-mode',           pos: 'bottom', title: '② サイズ設定',           body: '地図アートなら「地図モード」、自由な大きさなら「カスタム」を選択してください。' },
+                { target: '#btn-dotart-mode-edit',       pos: 'bottom', title: '③ 編集モード',           body: '「編集」でドット単位の修正、「全体」で完成図の確認ができます。' },
+                { target: '.tool-buttons',               pos: 'right',  title: '④ ツール',               body: 'ペン・塗りつぶし・一括置換 (🪄) ・消しゴムが使えます。' + nl + '一括置換は特定ブロックを別の種類に全部変えられます。' },
+                { target: '#btn-palette-change',         pos: 'left',   title: '⑤ パレット変更',         body: '「🎨 変更/追加」ボタンから、カタログの全ブロックを' + nl + 'パレットに自由に追加できます。' },
+                { target: '#dotart-materials',           pos: 'left',   title: '⑥ 使用素材リスト',        body: '必要な素材が自動計算されます。' + nl + 'リストの項目をクリックでも一括置換を起動できます。' }
             ],
             settings: [
                 { target: '#panel-settings', pos: 'top', title: '⚙️ 設定',
