@@ -43,23 +43,22 @@ class ProjectManager {
 
     static save(projects) {
         try {
-            // Limit: 20 projects, strip coords + bufferCache before saving
-            const toSave = projects.slice(0, 20).map(p => ({
+            // Limit: use constant
+            const toSave = projects.slice(0, App.MAX_PROJECTS).map(p => ({
                 ...p,
                 structures: p.structures.map(s => {
-                    const { coords, rawBuffer, ...rest } = s;  // don't persist coords/buffer
+                    const { coords, rawBuffer, ...rest } = s;
                     return rest;
                 })
             }));
             const json = JSON.stringify(toSave);
-            // ~5MB が一般的な localStorage 上限。事前に検知して警告
-            if (json.length > 4 * 1024 * 1024) {
+            // ~5MB limit check
+            if (json.length > App.STORAGE_WARNING_SIZE) {
                 console.warn('プロジェクトJSON が 4MB 超：localStorage 上限に近づいています', json.length);
             }
             localStorage.setItem(this.KEY, json);
         } catch (e) {
             console.error('Save failed', e);
-            // QuotaExceededError 対策：古いプロジェクトから削る
             if (e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
                 const reduced = projects.slice(0, Math.max(1, Math.floor(projects.length / 2)));
                 try {
@@ -126,6 +125,10 @@ class ProjectManager {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 class App {
+    static MAX_PROJECTS = 20;
+    static STORAGE_WARNING_SIZE = 4 * 1024 * 1024; // 4MB
+    static LARGE_FILE_WARNING = 50 * 1024 * 1024; // 50MB
+
     constructor() {
         this.projects = ProjectManager.load();
         this.currentProjectId = null;
@@ -136,11 +139,16 @@ class App {
         this.replacements = new Map(); // structureId → Map<fromId, toId>
         this.preparedItems = new Map(); // structureId → Set<blockId>
         this.currentFilter = 'all';
+        this.lastSearchQuery = '';      // 素材検索の文字保持
         this.viewer3d = null;
         this.dotArtEditor = null;
         this.worker = new Worker(new URL('./worker.js?v=2.5.6', import.meta.url), { type: 'module' });
-        this.pendingParseResolve = null;
+        this.pendingParses = new Map(); // taskId => resolve
         this.settingsData = JSON.parse(localStorage.getItem('mc_planner_settings') || '{}');
+        // カスタムフォルダシステム: [{id, name, blockIds:[]}]
+        this._customFolders = JSON.parse(localStorage.getItem('mc_planner_block_folders') || '[]');
+        this._dragEditMode = false;
+        this._deletedPositions = new Set(); // 3Dビューで1つだけ削除したブロック位置
 
         this._setupWorker();
         this._init();
@@ -163,6 +171,7 @@ class App {
 
         this._setupDOM();
         this._setupDragDrop();
+        this._setupTour();
         this._setupSidebarDropZone();
         this._renderProjectList();
 
@@ -190,24 +199,25 @@ class App {
 
     _setupWorker() {
         this.worker.onmessage = (e) => {
-            const { success, error, results, coords, size, totalCount, uniqueCount, totalSlots } = e.data;
+            const { taskId, success, error, results, coords, size, totalCount, uniqueCount, totalSlots } = e.data;
             this._hideLoading();
-            if (this.pendingParseResolve) {
-                this.pendingParseResolve({ success, error, results, coords, size, totalCount, uniqueCount, totalSlots });
-                this.pendingParseResolve = null;
+            const resolve = this.pendingParses.get(taskId);
+            if (resolve) {
+                resolve({ success, error, results, coords, size, totalCount, uniqueCount, totalSlots });
+                this.pendingParses.delete(taskId);
             }
         };
     }
 
     _parseFile(file) {
         return new Promise((resolve) => {
-            this.pendingParseResolve = resolve;
+            const taskId = uid();
+            this.pendingParses.set(taskId, resolve);
             this._showLoading(`解析中: ${file.name}`);
             const reader = new FileReader();
             reader.onload = (e) => {
-                // 後で再パースできるように buffer をキャッシュへ渡す
                 this._lastParsedBuffer = e.target.result;
-                this.worker.postMessage({ buffer: e.target.result, fileName: file.name });
+                this.worker.postMessage({ taskId, buffer: e.target.result, fileName: file.name });
             };
             reader.readAsArrayBuffer(file);
         });
@@ -216,9 +226,10 @@ class App {
     /** 既にメモリ上にある ArrayBuffer から再パースする（ファイル選択ダイアログを開かない） */
     _parseBuffer(buffer) {
         return new Promise((resolve) => {
-            this.pendingParseResolve = resolve;
+            const taskId = uid();
+            this.pendingParses.set(taskId, resolve);
             this._showLoading('再解析中...');
-            this.worker.postMessage({ buffer });
+            this.worker.postMessage({ taskId, buffer });
         });
     }
 
@@ -229,7 +240,7 @@ class App {
         // Sidebar buttons
         $('btn-new-project').onclick = () => this._showModal('modal-new-project');
         $('btn-go-home').onclick = () => this._goHome();
-        $('btn-import-file').onclick = () => $('file-input').click();
+        // btn-import-file は削除済み
         $('btn-confirm-new-project').onclick = () => {
             const name = $('new-project-name').value.trim();
             if (!name) { $('new-project-name').focus(); return; }
@@ -268,8 +279,15 @@ class App {
             btn.addEventListener('click', () => this._switchTab(btn.dataset.tab));
         });
 
-        // Search & filter
-        $('search-input').addEventListener('input', () => this._renderBlockList());
+        // Search & filter (P1デバウンス改善 & 文字保持)
+        let searchTimeout;
+        const searchInput = $('search-input');
+        searchInput.value = this.lastSearchQuery;
+        searchInput.addEventListener('input', () => {
+            this.lastSearchQuery = searchInput.value;
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => this._renderBlockList(), 200);
+        });
         document.querySelectorAll('.filter-pill').forEach(pill => {
             pill.addEventListener('click', () => {
                 document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
@@ -315,7 +333,7 @@ class App {
         // Settings tab - update stats when shown
         document.querySelector('[data-tab="settings"]').addEventListener('click', () => {
             const count = this.projects.length;
-            $('setting-project-count').textContent = `${count} / 20`;
+            $('setting-project-count').textContent = `${count} / ${App.MAX_PROJECTS}`;
             try {
                 const bytes = new Blob([localStorage.getItem('mc_planner_v2') || '']).size;
                 $('setting-storage-size').textContent = bytes > 1024
@@ -433,13 +451,41 @@ class App {
     _setup3DViewTab() {
         const $ = id => document.getElementById(id);
 
-        const layerMin = $('layer-min');
-        const layerMax = $('layer-max');
-        const minVal = $('layer-min-val');
-        const maxVal = $('layer-max-val');
+        // ─── 断面スライダー（Y/X/Z）デバウンス付きリアルタイム反映 ───
+        let sliceTimer = null;
+        const sliders = [
+            { id: 'layer-min',  val: 'layer-min-val'  },
+            { id: 'layer-max',  val: 'layer-max-val'  },
+            { id: 'layer-xmin', val: 'layer-xmin-val' },
+            { id: 'layer-xmax', val: 'layer-xmax-val' },
+            { id: 'layer-zmin', val: 'layer-zmin-val' },
+            { id: 'layer-zmax', val: 'layer-zmax-val' },
+        ];
+        for (const { id, val } of sliders) {
+            const el = $(id), valEl = $(val);
+            if (!el) continue;
+            el.addEventListener('input', () => {
+                if (valEl) valEl.textContent = el.value;
+                clearTimeout(sliceTimer);
+                sliceTimer = setTimeout(() => this._applySlice(), 80);
+            });
+        }
 
-        layerMin.addEventListener('input', () => { minVal.textContent = layerMin.value; });
-        layerMax.addEventListener('input', () => { maxVal.textContent = layerMax.value; });
+        // リセットボタン
+        $('btn-slice-reset')?.addEventListener('click', () => {
+            const size = this.viewer3d?._lastSize;
+            const setSlider = (id, valId, v) => {
+                const el = $(id); const ve = $(valId);
+                if (el) el.value = v; if (ve) ve.textContent = v;
+            };
+            setSlider('layer-min',  'layer-min-val',  0);
+            setSlider('layer-max',  'layer-max-val',  size ? size.y - 1 : 255);
+            setSlider('layer-xmin', 'layer-xmin-val', 0);
+            setSlider('layer-xmax', 'layer-xmax-val', size ? size.x - 1 : 255);
+            setSlider('layer-zmin', 'layer-zmin-val', 0);
+            setSlider('layer-zmax', 'layer-zmax-val', size ? size.z - 1 : 255);
+            this._applySlice();
+        });
 
         $('btn-load-3d').onclick = () => this._load3DView();
         $('btn-reload-3d').onclick = () => this._load3DView();
@@ -573,7 +619,6 @@ class App {
         // 表示色モード切替
         document.querySelectorAll('input[name="viewer3d-colormode"]').forEach(r => {
             r.addEventListener('change', () => {
-                console.log(`--- App: colormode change detected: ${r.value} (checked: ${r.checked}) ---`);
                 if (!r.checked || !this.viewer3d) return;
                 this.viewer3d.setColorMode(r.value);
             });
@@ -655,12 +700,16 @@ class App {
                 });
             });
 
-            // 検索
+            // 検索 (P1デバウンス改善)
             const searchEl = $('block-selector-search');
             if (searchEl) {
+                let selSearchTimeout;
                 searchEl.addEventListener('input', () => {
-                    const active = document.querySelector('#modal-block-selector .tab-pill.active');
-                    this._renderBlockSelectorGrid(active?.dataset.cat || 'current');
+                    clearTimeout(selSearchTimeout);
+                    selSearchTimeout = setTimeout(() => {
+                        const active = document.querySelector('#modal-block-selector .tab-pill.active');
+                        this._renderBlockSelectorGrid(active?.dataset.cat || 'current');
+                    }, 200);
                 });
             }
         } catch (err) {
@@ -681,21 +730,33 @@ class App {
                 if (title) title.textContent = '置換元のブロック選択（複数選択可）';
                 if (sub)   sub.textContent   = '現在の構造のブロックをクリックして選択（複数OK）';
                 // 置換元モード: "現在のブロック"タブのみ表示
-                tabs.forEach(t => { t.style.display = t.dataset.cat === 'current' ? '' : 'none'; });
+                tabs.forEach(t => { t.style.display = (t.dataset.cat === 'current') ? '' : 'none'; });
                 tabs.forEach(t => t.classList.toggle('active', t.dataset.cat === 'current'));
                 this._fromSelections.clear();
                 this._showModal('modal-block-selector');
                 this._renderBlockSelectorGrid('current');
-            } else {
+            } else if (this._blockSelectorMode === 'to') {
                 const title = $('block-selector-title');
                 const sub   = $('block-selector-sub');
                 if (title) title.textContent = '置換先のブロック選択';
                 if (sub)   sub.textContent   = 'ブロックを選んでください（削除 = air に置換）';
-                // 置換先モード: カタログタブのみ（"現在のブロック"タブは非表示）
+                // 置換先モード: カタログタブを表示（dotartタブは非表示）
                 tabs.forEach(t => {
-                    t.style.display = t.dataset.cat === 'current' ? 'none' : '';
+                    t.style.display = (t.dataset.cat === 'current' || t.dataset.cat === 'dotart') ? 'none' : '';
                 });
-                const firstCatTab = [...tabs].find(t => t.dataset.cat !== 'current');
+                const firstCatTab = [...tabs].find(t => t.dataset.cat !== 'current' && t.dataset.cat !== 'dotart');
+                tabs.forEach(t => t.classList.remove('active'));
+                if (firstCatTab) firstCatTab.classList.add('active');
+                this._showModal('modal-block-selector');
+                this._renderBlockSelectorGrid(firstCatTab?.dataset.cat || 'stone');
+            } else if (this._blockSelectorMode === 'dotart') {
+                const title = $('block-selector-title');
+                const sub   = $('block-selector-sub');
+                if (title) title.textContent = 'ドット絵ブロックの一括置換';
+                if (sub)   sub.textContent   = '新しいブロックをカタログから選んでください';
+                // ドット絵モード: dotartタブのみ表示（他カタログタブは非表示）
+                tabs.forEach(t => { t.style.display = (t.dataset.cat === 'dotart') ? '' : 'none'; });
+                const firstCatTab = [...tabs].find(t => t.dataset.cat === 'dotart');
                 tabs.forEach(t => t.classList.remove('active'));
                 if (firstCatTab) firstCatTab.classList.add('active');
                 this._showModal('modal-block-selector');
@@ -777,17 +838,36 @@ class App {
                 };
                 grid.appendChild(card);
             }
+        } else if (category === 'dotart') {
+            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.5rem;overflow-y:auto;';
+            const blocks = DOT_PALETTE.filter(p => {
+                if (search) {
+                    const n = p.name.toLowerCase();
+                    return n.includes(search) || p.id.includes(search);
+                }
+                return true;
+            });
+            for (const p of blocks) {
+                const name = p.name;
+                const card = document.createElement('button');
+                card.className = 'block-pick-card';
+                card.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(p.id)}</div><span class="block-pick-name">${this._escape(name)}</span>`;
+                card.onclick = () => this._selectBlockFromModal(p.id, name, card.querySelector('img')?.src);
+                grid.appendChild(card);
+            }
         } else {
             // カタログ
             grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));grid-auto-rows:min-content;gap:0.5rem;overflow-y:auto;align-items:start;align-content:start;';
 
-            // 1) 削除ボタン
-            const delCard = document.createElement('button');
-            delCard.className = 'block-pick-card';
-            delCard.style.border = '1.5px dashed var(--danger,#e55)';
-            delCard.innerHTML = `<div class="block-pick-icon-wrap" style="font-size:1.6rem">🗑️</div><span class="block-pick-name" style="color:var(--danger,#e55)">削除 (air)</span>`;
-            delCard.onclick = () => this._selectBlockFromModal('minecraft:air', '削除（air）', null);
-            grid.appendChild(delCard);
+            // 1) 削除ボタン (specialタブのみ表示)
+            if (category === 'special') {
+                const delCard = document.createElement('button');
+                delCard.className = 'block-pick-card';
+                delCard.style.border = '1.5px dashed var(--danger,#e55)';
+                delCard.innerHTML = `<div class="block-pick-icon-wrap" style="font-size:1.6rem">🗑️</div><span class="block-pick-name" style="color:var(--danger,#e55)">削除 (air)</span>`;
+                delCard.onclick = () => this._selectBlockFromModal('minecraft:air', '削除（air）', null);
+                grid.appendChild(delCard);
+            }
 
             // 2) 錆止め変換ボタン (specialタブのみ)
             if (category === 'special') {
@@ -799,12 +879,27 @@ class App {
                 grid.appendChild(waxCard);
             }
 
+            // "すべて" タブはカスタムフォルダシステムを使用（検索なし時）
+            if (category === 'all' && !search) {
+                this._renderAllTabWithFolders(grid);
+                return;
+            }
+
             const allIds = this._getBlockCatalogEntries(category, search);
-            // 「すべて」タブの時だけフォルダ分けを行う
-            const { groups, standalone } = (category === 'all' && !search) ? this._processBlockGroups(allIds) : { groups: {}, standalone: allIds };
+            
+            // 特殊タブ用のグルーピングロジック (P2改善: サバイバル不可をまとめる)
+            let standalone = allIds;
+            const groups = {};
+
+            if (category === 'special' && !search) {
+                const sysIds = allIds.filter(id => /command_block|structure_block|structure_void|jigsaw|barrier|light_block/.test(id));
+                if (sysIds.length > 0) {
+                    groups['システム・サバイバル不可'] = sysIds;
+                    standalone = allIds.filter(id => !sysIds.includes(id));
+                }
+            }
 
             for (const [gName, gIds] of Object.entries(groups)) {
-                if (gIds.length <= 1) { standalone.push(...gIds); continue; }
                 const folder = document.createElement('button');
                 folder.className = 'block-pick-card folder-card';
                 folder.style.background = 'rgba(255,255,255,0.05)';
@@ -817,7 +912,6 @@ class App {
                     backBtn.textContent = `← 戻る (${gName})`;
                     backBtn.onclick = () => this._renderBlockSelectorGrid(category);
                     grid.appendChild(backBtn);
-                    
                     for (const bid of gIds) this._renderBlockCard(grid, bid);
                 };
                 grid.appendChild(folder);
@@ -851,31 +945,227 @@ class App {
         this._toast('🛡️ 錆止め状態にセットしました');
     }
 
-    _processBlockGroups(ids) {
-        const groups = {}, standalone = [];
-        for (const id of ids) {
-            const local = id.replace(/^minecraft:/, '');
-            let g = null;
-            if (local.includes('wool')) g = '羊毛 (16色)';
-            else if (local.includes('concrete_powder')) g = 'コンクリートパウダー';
-            else if (local.includes('concrete')) g = 'コンクリート';
-            else if (local.includes('terracotta')) g = 'テラコッタ';
-            else if (local.includes('glass')) g = 'ガラス系';
-            else if (local.includes('shulker_box')) g = 'シュルカーボックス';
-            else if (local.includes('candle')) g = 'ロウソク';
-            else if (local.includes('cobblestone')) g = '丸石シリーズ';
-            else if (local.includes('stone_brick')) g = '石レンガシリーズ';
-            else if (local.includes('deepslate')) g = '深層岩シリーズ';
-            else if (local.includes('tuff')) g = '凝灰岩シリーズ';
-            else if (local.includes('copper')) g = '銅ブロック';
-            else if (local.includes('oak')) g = 'オーク材';
-            else if (local.includes('spruce')) g = 'トウヒ材';
-            else if (local.includes('birch')) g = 'シラカバ材';
-            
-            if (g) { if (!groups[g]) groups[g] = []; groups[g].push(id); }
-            else standalone.push(id);
+    // ─── カスタムフォルダ保存 ───────────────────────────────────────────────
+    _saveCustomFolders() {
+        localStorage.setItem('mc_planner_block_folders', JSON.stringify(this._customFolders));
+    }
+
+    // ─── "すべて" タブ用カスタムフォルダ描画 ─────────────────────────────
+    _renderAllTabWithFolders(grid) {
+        const allIds = this._getBlockCatalogEntries('all');
+        const inFolderSet = new Set(this._customFolders.flatMap(f => f.blockIds));
+        const unassigned = allIds.filter(id => !inFolderSet.has(id));
+
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));grid-auto-rows:min-content;gap:0.5rem;overflow-y:auto;align-items:start;align-content:start;';
+
+        // ── ツールバー ──
+        const toolbar = document.createElement('div');
+        toolbar.id = 'folder-toolbar';
+        toolbar.style.cssText = 'grid-column:1/-1;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;padding:0.25rem 0;';
+
+        // 新規フォルダボタン
+        const btnAdd = document.createElement('button');
+        btnAdd.className = 'mc-btn small';
+        btnAdd.style.cssText = 'background:var(--surface3);font-size:0.78rem;';
+        btnAdd.textContent = '📁+ フォルダを作成';
+        btnAdd.onclick = () => {
+            const name = prompt('フォルダ名を入力してください:');
+            if (!name?.trim()) return;
+            this._customFolders.push({ id: Math.random().toString(36).slice(2, 10), name: name.trim(), blockIds: [] });
+            this._saveCustomFolders();
+            this._renderBlockSelectorGrid('all');
+        };
+        toolbar.appendChild(btnAdd);
+
+        // ドラッグ編集モード toggle
+        const btnDrag = document.createElement('button');
+        btnDrag.className = 'mc-btn small' + (this._dragEditMode ? ' primary' : '');
+        btnDrag.style.cssText = 'font-size:0.78rem;' + (this._dragEditMode ? 'background:var(--accent);' : 'background:var(--surface3);');
+        btnDrag.textContent = this._dragEditMode ? '✏️ 編集中（クリックで終了）' : '✏️ ドラッグ編集';
+        btnDrag.onclick = () => {
+            this._dragEditMode = !this._dragEditMode;
+            this._renderBlockSelectorGrid('all');
+        };
+        toolbar.appendChild(btnDrag);
+
+        // 全体に反映ボタン（フォルダが存在する場合のみ）
+        if (this._customFolders.length > 0) {
+            const btnApply = document.createElement('button');
+            btnApply.className = 'mc-btn small';
+            btnApply.style.cssText = 'background:var(--surface3);font-size:0.78rem;margin-left:auto;';
+            btnApply.textContent = '💾 整理を保存';
+            btnApply.title = 'カスタムフォルダをlocalStorageに保存（既に自動保存されています）';
+            btnApply.onclick = () => {
+                this._saveCustomFolders();
+                this._toast('✅ フォルダ構成を保存しました');
+            };
+            toolbar.appendChild(btnApply);
         }
-        return { groups, standalone };
+
+        grid.appendChild(toolbar);
+
+        // ── カスタムフォルダカード ──
+        for (const folder of this._customFolders) {
+            const card = document.createElement('div');
+            card.className = 'block-pick-card folder-card';
+            card.style.cssText = 'background:rgba(255,255,255,0.06);cursor:pointer;position:relative;user-select:none;';
+
+            if (this._dragEditMode) {
+                card.style.outline = '2px dashed var(--accent)';
+                card.ondragover = (e) => { e.preventDefault(); card.style.background = 'rgba(99,179,237,0.2)'; };
+                card.ondragleave = () => { card.style.background = 'rgba(255,255,255,0.06)'; };
+                card.ondrop = (e) => {
+                    e.preventDefault();
+                    card.style.background = 'rgba(255,255,255,0.06)';
+                    const blockId = e.dataTransfer.getData('text/plain');
+                    if (!blockId) return;
+                    // 他フォルダから削除
+                    for (const f of this._customFolders) {
+                        f.blockIds = f.blockIds.filter(id => id !== blockId);
+                    }
+                    // このフォルダに追加（重複なし）
+                    if (!folder.blockIds.includes(blockId)) folder.blockIds.push(blockId);
+                    this._saveCustomFolders();
+                    this._renderBlockSelectorGrid('all');
+                };
+            }
+
+            // フォルダ本体クリック → 中身を見る
+            card.onclick = (e) => {
+                if (e.target.closest('.folder-action-btn')) return;
+                this._openCustomFolder(grid, folder);
+            };
+
+            card.innerHTML = `
+                <div class="block-pick-icon-wrap" style="font-size:1.6rem">📁</div>
+                <span class="block-pick-name" style="font-weight:bold">${this._escape(folder.name)}</span>
+                <small style="font-size:0.6rem;color:var(--muted2)">${folder.blockIds.length}個</small>
+                <div style="display:flex;gap:2px;justify-content:center;margin-top:3px;">
+                  <button class="folder-action-btn" title="名前変更" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:var(--muted2);padding:1px 4px;">✏️</button>
+                  <button class="folder-action-btn" title="削除" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:var(--danger,#e55);padding:1px 4px;">✕</button>
+                </div>
+            `;
+
+            // ✏️ 名前変更
+            card.querySelectorAll('.folder-action-btn')[0].onclick = (e) => {
+                e.stopPropagation();
+                const newName = prompt('新しいフォルダ名:', folder.name);
+                if (!newName?.trim()) return;
+                folder.name = newName.trim();
+                this._saveCustomFolders();
+                this._renderBlockSelectorGrid('all');
+            };
+            // ✕ 削除
+            card.querySelectorAll('.folder-action-btn')[1].onclick = (e) => {
+                e.stopPropagation();
+                if (!confirm(`「${folder.name}」フォルダを削除しますか？（中のブロックは未分類に戻ります）`)) return;
+                this._customFolders = this._customFolders.filter(f => f.id !== folder.id);
+                this._saveCustomFolders();
+                this._renderBlockSelectorGrid('all');
+            };
+
+            grid.appendChild(card);
+        }
+
+        // ── 未分類セクション ──
+        if (unassigned.length > 0) {
+            const label = document.createElement('div');
+            label.style.cssText = 'grid-column:1/-1;font-size:0.72rem;color:var(--muted2);padding:0.25rem 0;margin-top:0.25rem;border-top:1px solid var(--border);';
+            label.textContent = `未分類 (${unassigned.length})`;
+            grid.appendChild(label);
+
+            for (const bid of unassigned) {
+                const name = this.langData?.[bid] || bid.replace('minecraft:', '');
+                const bcard = document.createElement('div');
+                bcard.className = 'block-pick-card';
+                bcard.style.cssText = 'cursor:pointer;';
+
+                if (this._dragEditMode) {
+                    bcard.draggable = true;
+                    bcard.style.cursor = 'grab';
+                    bcard.ondragstart = (e) => {
+                        e.dataTransfer.setData('text/plain', bid);
+                        bcard.style.opacity = '0.5';
+                    };
+                    bcard.ondragend = () => { bcard.style.opacity = '1'; };
+                } else {
+                    bcard.onclick = () => this._selectBlockFromModal(bid, name, bcard.querySelector('img')?.src);
+                }
+
+                bcard.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(bid)}</div><span class="block-pick-name">${this._escape(name)}</span>`;
+                grid.appendChild(bcard);
+            }
+        }
+    }
+
+    // フォルダの中身を表示
+    _openCustomFolder(grid, folder) {
+        grid.innerHTML = '';
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));grid-auto-rows:min-content;gap:0.5rem;overflow-y:auto;align-items:start;align-content:start;';
+
+        // 戻るボタン
+        const backBtn = document.createElement('button');
+        backBtn.className = 'mc-btn small';
+        backBtn.style.cssText = 'grid-column:1/-1;background:var(--surface3);font-size:0.8rem;height:30px;';
+        backBtn.textContent = `← 戻る (${folder.name})`;
+        backBtn.onclick = () => this._renderBlockSelectorGrid('all');
+        grid.appendChild(backBtn);
+
+        if (folder.blockIds.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'grid-column:1/-1;text-align:center;color:var(--muted2);padding:2rem;font-size:0.85rem;';
+            empty.textContent = 'フォルダは空です。ドラッグ編集モードでブロックを追加してください。';
+            grid.appendChild(empty);
+            return;
+        }
+
+        for (const bid of folder.blockIds) {
+            const name = this.langData?.[bid] || bid.replace('minecraft:', '');
+            const bcard = document.createElement('div');
+            bcard.className = 'block-pick-card';
+            bcard.style.cssText = 'cursor:pointer;position:relative;';
+
+            if (this._dragEditMode) {
+                bcard.draggable = true;
+                bcard.style.cursor = 'grab';
+                bcard.ondragstart = (e) => {
+                    e.dataTransfer.setData('text/plain', bid);
+                    bcard.style.opacity = '0.5';
+                };
+                bcard.ondragend = () => { bcard.style.opacity = '1'; };
+                // フォルダ内でのみ：「このフォルダから削除」ボタン
+                const removeBtn = document.createElement('button');
+                removeBtn.title = 'このフォルダから削除';
+                removeBtn.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(229,85,85,0.8);border:none;border-radius:50%;width:16px;height:16px;font-size:0.6rem;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;';
+                removeBtn.textContent = '✕';
+                removeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    folder.blockIds = folder.blockIds.filter(id => id !== bid);
+                    this._saveCustomFolders();
+                    this._openCustomFolder(grid, folder);
+                };
+                bcard.appendChild(removeBtn);
+            } else {
+                bcard.onclick = () => this._selectBlockFromModal(bid, name, bcard.querySelector('img')?.src);
+            }
+
+            bcard.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(bid)}</div><span class="block-pick-name">${this._escape(name)}</span>`;
+            if (this._dragEditMode) {
+                const removeBtn2 = document.createElement('button');
+                removeBtn2.title = 'このフォルダから削除';
+                removeBtn2.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(229,85,85,0.85);border:none;border-radius:50%;width:16px;height:16px;font-size:0.6rem;cursor:pointer;color:#fff;line-height:1;';
+                removeBtn2.textContent = '✕';
+                removeBtn2.onclick = (e) => {
+                    e.stopPropagation();
+                    folder.blockIds = folder.blockIds.filter(id => id !== bid);
+                    this._saveCustomFolders();
+                    this._openCustomFolder(grid, folder);
+                };
+                bcard.appendChild(removeBtn2);
+            }
+
+            grid.appendChild(bcard);
+        }
     }
 
     _getBlockIconHtml(blockId, states = {}) {
@@ -903,6 +1193,15 @@ class App {
     }
 
     _selectBlockFromModal(id, name, imgUrl) {
+        if (this._blockSelectorMode === 'dotart') {
+            if (this.dotArtEditor && this._dotArtReplaceOldId) {
+                this.dotArtEditor.replaceBlock(this._dotArtReplaceOldId, id);
+                this._toast(`🪄 全て置換: ${id.replace('minecraft:', '')}`);
+            }
+            this._hideModal('modal-block-selector');
+            this._dotArtReplaceOldId = null;
+            return;
+        }
         const which = this._blockSelectorMode === 'from' ? 'replace-from' : 'replace-to';
         document.getElementById(which).value = id;
 
@@ -925,8 +1224,28 @@ class App {
     }
 
     _getBlockCatalogEntries(category, search = '') {
-        // BC_DATA は block_catalog.js からの import
-        const rawIds = BC_DATA[category] || [];
+        let rawIds;
+        if (category === 'all') {
+            const all = new Set();
+            for (const key of Object.keys(BC_DATA)) {
+                const data = BC_DATA[key];
+                if (Array.isArray(data)) {
+                    data.forEach(id => all.add(id));
+                } else if (data && typeof data === 'object') {
+                    Object.values(data).forEach(arr => Array.isArray(arr) && arr.forEach(id => all.add(id)));
+                }
+            }
+            rawIds = [...all];
+        } else {
+            const catData = BC_DATA[category];
+            if (!catData) {
+                rawIds = [];
+            } else if (Array.isArray(catData)) {
+                rawIds = catData;
+            } else {
+                rawIds = Object.values(catData).flat();
+            }
+        }
         if (!search) return rawIds;
         const q = search.toLowerCase();
         return rawIds.filter(id => {
@@ -1037,6 +1356,33 @@ class App {
 
     // ─── Drag & Drop ───────────────────────────────────────────────────────────
     _setupDragDrop() {
+        // サイドバーへのドロップ対応
+        const sidebar = document.getElementById('sidebar');
+        const sidebarHint = document.getElementById('sidebar-drop-hint');
+        let sidebarDragCount = 0;
+        sidebar.addEventListener('dragenter', (e) => {
+            if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+            sidebarDragCount++;
+            if (sidebarHint) sidebarHint.classList.add('active');
+        });
+        sidebar.addEventListener('dragleave', () => {
+            sidebarDragCount = Math.max(0, sidebarDragCount - 1);
+            if (sidebarDragCount === 0 && sidebarHint) sidebarHint.classList.remove('active');
+        });
+        sidebar.addEventListener('dragover', (e) => {
+            if (Array.from(e.dataTransfer?.types || []).includes('Files')) e.preventDefault();
+        });
+        sidebar.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            sidebarDragCount = 0;
+            if (sidebarHint) sidebarHint.classList.remove('active');
+            const files = Array.from(e.dataTransfer.files).filter(f => /\.mcstructure$/i.test(f.name));
+            if (files.length > 0) {
+                e.stopPropagation(); // ウェルカム画面側のdropと重複しないよう
+                await this._handleFiles(files);
+            }
+        });
+
         document.addEventListener('dragover', (e) => {
             e.preventDefault();
             const zone = document.getElementById('drop-zone');
@@ -1181,6 +1527,19 @@ class App {
     _selectProject(id) {
         this.currentProjectId = id;
         localStorage.setItem('mc_planner_last', id);
+
+        // キャッシュ管理: 現在のプロジェクト以外の重いデータを解放 (P1改善)
+        const currentProject = this._currentProject();
+        if (currentProject) {
+            const currentStructureIds = new Set(currentProject.structures.map(s => s.id));
+            for (const cachedId of this.coordsCache.keys()) {
+                if (!currentStructureIds.has(cachedId)) {
+                    this.coordsCache.delete(cachedId);
+                    this.bufferCache.delete(cachedId);
+                }
+            }
+        }
+
         this._renderProjectList();
         this._renderProjectView();
     }
@@ -1607,7 +1966,7 @@ class App {
         const current = this.viewer3d.getHighlighted();
         document.querySelectorAll('.block-card.highlighted').forEach(c => c.classList.remove('highlighted'));
         if (current === blockId) {
-            this.viewer3d.clearHighlight();
+            this.viewer3d.clearSelectionIndicator();
             return;
         }
         this.viewer3d.highlightBlock(blockId);
@@ -1737,7 +2096,11 @@ class App {
     _savePrepared() {
         const data = {};
         for (const [pid, set] of this.preparedItems) data[pid] = [...set];
-        localStorage.setItem('mc_planner_prepared', JSON.stringify(data));
+        try {
+            localStorage.setItem('mc_planner_prepared', JSON.stringify(data));
+        } catch (e) {
+            console.warn('準備状況の保存に失敗しました(容量不足等):', e);
+        }
     }
 
     _exportDotArtPng() {
@@ -1813,8 +2176,6 @@ class App {
             this.dotArtEditor = new DotArtEditor(canvas, {
                 gridW: 32, gridH: 32, cellSize: 16,
                 onUpdate: (counts) => this._renderDotArtMaterials(counts),
-                // 追加: テクスチャパックからアイコンを取得する関数
-                // アイテムアイコン(3D)ではなく、ブロックの上面(平面)を取得する
                 getTexture: (id) => {
                     try {
                         if (!ResourcePack.isLoaded()) return null;
@@ -1827,6 +2188,14 @@ class App {
                     }
                 }
             });
+            
+            // 一括置換イベントのリスニング
+            canvas.addEventListener('dotart-request-replace', (e) => {
+                this._dotArtReplaceOldId = e.detail.oldId;
+                this._blockSelectorMode = 'dotart';
+                this._openBlockSelector();
+            });
+
             this._setupDotArt();
         }
     }
@@ -1902,12 +2271,14 @@ class App {
             e.target.value = '';
         };
 
-        // ぼかし強度スライダーのリアルタイム表示
-        const blurSlider = $('img2dot-blur');
-        const blurVal = $('img2dot-blur-val');
-        if (blurSlider && blurVal) {
-            blurSlider.addEventListener('input', () => { blurVal.textContent = blurSlider.value; });
-        }
+        // スライダーの数値表示更新
+        ['contrast', 'saturation', 'dither'].forEach(id => {
+            const range = $(`img2dot-${id}`);
+            const val = $(`img2dot-${id}-val`);
+            if (range && val) {
+                range.addEventListener('input', () => { val.textContent = range.value; });
+            }
+        });
 
         // 座標計算
         $('btn-map-calc-pos').onclick = () => {
@@ -1926,12 +2297,18 @@ class App {
             });
         };
 
+        // PNG保存
+        $('btn-export-png').onclick = () => this._exportDotArtPng();
+
         // 構造としてプロジェクトに追加
         $('btn-dotart-to-struct').onclick = () => this._addDotArtAsStructure();
     }
 
     async _img2dotConvert(file) {
         this._showLoading('画像をブロックに変換中...');
+        // UI描画の猶予を与える (P2改善)
+        await new Promise(r => setTimeout(r, 50));
+
         try {
             const m = await import('./image2dot.js');
             const img = await m.loadImage(file);
@@ -1947,23 +2324,25 @@ class App {
 
             const mode = document.getElementById('img2dot-mode').value;
             const filterKey = document.getElementById('img2dot-filter').value;
-            const dither = document.getElementById('img2dot-dither').checked;
-            const noiseReduction = document.getElementById('img2dot-noise').checked;
-            const preBlur = parseFloat(document.getElementById('img2dot-blur').value) || 0;
             const trim = document.getElementById('img2dot-trim').checked;
+            const airMode = document.getElementById('img2dot-air').checked;
+            const contrast = parseFloat(document.getElementById('img2dot-contrast').value) || 1.0;
+            const saturation = parseFloat(document.getElementById('img2dot-saturation').value) || 1.0;
+            const dither = parseFloat(document.getElementById('img2dot-dither').value) || 0;
 
             const res = m.convert(img, {
-                mode, gridW, gridH,
+                gridW, gridH,
                 paletteFilter: m.FILTER_PRESETS[filterKey],
-                dithering: dither,
-                noiseReduction,
-                preBlur,
                 autoTrim: trim,
+                airMode,
+                contrast,
+                saturation,
+                dither,
+                mode: mode
             });
 
             this.dotArtEditor.resize(gridW, gridH);
-            this.dotArtEditor.grid = res.grid;
-            this.dotArtEditor.render();
+            this.dotArtEditor.setData(res.grid); // setData で内部的に _saveState が呼ばれる
             this._renderDotArtMaterials(this.dotArtEditor.getMaterialCount());
 
             this._toast(`✨ ${gridW}x${gridH} のドット絵を生成しました`);
@@ -2002,12 +2381,6 @@ class App {
         ProjectManager.save(this.projects);
         this._toast(`➕ 「${name}」を構造リストに追加しました`);
         this._renderMaterialsTab();
-    }
-
-    _updateDotArtMaterials() {
-        if (!this.dotArtEditor) return;
-        const counts = this.dotArtEditor.getMaterialCount();
-        this._renderDotArtMaterials(counts);
     }
 
     _renderDotArtMaterials(counts) {
@@ -2083,7 +2456,6 @@ class App {
                 if (!entry || !entry.buffer) continue;
                 this.bufferCache.set(id, entry.buffer);
             }
-            console.log(`[restore] ${all.size}件の構造バッファを IDB から復元`);
         } catch (e) {
             console.warn('Auto-restore structure buffers failed:', e);
         } finally {
@@ -2183,6 +2555,132 @@ class App {
         }
     }
 
+    _getSliceValues() {
+        const gi = id => parseInt(document.getElementById(id)?.value ?? 0, 10);
+        return {
+            yMin: gi('layer-min'),  yMax: gi('layer-max'),
+            xMin: gi('layer-xmin'), xMax: gi('layer-xmax'),
+            zMin: gi('layer-zmin'), zMax: gi('layer-zmax'),
+        };
+    }
+
+    _onViewer3DClick(info) {
+        // 既存ポップアップを閉じる
+        document.getElementById('v3d-block-popup')?.remove();
+        // ハイライト解除
+        this.viewer3d?.clearSelectionIndicator();
+        if (!info) return; // 空白クリック
+
+        const { blockId, coord, screenX, screenY } = info;
+        const name = this.langData?.[blockId] || blockId.replace('minecraft:', '');
+        // 選択ブロックをハイライト（黄色）
+        this.viewer3d?.setSelectionIndicator(coord);
+
+        const popup = document.createElement('div');
+        popup.id = 'v3d-block-popup';
+        popup.style.cssText = `
+            position:fixed; z-index:9999;
+            left:${Math.min(screenX + 8, window.innerWidth - 230)}px;
+            top:${Math.min(screenY + 8, window.innerHeight - 170)}px;
+            background:var(--surface2,#1e2a3a); border:1px solid var(--border,#2a3f5a);
+            border-radius:10px; padding:0.7rem 0.9rem; min-width:210px;
+            box-shadow:0 8px 32px rgba(0,0,0,0.6); font-size:0.82rem; color:var(--text,#e2e8f0);
+        `;
+
+        const iconHtml = this._getBlockIconHtml(blockId);
+        popup.innerHTML = `
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;border-bottom:1px solid var(--border,#2a3f5a);padding-bottom:0.5rem">
+                <div style="width:32px;height:32px;flex-shrink:0;outline:2px solid #f6d860;outline-offset:2px;border-radius:4px">${iconHtml}</div>
+                <div>
+                    <div style="font-weight:700;font-size:0.88rem;color:#f6d860">${this._escape(name)}</div>
+                    <div style="font-size:0.65rem;color:var(--muted2,#64748b);margin-top:0.1rem">${this._escape(blockId)}</div>
+                    ${coord ? `<div style="font-size:0.62rem;color:var(--muted2,#64748b)">X:${coord.x} Y:${coord.y} Z:${coord.z}</div>` : ''}
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.3rem">
+                <button id="v3d-pop-set-replace" class="mc-btn secondary small" style="width:100%;text-align:left">🔄 置換元に設定</button>
+                ${coord ? `<button id="v3d-pop-del-one" class="mc-btn secondary small" style="width:100%;text-align:left;color:var(--warning,#f6ad55)">🗑️ このブロック1つだけ削除</button>` : ''}
+                <button id="v3d-pop-del-all" class="mc-btn secondary small" style="width:100%;text-align:left;color:var(--danger,#e55)">💥 この種類を全て削除</button>
+                ${this._deletedPositions.size > 0 ? `<button id="v3d-pop-restore" class="mc-btn secondary small" style="width:100%;text-align:left;opacity:0.7">↺ 削除をリセット(${this._deletedPositions.size}件)</button>` : ''}
+            </div>
+        `;
+        document.body.appendChild(popup);
+
+        // 置換元に設定
+        document.getElementById('v3d-pop-set-replace')?.addEventListener('click', () => {
+            const fromEl = document.getElementById('replace-from');
+            const fromNameEl = document.getElementById('replace-from-name');
+            if (fromEl) fromEl.value = blockId;
+            if (fromNameEl) fromNameEl.textContent = name;
+            popup.remove();
+            this._toast(`🔄 「${name}」を置換元に設定しました`);
+        });
+
+        // 1つだけ削除
+        document.getElementById('v3d-pop-del-one')?.addEventListener('click', () => {
+            if (coord) {
+                this._deletedPositions.add(`${coord.x},${coord.y},${coord.z}`);
+                this._applySlice();
+                popup.remove();
+                this._toast(`🗑️ 1ブロック削除しました (合計 ${this._deletedPositions.size} 件)`);
+            }
+        });
+
+        // この種類を全て削除（置換として air に置換）
+        document.getElementById('v3d-pop-del-all')?.addEventListener('click', () => {
+            const fromEl = document.getElementById('replace-from');
+            const toEl = document.getElementById('replace-to');
+            const fromNameEl = document.getElementById('replace-from-name');
+            const toNameEl = document.getElementById('replace-to-name');
+            if (fromEl) fromEl.value = blockId;
+            if (fromNameEl) fromNameEl.textContent = name;
+            if (toEl) toEl.value = 'minecraft:air';
+            if (toNameEl) toNameEl.textContent = 'air (削除)';
+            // 置換リストに追加
+            document.getElementById('btn-add-replace')?.click();
+            popup.remove();
+            this._toast(`💥 「${name}」を削除置換に追加しました`);
+        });
+
+        // 削除リセット
+        document.getElementById('v3d-pop-restore')?.addEventListener('click', () => {
+            this._deletedPositions.clear();
+            this._applySlice();
+            popup.remove();
+            this._toast('↺ 削除をリセットしました');
+        });
+
+        // 他の場所クリックで閉じる（ハイライトも解除）
+        const close = (e) => {
+            if (!popup.contains(e.target)) {
+                popup.remove();
+                this.viewer3d?.clearSelectionIndicator();
+                document.removeEventListener('pointerdown', close);
+            }
+        };
+        setTimeout(() => document.addEventListener('pointerdown', close), 10);
+    }
+
+    _applySlice() {
+        if (!this.viewer3d?.isInitialized || !this.viewer3d._lastCoords) return;
+        const sel = document.getElementById('viewer3d-structure-select');
+        const project = this._currentProject();
+        const structure = project?.structures.find(s => s.id === sel?.value);
+        if (!structure) return;
+        const coords = this.coordsCache.get(sel.value);
+        if (!coords) return;
+        const replaced = this._applyReplacements(sel.value, coords);
+        const filtered = this._deletedPositions.size > 0
+            ? replaced.filter(c => !this._deletedPositions.has(`${c.x},${c.y},${c.z}`))
+            : replaced;
+        const { yMin, yMax, xMin, xMax, zMin, zMax } = this._getSliceValues();
+        const cmRadio = document.querySelector('input[name="viewer3d-colormode"]:checked');
+        this.viewer3d.loadStructure(filtered, structure.size, {
+            yMin, yMax, xMin, xMax, zMin, zMax,
+            colorMode: cmRadio?.value || 'material'
+        });
+    }
+
     async _load3DView() {
         if (this._isRestoringBuffers) {
             this._toast('構造データを復元中です。完了までお待ちください...', 'info');
@@ -2231,10 +2729,22 @@ class App {
             const floorType = document.getElementById('floor-type-select')?.value || 'grass';
             this.viewer3d.setFloorType(floorType);
 
-            const yMinEl = document.getElementById('layer-min');
-            const yMaxEl = document.getElementById('layer-max');
-            const yMin = yMinEl ? parseInt(yMinEl.value, 10) : 0;
-            const yMax = yMaxEl ? parseInt(yMaxEl.value, 10) : 999;
+            // ─ スライダーの上限をこの構造に合わせてリセット ─
+            const sz = structure.size;
+            if (sz) {
+                const setSlider = (id, valId, max, val) => {
+                    const el = document.getElementById(id);
+                    const vl = document.getElementById(valId);
+                    if (el) { el.max = max; el.value = val; }
+                    if (vl) vl.textContent = val;
+                };
+                setSlider('layer-min',  'layer-min-val',  sz.y - 1, 0);
+                setSlider('layer-max',  'layer-max-val',  sz.y - 1, sz.y - 1);
+                setSlider('layer-xmin', 'layer-xmin-val', sz.x - 1, 0);
+                setSlider('layer-xmax', 'layer-xmax-val', sz.x - 1, sz.x - 1);
+                setSlider('layer-zmin', 'layer-zmin-val', sz.z - 1, 0);
+                setSlider('layer-zmax', 'layer-zmax-val', sz.z - 1, sz.z - 1);
+            }
 
             const cmRadio = document.querySelector('input[name="viewer3d-colormode"]:checked');
             const colorMode = cmRadio ? cmRadio.value : 'material';
@@ -2242,7 +2752,14 @@ class App {
             const replacedCoords = this._applyReplacements(structureId, coords);
             // 置換が変わるたびにマテリアルキャッシュを破棄してテクスチャを引き直す
             this.viewer3d._matCache?.clear();
-            this.viewer3d.loadStructure(replacedCoords, structure.size, { yMin, yMax, colorMode });
+            const { yMin, yMax, xMin, xMax, zMin, zMax } = this._getSliceValues();
+            // 1つ削除フィルタを適用
+            const filteredCoords = this._deletedPositions.size > 0
+                ? replacedCoords.filter(c => !this._deletedPositions.has(`${c.x},${c.y},${c.z}`))
+                : replacedCoords;
+            this.viewer3d.loadStructure(filteredCoords, structure.size, { yMin, yMax, xMin, xMax, zMin, zMax, colorMode });
+            // クリックコールバックを毎回設定（再初期化後も有効）
+            this.viewer3d.onBlockClick = (info) => this._onViewer3DClick(info);
             this._updateTextureStatusUI();
 
             const infoEl = document.getElementById('viewer3d-info');
@@ -2372,6 +2889,298 @@ class App {
         if (local === 'coarse_dirt') return { rawId: 'minecraft:dirt', states: { dirt_type: 'coarse' } };
         // フォールバック
         return { rawId: blockId, states: null };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // TOUR SYSTEM
+    // ─────────────────────────────────────────────────────────────────────
+
+    _setupTour() {
+        if (!document.getElementById('tour-style')) {
+            const s = document.createElement('style');
+            s.id = 'tour-style';
+            s.textContent = [
+                '#tour-overlay{display:none;position:fixed;inset:0;z-index:9000}',
+                '#tour-overlay.active{display:block}',
+                '#tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.01);z-index:9001;cursor:default}',
+                '#tour-spotlight{position:fixed;z-index:9002;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.72);border-radius:6px}',
+                /* フローティング説明カード（スポットライト付近） */
+                '#tour-card{position:fixed;z-index:9003;pointer-events:none;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:12px;padding:1rem 1.2rem;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.65)}',
+                '#tour-title{font-size:1rem;font-weight:700;margin:0 0 0.5rem;color:var(--text,#e2e8f0)}',
+                '#tour-body{font-size:0.86rem;color:var(--muted,#c8d4e8);margin:0;line-height:1.65;white-space:pre-line}',
+                /* 固定ナビバー（画面下中央） */
+                '#tour-nav-bar{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:9004;display:flex;gap:0.6rem;align-items:center;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:16px;padding:0.7rem 1.2rem;box-shadow:0 4px 28px rgba(0,0,0,0.65);pointer-events:all;white-space:nowrap}',
+                '#tour-step-ind{font-size:0.9rem;color:var(--accent,#63b3ed);font-family:monospace;padding:0 0.6rem;min-width:54px;text-align:center;letter-spacing:.04em}',
+                '#tour-prev-btn,#tour-next-btn{font-size:0.9rem!important;padding:0.48rem 1.1rem!important;min-width:84px}',
+                '#tour-close-btn{font-size:0.82rem!important;padding:0.4rem 0.75rem!important;background:var(--surface3,#2d3748)!important;margin-left:0.4rem}',
+                '#btn-tour:hover{background:rgba(99,179,237,0.15)!important}'
+            ].join('\n');
+            document.head.appendChild(s);
+        }
+
+        if (!document.getElementById('tour-overlay')) {
+            const el = document.createElement('div');
+            el.id = 'tour-overlay';
+            /* 説明カード（スポットライト付近に浮かぶ、クリック透過） */
+            el.innerHTML = '<div id="tour-backdrop"></div><div id="tour-spotlight"></div>'
+                + '<div id="tour-card">'
+                + '<h4 id="tour-title"></h4>'
+                + '<p id="tour-body"></p>'
+                + '</div>'
+                /* ナビバー（常に画面下中央、マウス移動不要） */
+                + '<div id="tour-nav-bar">'
+                + '<button id="tour-prev-btn" class="mc-btn small secondary">← 前へ</button>'
+                + '<span id="tour-step-ind">1 / 1</span>'
+                + '<button id="tour-next-btn" class="mc-btn small primary">次へ →</button>'
+                + '<button id="tour-close-btn" class="mc-btn small">✕ 閉じる</button>'
+                + '</div>';
+            document.body.appendChild(el);
+
+            document.getElementById('tour-backdrop').onclick  = () => this._closeTour();
+            document.getElementById('tour-close-btn').onclick = () => this._closeTour();
+            document.getElementById('tour-prev-btn').onclick  = () => this._showTourStep(this._tourStep - 1);
+            document.getElementById('tour-next-btn').onclick  = () => {
+                if (this._tourStep < this._tourSteps.length - 1) this._showTourStep(this._tourStep + 1);
+                else this._closeTour();
+            };
+            document.addEventListener('keydown', (e) => {
+                if (!document.getElementById('tour-overlay')?.classList.contains('active')) return;
+                if (e.key === 'Escape')    this._closeTour();
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') document.getElementById('tour-next-btn')?.click();
+                if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   document.getElementById('tour-prev-btn')?.click();
+            });
+        }
+
+        const btn = document.getElementById('btn-tour');
+        if (btn) btn.onclick = () => this._startTour();
+    }
+
+    _startTour() {
+        const nl = '\n';
+        const TOURS = {
+            materials: [
+                { target: '#btn-add-structure',          pos: 'bottom', title: '① 構造ファイルを追加',    body: '「＋ 構造を追加」ボタンで .mcstructure ファイルを読み込みます。' + nl + 'ウェルカム画面へのドラッグ＆ドロップも使えます。' },
+                { target: '#structures-list',            pos: 'bottom', title: '② 構造一覧',             body: '追加した構造ファイルがここに並びます。' + nl + '複数追加すると素材が自動的に合算されます。倍数設定も可能です。' },
+                { target: '.stats-grid',                 pos: 'top',    title: '③ 合計素材',             body: '全構造のブロック数・種類・スタック数・シュルカー箱数が自動計算されます。' },
+                { target: '#structure-breakdown-details',pos: 'top',    title: '④ 構造別の内訳',          body: 'クリックで展開すると、構造ごとの素材内訳を確認できます。' },
+                { target: '#btn-copy-md',                pos: 'top',    title: '⑤ エクスポート',          body: 'Markdown形式でコピーしたり CSVとして書き出せます。' + nl + 'チェックリストや在庫管理表として使えます。' },
+                { target: '#search-input',               pos: 'top',    title: '⑥ 検索とフィルター',       body: 'ブロック名で絞り込んだり、建築・装飾などカテゴリ別にフィルターをかけられます。' }
+            ],
+            viewer3d: [
+                { target: '#btn-load-3d',                pos: 'bottom', title: '① 3D表示を開始',         body: 'このボタンを押すと構造が3Dでレンダリングされます。' + nl + 'はじめに必ず押してください。' },
+                { target: '#viewer3d-structure-select',  pos: 'bottom', title: '② 構造を選択',           body: '複数の構造がある場合、ここで表示したいものを切り替えられます。' },
+                { target: '#viewer3d-container',         pos: 'right',  title: '③ 3Dビューの操作',       body: '【回転】右ドラッグ' + nl + '【パン】Shift + 左ドラッグ' + nl + '【ズーム】マウスホイール' + nl + '【ブロック選択】左クリック → 名前・置換・削除メニュー' },
+                { target: '[data-section="replace"]',    pos: 'left',   title: '④ ブロック置換',          body: '素材Aを素材Bに一括置換できます。' + nl + 'コスト削減やデザイン変更に便利です。' },
+                { target: '[data-section="textures"]',   pos: 'left',   title: '⑤ テクスチャパック',      body: '公式リソースパック（zip）をアップロードすると' + nl + 'リアルなテクスチャになります。' },
+                { target: '#btn-export-mcstructure',     pos: 'left',   title: '⑥ 構造をエクスポート',    body: '置換後の構造を .mcstructure でダウンロードできます。' + nl + 'そのままMinecraftでインポートして使えます。' },
+                { target: '#layer-min',                      pos: 'left',   title: '⑦ 断面フィルター',          body: 'Y/X/Z 各軸の最小・最大スライダーを動かすと' + nl + 'その範囲だけを切り出して3D表示できます。' + nl + '内部構造の確認に便利です。↺ リセットで全体に戻ります。' }
+            ],
+            dotart: [
+                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像から自動生成',      body: '画像ファイルをアップロードすると、Minecraftブロックで' + nl + 'できたドット絵に自動変換されます。' },
+                { target: '#img2dot-mode',               pos: 'bottom', title: '② 変換モード',           body: '「見た目」は3D建築向け。' + nl + '「マップ表示色」は地図アートとして正確な色になります。' },
+                { target: '#dotart-canvas',              pos: 'right',  title: '③ キャンバス',           body: '変換結果がここに表示されます。' + nl + 'ペン・塗りつぶし・消しゴムツールで手描き編集もできます。' },
+                { target: '#dotart-materials',           pos: 'left',   title: '④ 使用素材リスト',        body: '使われているブロックと必要数が一覧表示されます。' + nl + 'クリックすると別ブロックに一括置換できます。' },
+                { target: '#btn-export-dotart',          pos: 'top',    title: '⑤ 素材計算',            body: 'ドット絵の素材を「素材一覧」タブに反映させます。' + nl + '建築で必要な数を自動計算できます。' },
+                { target: '#btn-export-png',             pos: 'top',    title: '⑥ PNG保存',             body: 'ドット絵をPNG画像としてダウンロードできます。' }
+            ],
+            settings: [
+                { target: '#panel-settings', pos: 'top', title: '⚙️ 設定',
+                  body: 'アプリの外観・データ管理・初期化などが行えます。' + nl + '設定はブラウザに自動保存されます。' }
+            ],
+            home: [
+                { target: '.welcome-icon',                pos: 'bottom', title: '👋 Structure Planner へようこそ',
+                  body: '.mcstructure ファイルを読み込んで' + nl + '素材管理・3D表示・ドット絵作成ができるツールです。' },
+                { target: '#btn-drop-file',               pos: 'bottom', title: '① ファイルを開く',
+                  body: 'ボタンを押してファイル選択するか、' + nl + 'ファイルをこの画面にドラッグ＆ドロップで追加できます。' },
+                { target: '#btn-create-project-welcome',  pos: 'bottom', title: '② 新規プロジェクト',
+                  body: '空のプロジェクトを作って、後からファイルを追加していくこともできます。' },
+                { target: '#sidebar-drop-hint',           pos: 'right',  title: '③ サイドバーにもドロップ',
+                  body: '左のプロジェクト一覧エリアにもドラッグ＆ドロップできます。' + nl + 'ファイルを素早く追加したいときに便利です。' },
+                { target: '#project-list',                pos: 'right',  title: '④ プロジェクト一覧',
+                  body: '追加したプロジェクトがここに並びます。' + nl + 'クリックで開き、右クリックで削除・名前変更ができます。' },
+                { target: '#btn-new-project',             pos: 'bottom', title: '⑤ 新規プロジェクト',
+                  body: '新しいプロジェクトを作成します。' + nl + '作成後に構造ファイルを追加してください。' }
+            ]
+        };
+
+        const isWelcome = !document.getElementById('welcome-screen').classList.contains('hidden');
+        this._tourSteps = isWelcome ? TOURS.home : (TOURS[this.currentTab] || TOURS.materials);
+        this._tourStep  = 0;
+        document.getElementById('tour-overlay').classList.add('active');
+        this._showTourStep(0);
+    }
+
+    // ─── スプリング状態（rAF + バネ物理アニメーション用）─────────────────
+    _initTourSpring() {
+        // スポットライト用 (x,y,w,h) とカード用 (cx,cy) を別々に管理
+        // カードはスポットライトより少し遅れて追いかける（先行演出）
+        return {
+            // スポットライト現在値
+            x:0, y:0, w:0, h:0,
+            // スポットライト速度
+            vx:0, vy:0, vw:0, vh:0,
+            // スポットライト目標
+            tx:0, ty:0, tw:0, th:0,
+            // カード現在値
+            cx:0, cy:0,
+            // カード速度
+            vcx:0, vcy:0,
+            // カード目標（スポットライトと共通計算）
+            tcx:0, tcy:0,
+            init: false  // 最初だけ即座に配置
+        };
+    }
+
+    _tickTourSpring(now) {
+        if (!this._tourSpring || !document.getElementById('tour-overlay')?.classList.contains('active')) return;
+        const s = this._tourSpring;
+        const dt = Math.min((now - (s._prevTime || now)) / 1000, 0.05);
+        s._prevTime = now;
+
+        // バネ定数: K=stiffness, D=damping
+        // ζ = D/(2√K) ≈ 0.72 → わずかにアンダーダンプ（小さなオーバーシュート）
+        const K = 260, D = 26;
+        // カードはスポットライトより少し柔らかく追いかける
+        const CK = 200, CD = 22;
+
+        const spring = (pos, vel, tgt, k, d) => {
+            const acc = k * (tgt - pos) - d * vel;
+            const nv = vel + acc * dt;
+            const np = pos + nv * dt;
+            return [np, nv];
+        };
+
+        [s.x, s.vx] = spring(s.x, s.vx, s.tx, K, D);
+        [s.y, s.vy] = spring(s.y, s.vy, s.ty, K, D);
+        [s.w, s.vw] = spring(s.w, s.vw, s.tw, K, D);
+        [s.h, s.vh] = spring(s.h, s.vh, s.th, K, D);
+        [s.cx, s.vcx] = spring(s.cx, s.vcx, s.tcx, CK, CD);
+        [s.cy, s.vcy] = spring(s.cy, s.vcy, s.tcy, CK, CD);
+
+        // 遠距離移動でも速度を制限（長距離ステップが高速になりすぎないよう）
+        const MAX_V = 550;
+        s.vx  = Math.max(-MAX_V, Math.min(MAX_V, s.vx));
+        s.vy  = Math.max(-MAX_V, Math.min(MAX_V, s.vy));
+        s.vw  = Math.max(-MAX_V, Math.min(MAX_V, s.vw));
+        s.vh  = Math.max(-MAX_V, Math.min(MAX_V, s.vh));
+        s.vcx = Math.max(-MAX_V, Math.min(MAX_V, s.vcx));
+        s.vcy = Math.max(-MAX_V, Math.min(MAX_V, s.vcy));
+
+        const sp = document.getElementById('tour-spotlight');
+        if (sp) {
+            sp.style.left   = s.x + 'px';
+            sp.style.top    = s.y + 'px';
+            sp.style.width  = s.w + 'px';
+            sp.style.height = s.h + 'px';
+        }
+        const card = document.getElementById('tour-card');
+        if (card) {
+            card.style.left = s.cx + 'px';
+            card.style.top  = s.cy + 'px';
+        }
+
+        // まだ動いているなら次フレームも走らせる
+        const settled = [
+            Math.abs(s.tx-s.x), Math.abs(s.ty-s.y), Math.abs(s.tw-s.w), Math.abs(s.th-s.h),
+            Math.abs(s.tcx-s.cx), Math.abs(s.tcy-s.cy),
+            Math.abs(s.vx), Math.abs(s.vy), Math.abs(s.vw), Math.abs(s.vh),
+            Math.abs(s.vcx), Math.abs(s.vcy)
+        ].every(v => v < 0.15);
+
+        if (!settled) {
+            this._tourRafId = requestAnimationFrame(t => this._tickTourSpring(t));
+        } else {
+            this._tourRafId = null;
+        }
+    }
+
+    _startTourSpringRaf() {
+        if (this._tourRafId) cancelAnimationFrame(this._tourRafId);
+        if (!this._tourSpring) return;  // _closeTour後の安全ガード
+        this._tourSpring._prevTime = performance.now();
+        // 同じ位置でも必ずRAFを起動して settled チェックを通す
+        this._tourRafId = requestAnimationFrame(t => this._tickTourSpring(t));
+    }
+
+    _showTourStep(idx) {
+        const steps = this._tourSteps;
+        if (!steps || idx < 0 || idx >= steps.length) return;
+        this._tourStep = idx;
+        const step = steps[idx];
+
+        const el = document.querySelector(step.target);
+        if (!el) {
+            if (idx < steps.length - 1) { this._showTourStep(idx + 1); return; }
+            else { this._closeTour(); return; }
+        }
+
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+
+        // スポットライト・カードの目標座標を計算してスプリングの目標に設定
+        const computeTargets = () => {
+            const rect = el.getBoundingClientRect();
+            const pad  = 8;
+            const s    = this._tourSpring;
+
+            // スポットライト目標
+            s.tx = rect.left   - pad;
+            s.ty = rect.top    - pad;
+            s.tw = rect.width  + pad * 2;
+            s.th = rect.height + pad * 2;
+
+            // カード目標
+            const card = document.getElementById('tour-card');
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const cw = 308, ch = (card?.offsetHeight || 190);
+            const pos = step.pos || 'bottom';
+            let cx, cy;
+            if (pos === 'bottom')    { cx = Math.min(Math.max(rect.left, 8), vw-cw-8); cy = Math.min(rect.bottom+pad+8, vh-ch-8); }
+            else if (pos === 'top')  { cx = Math.min(Math.max(rect.left, 8), vw-cw-8); cy = Math.max(rect.top-ch-pad-8, 8); }
+            else if (pos === 'left') { cx = Math.max(rect.left-cw-pad-8, 8);           cy = Math.min(Math.max(rect.top, 8), vh-ch-8); }
+            else                     { cx = Math.min(rect.right+pad+8, vw-cw-8);       cy = Math.min(Math.max(rect.top, 8), vh-ch-8); }
+            s.tcx = cx; s.tcy = cy;
+
+            // 初回のみ瞬間配置（アニメーションなし）
+            if (!s.init) {
+                s.x=s.tx; s.y=s.ty; s.w=s.tw; s.h=s.th;
+                s.cx=cx; s.cy=cy;
+                s.init = true;
+            }
+        };
+
+        // スプリング初期化（未作成なら）
+        if (!this._tourSpring) this._tourSpring = this._initTourSpring();
+        computeTargets();
+        this._startTourSpringRaf();
+
+        // ページスクロール等で目標がずれるのを補正（軽量な再計算）
+        if (this._tourTargetTimer) clearInterval(this._tourTargetTimer);
+        this._tourTargetTimer = setInterval(() => {
+            if (!this._tourSpring || !document.getElementById('tour-overlay')?.classList.contains('active')) {
+                clearInterval(this._tourTargetTimer); return;
+            }
+            computeTargets();
+            if (!this._tourRafId) this._startTourSpringRaf();
+        }, 200);
+
+        // カードの中身を更新
+        const titleEl = document.getElementById('tour-title');
+        if (titleEl) titleEl.textContent = step.title || '';
+        const bodyEl = document.getElementById('tour-body');
+        if (bodyEl) bodyEl.textContent  = step.body  || '';
+        const stepInd = document.getElementById('tour-step-ind');
+        if (stepInd) stepInd.textContent = `${idx + 1} / ${steps.length}`;
+        const prevBtn = document.getElementById('tour-prev-btn');
+        const nextBtn = document.getElementById('tour-next-btn');
+        if (prevBtn) prevBtn.disabled = idx === 0;
+        if (nextBtn) nextBtn.textContent = idx === steps.length - 1 ? '✓ 閉じる' : '次へ →';
+    }
+
+    _closeTour() {
+        if (this._tourRafId) { cancelAnimationFrame(this._tourRafId); this._tourRafId = null; }
+        clearInterval(this._tourTargetTimer);
+        this._tourSpring = null; // 次回開始時に再初期化
+        document.getElementById('tour-overlay')?.classList.remove('active');
     }
 
     _escape(str) {

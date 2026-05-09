@@ -134,18 +134,22 @@ export class Viewer3D {
     destroy() {
         if (!this.isInitialized) return;
         
-        // メッシュとジオメトリ・マテリアルの破棄
-        this.meshes.forEach(m => {
-            if (m.geometry) m.geometry.dispose();
-            if (m.material) {
-                if (Array.isArray(m.material)) {
-                    m.material.forEach(mat => mat.dispose());
-                } else {
-                    m.material.dispose();
+        // シーン全体の走査による完全解放 (P2改善)
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.isMesh) {
+                    if (object.geometry) object.geometry.dispose();
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(m => m.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
+                    }
                 }
-            }
-            this.scene.remove(m);
-        });
+            });
+        }
+        
         this.meshes = [];
         this._matCache.clear();
 
@@ -160,7 +164,6 @@ export class Viewer3D {
         this.camera = null;
         this.renderer = null;
         this.isInitialized = false;
-        console.log('Viewer3D destroyed');
     }
 
     _loadThree() {
@@ -202,48 +205,75 @@ export class Viewer3D {
 
         // ─── 回転（左ドラッグ）─────────────────────────────────────────────
         const orbitBy = (dx, dy) => {
-            this.spherical.theta -= dx * 0.01;
-            this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi + dy * 0.01));
+            // 右ドラッグ → カメラが右へ周回（直感的なターンテーブル回転）
+            this.spherical.theta += dx * 0.006;
+            this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi + dy * 0.006));
             this._updateCamera();
         };
 
         // ─── パン（右ドラッグ / 中ボタンドラッグ）────────────────────────────
-        // 球面座標からカメラのローカル右ベクトルと上ベクトルを計算してターゲットを移動
+        // カメラのローカル右・上ベクトルでターゲットを移動（掴んで動かす感覚）
         const panBy = (dx, dy) => {
-            const speed = this.spherical.radius * 0.0012;
+            // キャンバスの高さ基準で1pxあたりの移動量を決める（距離に比例）
+            const speed = this.spherical.radius * 0.006;
             const { theta, phi } = this.spherical;
-            // カメラから見た右方向（世界座標）
+            // カメラ右方向（水平）
             const rx =  Math.cos(theta);
-            const ry =  0;
             const rz = -Math.sin(theta);
-            // カメラから見た上方向（世界座標、ティルトを考慮）
-            const ux = Math.sin(theta) * Math.cos(phi);
+            // カメラ上方向（ティルト考慮）
+            const ux =  Math.sin(theta) * Math.cos(phi);
             const uy = -Math.sin(phi);
-            const uz = Math.cos(theta) * Math.cos(phi);
-            this.target.x += (-dx * rx + dy * ux) * speed;
-            this.target.y +=  dy * uy * speed;
-            this.target.z += (-dx * rz + dy * uz) * speed;
+            const uz =  Math.cos(theta) * Math.cos(phi);
+            // drag right → scene right → target left (-dx)
+            // drag down  → scene down  → target up   (-dy、uyが負なので打ち消し合いに注意)
+            this.target.x += (-dx * rx - dy * ux) * speed;
+            this.target.y += (-dy * uy) * speed;  // uy<0 なので -dy*uy = dy*sin(phi) > 0 when dy>0 ✓
+            this.target.z += (-dx * rz - dy * uz) * speed;
             this._updateCamera();
         };
 
-        let dragMode = null; // 'orbit' | 'pan' | null
+        // dragMode: 'orbit' | 'pan' | 'click' | null
+        let dragMode = null;
         let prevMouse = { x: 0, y: 0 };
+        let _mouseDownAt = { x: 0, y: 0 };
+        let _dragMoved = false;
 
         el.addEventListener('mousedown', (e) => {
-            // 左ボタン=回転、右/中ボタン=パン
-            dragMode = (e.button === 0) ? 'orbit' : 'pan';
             prevMouse = { x: e.clientX, y: e.clientY };
+            _mouseDownAt = { x: e.clientX, y: e.clientY };
+            _dragMoved = false;
+            if (e.button === 0) {
+                // 左: Shift押しならパン、それ以外は選択待ち
+                dragMode = e.shiftKey ? 'pan' : 'click';
+            } else if (e.button === 2) {
+                // 右ドラッグ → 回転
+                dragMode = 'orbit';
+            } else if (e.button === 1) {
+                // 中ドラッグ → パン（補助）
+                dragMode = 'pan';
+            }
             e.preventDefault();
         });
         window.addEventListener('mousemove', (e) => {
             if (!dragMode) return;
             const dx = e.clientX - prevMouse.x;
             const dy = e.clientY - prevMouse.y;
+            if (Math.abs(e.clientX - _mouseDownAt.x) > 4 || Math.abs(e.clientY - _mouseDownAt.y) > 4) {
+                _dragMoved = true;
+                // 左ドラッグ中にShiftを押したらパンに切り替え
+                if (dragMode === 'click' && e.shiftKey) dragMode = 'pan';
+            }
             if (dragMode === 'orbit') orbitBy(dx, dy);
-            else                      panBy(dx, dy);
+            else if (dragMode === 'pan') panBy(dx, dy);
             prevMouse = { x: e.clientX, y: e.clientY };
         });
-        window.addEventListener('mouseup', () => { dragMode = null; });
+        window.addEventListener('mouseup', (e) => {
+            // 左クリック（ほぼ動かしていない）→ ブロック選択
+            if (!_dragMoved && dragMode === 'click' && e.button === 0) {
+                this._handleClick(e);
+            }
+            dragMode = null;
+        });
         // 右クリックメニューを抑制
         el.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -306,9 +336,9 @@ export class Viewer3D {
     loadStructure(coords, size, options = {}) {
         if (!this.isInitialized) return;
         const THREE = window.THREE;
-        const { yMin = 0, yMax = 999, colorMode } = options;
+        const { yMin = 0, yMax = 999, xMin = 0, xMax = 9999, zMin = 0, zMax = 9999, colorMode } = options;
         if (colorMode) this.colorMode = colorMode;
-        this._lastCoords = coords; this._lastSize = size; this._lastOptions = { yMin, yMax };
+        this._lastCoords = coords; this._lastSize = size; this._lastOptions = { yMin, yMax, xMin, xMax, zMin, zMax };
 
         // キャッシュをクリア（置換後ブロックIDでテクスチャを正しく引き直すため）
         this._matCache.clear();
@@ -322,6 +352,8 @@ export class Viewer3D {
         // Yフィルタおよび Air 除去を適用
         const filtered = coords.filter(c => {
             if (c.y < yMin || c.y > yMax) return false;
+            if (c.x < xMin || c.x > xMax) return false;
+            if (c.z < zMin || c.z > zMax) return false;
             const bid = c.blockId.toLowerCase();
             if (bid === 'minecraft:air' || bid === 'air') return false;
             return true;
@@ -440,6 +472,7 @@ export class Viewer3D {
             const hlColor = new THREE.Color(0xffff00); // 黄色でハイライト
             const normalColor = new THREE.Color(0xffffff);
 
+            mesh.userData.instanceCoords = list; // クリック検出用に座標を保持
             for (let i = 0; i < list.length; i++) {
                 mat4.setPosition(list[i].x, list[i].y, list[i].z);
                 mesh.setMatrixAt(i, mat4);
@@ -598,6 +631,33 @@ export class Viewer3D {
             this.loadStructure(this._lastCoords, this._lastSize, this._lastOptions || {});
         }
     }
+    _handleClick(e) {
+        if (!this.onBlockClick) return;
+        const THREE = window.THREE;
+        if (!THREE) return;
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+           -((e.clientY - rect.top)  / rect.height) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, this.camera);
+        const hits = raycaster.intersectObjects(this.meshes);
+        if (hits.length === 0) {
+            this.onBlockClick(null); // 空白クリック → ポップアップを閉じる
+            return;
+        }
+        const hit = hits[0];
+        const mesh = hit.object;
+        const coord = mesh.userData.instanceCoords?.[hit.instanceId] ?? null;
+        this.onBlockClick({
+            blockId: mesh.userData.blockId,
+            coord,
+            screenX: e.clientX,
+            screenY: e.clientY
+        });
+    }
+
     resetCamera() {
         this.spherical = { theta: 0.5, phi: 0.8, radius: 50 };
         this._updateCamera();
@@ -685,34 +745,44 @@ export class Viewer3D {
     }
 
     // ─── ハイライト（素材一覧との連動） ────────────────────────────────────
-    getHighlighted() { return this._highlightedBlockId; }
-
-    highlightBlock(blockId) {
-        this._highlightedBlockId = blockId;
+    // ─── 選択インジケーター（クリックした1ブロックに縁を表示）────────────────
+    setSelectionIndicator(coord) {
+        this.clearSelectionIndicator();
+        if (!coord || !this.scene) return;
         const THREE = window.THREE;
         if (!THREE) return;
-        const hlColor = new THREE.Color(0xffff00);
-        const normalColor = new THREE.Color(0xffffff);
+        // EdgesGeometry で12辺だけ描画 → 面を塗らずに縁だけ光る
+        const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.08, 1.08, 1.08));
+        const mat   = new THREE.LineBasicMaterial({ color: 0x00e5ff, linewidth: 1 });
+        this._selectionMesh = new THREE.LineSegments(edges, mat);
+        this._selectionMesh.position.set(coord.x, coord.y, coord.z);
+        this.scene.add(this._selectionMesh);
+        // ゆっくり点滅アニメーション
+        this._selectionMesh.userData.birthTime = performance.now();
+        this._animateSelection();
+    }
 
-        for (const m of this.meshes) {
-            const isMatch = (m.userData?.blockId === blockId);
-            for (let i = 0; i < m.count; i++) {
-                m.setColorAt(i, isMatch ? hlColor : normalColor);
-            }
-            if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    _animateSelection() {
+        if (!this._selectionMesh || !this.scene?.children.includes(this._selectionMesh)) return;
+        const t = (performance.now() - this._selectionMesh.userData.birthTime) / 1000;
+        // 0.6〜1.0 の間で sin 点滅
+        const op = 0.7 + 0.3 * Math.sin(t * Math.PI * 2);
+        this._selectionMesh.material.opacity = op;
+        this._selectionMesh.material.transparent = true;
+        this._selAnimRaf = requestAnimationFrame(() => this._animateSelection());
+    }
+
+    clearSelectionIndicator() {
+        if (this._selAnimRaf) { cancelAnimationFrame(this._selAnimRaf); this._selAnimRaf = null; }
+        if (this._selectionMesh) {
+            this.scene?.remove(this._selectionMesh);
+            this._selectionMesh.geometry?.dispose();
+            this._selectionMesh.material?.dispose();
+            this._selectionMesh = null;
         }
     }
 
-    clearHighlight() {
-        this._highlightedBlockId = null;
-        const THREE = window.THREE;
-        if (!THREE) return;
-        const normalColor = new THREE.Color(0xffffff);
-        for (const m of this.meshes) {
-            for (let i = 0; i < m.count; i++) {
-                m.setColorAt(i, normalColor);
-            }
-            if (m.instanceColor) m.instanceColor.needsUpdate = true;
-        }
-    }
+    // 旧APIとの互換ラッパー
+    highlightBlock(blockId) {}
+    clearHighlight() { this.clearSelectionIndicator(); }
 }

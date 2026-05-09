@@ -1,66 +1,288 @@
-/** 
- * Minecraft Block Catalog (Shape-Based Version)
- * タブを形状で分け、フォルダ機能は「すべて」タブのみに限定
+/**
+ * Minecraft Bedrock Creative Block Catalog
+ * タイプ別フラット構造 (full / slab / stairs / deco / light / functional / special)
+ * "すべて" タブはアプリ側でカスタムフォルダシステムを使用
  */
 export const BLOCK_CATALOG = {
-  /** すべて (フォルダ分け用) */
-  all: [], // 下の ALL_BLOCK_IDS と同じ内容
 
-  /** フルブロック */
+  // ===== フルブロック =====
   full: [
-    "minecraft:stone", "minecraft:cobblestone", "minecraft:mossy_cobblestone",
-    "minecraft:granite", "minecraft:polished_granite", "minecraft:diorite", "minecraft:polished_diorite", "minecraft:andesite", "minecraft:polished_andesite",
-    "minecraft:deepslate", "minecraft:cobbled_deepslate", "minecraft:polished_deepslate", "minecraft:deepslate_bricks", "minecraft:deepslate_tiles",
-    "minecraft:tuff", "minecraft:polished_tuff", "minecraft:tuff_bricks",
-    "minecraft:bricks", "minecraft:mud_bricks", "minecraft:sandstone", "minecraft:red_sandstone",
-    "minecraft:oak_planks", "minecraft:spruce_planks", "minecraft:birch_planks", "minecraft:jungle_planks",
-    "minecraft:white_wool", "minecraft:orange_wool", "minecraft:magenta_wool", "minecraft:light_blue_wool",
-    "minecraft:white_concrete", "minecraft:orange_concrete", "minecraft:magenta_concrete",
-    "minecraft:dirt", "minecraft:grass_block", "minecraft:sand", "minecraft:gravel",
-    "minecraft:coal_block", "minecraft:iron_block", "minecraft:gold_block", "minecraft:diamond_block",
-    "minecraft:copper_block", "minecraft:exposed_copper", "minecraft:weathered_copper", "minecraft:oxidized_copper",
+    // 石・石材
+    'minecraft:stone','minecraft:cobblestone','minecraft:mossy_cobblestone',
+    'minecraft:stone_bricks','minecraft:mossy_stone_bricks','minecraft:cracked_stone_bricks','minecraft:chiseled_stone_bricks',
+    'minecraft:granite','minecraft:polished_granite',
+    'minecraft:diorite','minecraft:polished_diorite',
+    'minecraft:andesite','minecraft:polished_andesite',
+    'minecraft:deepslate','minecraft:cobbled_deepslate','minecraft:polished_deepslate',
+    'minecraft:deepslate_bricks','minecraft:deepslate_tiles','minecraft:cracked_deepslate_bricks','minecraft:cracked_deepslate_tiles','minecraft:chiseled_deepslate',
+    'minecraft:tuff','minecraft:polished_tuff','minecraft:tuff_bricks','minecraft:chiseled_tuff',
+    'minecraft:sandstone','minecraft:chiseled_sandstone','minecraft:cut_sandstone','minecraft:smooth_sandstone',
+    'minecraft:red_sandstone','minecraft:chiseled_red_sandstone','minecraft:cut_red_sandstone','minecraft:smooth_red_sandstone',
+    'minecraft:bricks',
+    'minecraft:mud','minecraft:packed_mud','minecraft:mud_bricks',
+    'minecraft:blackstone','minecraft:polished_blackstone','minecraft:polished_blackstone_bricks',
+    'minecraft:cracked_polished_blackstone_bricks','minecraft:chiseled_polished_blackstone','minecraft:gilded_blackstone',
+    'minecraft:prismarine','minecraft:prismarine_bricks','minecraft:dark_prismarine',
+    'minecraft:nether_bricks','minecraft:red_nether_bricks','minecraft:cracked_nether_bricks','minecraft:chiseled_nether_bricks',
+    'minecraft:quartz_block','minecraft:chiseled_quartz_block','minecraft:quartz_pillar','minecraft:quartz_bricks','minecraft:smooth_quartz',
+    'minecraft:end_stone','minecraft:end_stone_bricks',
+    'minecraft:purpur_block','minecraft:purpur_pillar',
+    'minecraft:basalt','minecraft:polished_basalt','minecraft:smooth_basalt',
+    'minecraft:obsidian','minecraft:crying_obsidian',
+    'minecraft:calcite','minecraft:dripstone_block',
+    'minecraft:amethyst_block','minecraft:budding_amethyst',
+    'minecraft:sculk',
+    // 木材・原木
+    'minecraft:oak_planks','minecraft:oak_log','minecraft:oak_wood','minecraft:stripped_oak_log','minecraft:stripped_oak_wood',
+    'minecraft:spruce_planks','minecraft:spruce_log','minecraft:spruce_wood','minecraft:stripped_spruce_log','minecraft:stripped_spruce_wood',
+    'minecraft:birch_planks','minecraft:birch_log','minecraft:birch_wood','minecraft:stripped_birch_log','minecraft:stripped_birch_wood',
+    'minecraft:jungle_planks','minecraft:jungle_log','minecraft:jungle_wood','minecraft:stripped_jungle_log','minecraft:stripped_jungle_wood',
+    'minecraft:acacia_planks','minecraft:acacia_log','minecraft:acacia_wood','minecraft:stripped_acacia_log','minecraft:stripped_acacia_wood',
+    'minecraft:dark_oak_planks','minecraft:dark_oak_log','minecraft:dark_oak_wood','minecraft:stripped_dark_oak_log','minecraft:stripped_dark_oak_wood',
+    'minecraft:mangrove_planks','minecraft:mangrove_log','minecraft:mangrove_wood','minecraft:stripped_mangrove_log','minecraft:stripped_mangrove_wood',
+    'minecraft:mangrove_roots','minecraft:muddy_mangrove_roots',
+    'minecraft:cherry_planks','minecraft:cherry_log','minecraft:cherry_wood','minecraft:stripped_cherry_log','minecraft:stripped_cherry_wood',
+    'minecraft:bamboo_planks','minecraft:bamboo_block','minecraft:stripped_bamboo_block','minecraft:bamboo_mosaic',
+    'minecraft:crimson_planks','minecraft:crimson_stem','minecraft:stripped_crimson_stem','minecraft:crimson_hyphae','minecraft:stripped_crimson_hyphae',
+    'minecraft:nether_wart_block','minecraft:shroomlight',
+    'minecraft:warped_planks','minecraft:warped_stem','minecraft:stripped_warped_stem','minecraft:warped_hyphae','minecraft:stripped_warped_hyphae',
+    'minecraft:warped_wart_block',
+    // カラーブロック
+    'minecraft:white_wool','minecraft:orange_wool','minecraft:magenta_wool','minecraft:light_blue_wool',
+    'minecraft:yellow_wool','minecraft:lime_wool','minecraft:pink_wool','minecraft:gray_wool',
+    'minecraft:light_gray_wool','minecraft:cyan_wool','minecraft:purple_wool','minecraft:blue_wool',
+    'minecraft:brown_wool','minecraft:green_wool','minecraft:red_wool','minecraft:black_wool',
+    'minecraft:white_concrete','minecraft:orange_concrete','minecraft:magenta_concrete','minecraft:light_blue_concrete',
+    'minecraft:yellow_concrete','minecraft:lime_concrete','minecraft:pink_concrete','minecraft:gray_concrete',
+    'minecraft:light_gray_concrete','minecraft:cyan_concrete','minecraft:purple_concrete','minecraft:blue_concrete',
+    'minecraft:brown_concrete','minecraft:green_concrete','minecraft:red_concrete','minecraft:black_concrete',
+    'minecraft:white_concrete_powder','minecraft:orange_concrete_powder','minecraft:magenta_concrete_powder','minecraft:light_blue_concrete_powder',
+    'minecraft:yellow_concrete_powder','minecraft:lime_concrete_powder','minecraft:pink_concrete_powder','minecraft:gray_concrete_powder',
+    'minecraft:light_gray_concrete_powder','minecraft:cyan_concrete_powder','minecraft:purple_concrete_powder','minecraft:blue_concrete_powder',
+    'minecraft:brown_concrete_powder','minecraft:green_concrete_powder','minecraft:red_concrete_powder','minecraft:black_concrete_powder',
+    'minecraft:terracotta',
+    'minecraft:white_terracotta','minecraft:orange_terracotta','minecraft:magenta_terracotta','minecraft:light_blue_terracotta',
+    'minecraft:yellow_terracotta','minecraft:lime_terracotta','minecraft:pink_terracotta','minecraft:gray_terracotta',
+    'minecraft:light_gray_terracotta','minecraft:cyan_terracotta','minecraft:purple_terracotta','minecraft:blue_terracotta',
+    'minecraft:brown_terracotta','minecraft:green_terracotta','minecraft:red_terracotta','minecraft:black_terracotta',
+    'minecraft:white_glazed_terracotta','minecraft:orange_glazed_terracotta','minecraft:magenta_glazed_terracotta','minecraft:light_blue_glazed_terracotta',
+    'minecraft:yellow_glazed_terracotta','minecraft:lime_glazed_terracotta','minecraft:pink_glazed_terracotta','minecraft:gray_glazed_terracotta',
+    'minecraft:light_gray_glazed_terracotta','minecraft:cyan_glazed_terracotta','minecraft:purple_glazed_terracotta','minecraft:blue_glazed_terracotta',
+    'minecraft:brown_glazed_terracotta','minecraft:green_glazed_terracotta','minecraft:red_glazed_terracotta','minecraft:black_glazed_terracotta',
+    'minecraft:glass',
+    'minecraft:white_stained_glass','minecraft:orange_stained_glass','minecraft:magenta_stained_glass','minecraft:light_blue_stained_glass',
+    'minecraft:yellow_stained_glass','minecraft:lime_stained_glass','minecraft:pink_stained_glass','minecraft:gray_stained_glass',
+    'minecraft:light_gray_stained_glass','minecraft:cyan_stained_glass','minecraft:purple_stained_glass','minecraft:blue_stained_glass',
+    'minecraft:brown_stained_glass','minecraft:green_stained_glass','minecraft:red_stained_glass','minecraft:black_stained_glass',
+    // シュルカーボックス
+    'minecraft:shulker_box',
+    'minecraft:white_shulker_box','minecraft:orange_shulker_box','minecraft:magenta_shulker_box','minecraft:light_blue_shulker_box',
+    'minecraft:yellow_shulker_box','minecraft:lime_shulker_box','minecraft:pink_shulker_box','minecraft:gray_shulker_box',
+    'minecraft:light_gray_shulker_box','minecraft:cyan_shulker_box','minecraft:purple_shulker_box','minecraft:blue_shulker_box',
+    'minecraft:brown_shulker_box','minecraft:green_shulker_box','minecraft:red_shulker_box','minecraft:black_shulker_box',
+    // 自然・土壌
+    'minecraft:dirt','minecraft:grass_block','minecraft:podzol','minecraft:mycelium','minecraft:coarse_dirt',
+    'minecraft:rooted_dirt','minecraft:dirt_path','minecraft:clay','minecraft:sand','minecraft:red_sand','minecraft:gravel',
+    'minecraft:snow_block','minecraft:ice','minecraft:packed_ice','minecraft:blue_ice',
+    'minecraft:moss_block',
+    'minecraft:brain_coral_block','minecraft:bubble_coral_block','minecraft:fire_coral_block','minecraft:horn_coral_block','minecraft:tube_coral_block',
+    'minecraft:dead_brain_coral_block','minecraft:dead_bubble_coral_block','minecraft:dead_fire_coral_block','minecraft:dead_horn_coral_block','minecraft:dead_tube_coral_block',
+    'minecraft:brown_mushroom_block','minecraft:red_mushroom_block','minecraft:mushroom_stem',
+    'minecraft:honey_block','minecraft:honeycomb_block','minecraft:sponge','minecraft:wet_sponge',
+    'minecraft:netherrack','minecraft:soul_sand','minecraft:soul_soil',
+    // 鉱石・金属
+    'minecraft:coal_ore','minecraft:deepslate_coal_ore','minecraft:coal_block',
+    'minecraft:iron_ore','minecraft:deepslate_iron_ore','minecraft:raw_iron_block','minecraft:iron_block',
+    'minecraft:copper_ore','minecraft:deepslate_copper_ore','minecraft:raw_copper_block',
+    'minecraft:copper_block','minecraft:exposed_copper','minecraft:weathered_copper','minecraft:oxidized_copper',
+    'minecraft:cut_copper','minecraft:exposed_cut_copper','minecraft:weathered_cut_copper','minecraft:oxidized_cut_copper',
+    'minecraft:chiseled_copper','minecraft:exposed_chiseled_copper','minecraft:weathered_chiseled_copper','minecraft:oxidized_chiseled_copper',
+    'minecraft:copper_grate','minecraft:exposed_copper_grate','minecraft:weathered_copper_grate','minecraft:oxidized_copper_grate',
+    'minecraft:waxed_copper_block','minecraft:waxed_exposed_copper','minecraft:waxed_weathered_copper','minecraft:waxed_oxidized_copper',
+    'minecraft:waxed_cut_copper','minecraft:waxed_exposed_cut_copper','minecraft:waxed_weathered_cut_copper','minecraft:waxed_oxidized_cut_copper',
+    'minecraft:waxed_chiseled_copper','minecraft:waxed_exposed_chiseled_copper','minecraft:waxed_weathered_chiseled_copper','minecraft:waxed_oxidized_chiseled_copper',
+    'minecraft:waxed_copper_grate','minecraft:waxed_exposed_copper_grate','minecraft:waxed_weathered_copper_grate','minecraft:waxed_oxidized_copper_grate',
+    'minecraft:gold_ore','minecraft:deepslate_gold_ore','minecraft:nether_gold_ore','minecraft:raw_gold_block','minecraft:gold_block',
+    'minecraft:lapis_ore','minecraft:deepslate_lapis_ore','minecraft:lapis_block',
+    'minecraft:emerald_ore','minecraft:deepslate_emerald_ore','minecraft:emerald_block',
+    'minecraft:diamond_ore','minecraft:deepslate_diamond_ore','minecraft:diamond_block',
+    'minecraft:redstone_ore','minecraft:deepslate_redstone_ore','minecraft:redstone_block',
+    'minecraft:ancient_debris','minecraft:netherite_block',
+    // ネザー自然
+    'minecraft:magma_block','minecraft:glowstone'
   ],
 
-  /** ハーフブロック (Slab) */
+  // ===== ハーフブロック =====
   slab: [
-    "minecraft:stone_slab", "minecraft:cobblestone_slab", "minecraft:mossy_cobblestone_slab",
-    "minecraft:stone_brick_slab", "minecraft:granite_slab", "minecraft:diorite_slab", "minecraft:andesite_slab",
-    "minecraft:cobbled_deepslate_slab", "minecraft:polished_deepslate_slab", "minecraft:deepslate_brick_slab", "minecraft:deepslate_tile_slab",
-    "minecraft:tuff_slab", "minecraft:tuff_brick_slab",
-    "minecraft:brick_slab", "minecraft:mud_brick_slab", "minecraft:sandstone_slab", "minecraft:red_sandstone_slab",
-    "minecraft:oak_slab", "minecraft:spruce_slab", "minecraft:birch_slab", "minecraft:jungle_slab",
-    "minecraft:copper_slab", "minecraft:exposed_cut_copper_slab", "minecraft:weathered_cut_copper_slab", "minecraft:oxidized_cut_copper_slab",
+    'minecraft:stone_slab','minecraft:cobblestone_slab','minecraft:mossy_cobblestone_slab',
+    'minecraft:stone_brick_slab','minecraft:mossy_stone_brick_slab',
+    'minecraft:granite_slab','minecraft:polished_granite_slab',
+    'minecraft:diorite_slab','minecraft:polished_diorite_slab',
+    'minecraft:andesite_slab','minecraft:polished_andesite_slab',
+    'minecraft:cobbled_deepslate_slab','minecraft:polished_deepslate_slab','minecraft:deepslate_brick_slab','minecraft:deepslate_tile_slab',
+    'minecraft:tuff_slab','minecraft:polished_tuff_slab','minecraft:tuff_brick_slab',
+    'minecraft:sandstone_slab','minecraft:cut_sandstone_slab','minecraft:smooth_sandstone_slab',
+    'minecraft:red_sandstone_slab','minecraft:cut_red_sandstone_slab','minecraft:smooth_red_sandstone_slab',
+    'minecraft:brick_slab','minecraft:mud_brick_slab',
+    'minecraft:blackstone_slab','minecraft:polished_blackstone_slab','minecraft:polished_blackstone_brick_slab',
+    'minecraft:prismarine_slab','minecraft:prismarine_brick_slab','minecraft:dark_prismarine_slab',
+    'minecraft:nether_brick_slab','minecraft:red_nether_brick_slab',
+    'minecraft:quartz_slab','minecraft:smooth_quartz_slab',
+    'minecraft:end_stone_brick_slab','minecraft:purpur_slab',
+    'minecraft:oak_slab','minecraft:spruce_slab','minecraft:birch_slab','minecraft:jungle_slab',
+    'minecraft:acacia_slab','minecraft:dark_oak_slab','minecraft:mangrove_slab','minecraft:cherry_slab',
+    'minecraft:bamboo_slab','minecraft:bamboo_mosaic_slab','minecraft:crimson_slab','minecraft:warped_slab',
+    'minecraft:petrified_oak_slab',
+    'minecraft:cut_copper_slab','minecraft:exposed_cut_copper_slab','minecraft:weathered_cut_copper_slab','minecraft:oxidized_cut_copper_slab',
+    'minecraft:waxed_cut_copper_slab','minecraft:waxed_exposed_cut_copper_slab','minecraft:waxed_weathered_cut_copper_slab','minecraft:waxed_oxidized_cut_copper_slab'
   ],
 
-  /** 階段 (Stairs) */
+  // ===== 階段 =====
   stairs: [
-    "minecraft:stone_stairs", "minecraft:cobblestone_stairs", "minecraft:mossy_cobblestone_stairs",
-    "minecraft:stone_brick_stairs", "minecraft:granite_stairs", "minecraft:diorite_stairs", "minecraft:andesite_stairs",
-    "minecraft:cobbled_deepslate_stairs", "minecraft:polished_deepslate_stairs", "minecraft:deepslate_brick_stairs", "minecraft:deepslate_tile_stairs",
-    "minecraft:tuff_stairs", "minecraft:tuff_brick_stairs",
-    "minecraft:brick_stairs", "minecraft:mud_brick_stairs", "minecraft:sandstone_stairs", "minecraft:red_sandstone_stairs",
-    "minecraft:oak_stairs", "minecraft:spruce_stairs", "minecraft:birch_stairs", "minecraft:jungle_stairs",
-    "minecraft:cut_copper_stairs", "minecraft:exposed_cut_copper_stairs", "minecraft:weathered_cut_copper_stairs", "minecraft:oxidized_cut_copper_stairs",
+    'minecraft:stone_stairs','minecraft:cobblestone_stairs','minecraft:mossy_cobblestone_stairs',
+    'minecraft:stone_brick_stairs','minecraft:mossy_stone_brick_stairs',
+    'minecraft:granite_stairs','minecraft:polished_granite_stairs',
+    'minecraft:diorite_stairs','minecraft:polished_diorite_stairs',
+    'minecraft:andesite_stairs','minecraft:polished_andesite_stairs',
+    'minecraft:cobbled_deepslate_stairs','minecraft:polished_deepslate_stairs','minecraft:deepslate_brick_stairs','minecraft:deepslate_tile_stairs',
+    'minecraft:tuff_stairs','minecraft:polished_tuff_stairs','minecraft:tuff_brick_stairs',
+    'minecraft:sandstone_stairs','minecraft:smooth_sandstone_stairs',
+    'minecraft:red_sandstone_stairs','minecraft:smooth_red_sandstone_stairs',
+    'minecraft:brick_stairs','minecraft:mud_brick_stairs',
+    'minecraft:blackstone_stairs','minecraft:polished_blackstone_stairs','minecraft:polished_blackstone_brick_stairs',
+    'minecraft:prismarine_stairs','minecraft:prismarine_brick_stairs','minecraft:dark_prismarine_stairs',
+    'minecraft:nether_brick_stairs','minecraft:red_nether_brick_stairs',
+    'minecraft:quartz_stairs','minecraft:smooth_quartz_stairs',
+    'minecraft:end_stone_brick_stairs','minecraft:purpur_stairs',
+    'minecraft:oak_stairs','minecraft:spruce_stairs','minecraft:birch_stairs','minecraft:jungle_stairs',
+    'minecraft:acacia_stairs','minecraft:dark_oak_stairs','minecraft:mangrove_stairs','minecraft:cherry_stairs',
+    'minecraft:bamboo_stairs','minecraft:bamboo_mosaic_stairs','minecraft:crimson_stairs','minecraft:warped_stairs',
+    'minecraft:cut_copper_stairs','minecraft:exposed_cut_copper_stairs','minecraft:weathered_cut_copper_stairs','minecraft:oxidized_cut_copper_stairs',
+    'minecraft:waxed_cut_copper_stairs','minecraft:waxed_exposed_cut_copper_stairs','minecraft:waxed_weathered_cut_copper_stairs','minecraft:waxed_oxidized_cut_copper_stairs'
   ],
 
-  /** 装飾・機能 (Glass, Light, etc.) */
+  // ===== 装飾 =====
   deco: [
-    "minecraft:glass", "minecraft:white_stained_glass", "minecraft:light_blue_stained_glass",
-    "minecraft:torch", "minecraft:lantern", "minecraft:soul_lantern", "minecraft:glowstone", "minecraft:sea_lantern",
-    "minecraft:oak_door", "minecraft:iron_door", "minecraft:oak_trapdoor", "minecraft:iron_trapdoor",
-    "minecraft:crafting_table", "minecraft:furnace", "minecraft:chest", "minecraft:barrel",
-    "minecraft:ladder", "minecraft:iron_bars", "minecraft:glass_pane",
+    // 壁
+    'minecraft:cobblestone_wall','minecraft:mossy_cobblestone_wall',
+    'minecraft:stone_brick_wall','minecraft:mossy_stone_brick_wall',
+    'minecraft:granite_wall','minecraft:diorite_wall','minecraft:andesite_wall',
+    'minecraft:cobbled_deepslate_wall','minecraft:polished_deepslate_wall','minecraft:deepslate_brick_wall','minecraft:deepslate_tile_wall',
+    'minecraft:tuff_wall','minecraft:polished_tuff_wall','minecraft:tuff_brick_wall',
+    'minecraft:sandstone_wall','minecraft:red_sandstone_wall',
+    'minecraft:brick_wall','minecraft:mud_brick_wall',
+    'minecraft:blackstone_wall','minecraft:polished_blackstone_wall','minecraft:polished_blackstone_brick_wall',
+    'minecraft:prismarine_wall','minecraft:nether_brick_wall','minecraft:red_nether_brick_wall','minecraft:end_stone_brick_wall',
+    // フェンス
+    'minecraft:oak_fence','minecraft:spruce_fence','minecraft:birch_fence','minecraft:jungle_fence',
+    'minecraft:acacia_fence','minecraft:dark_oak_fence','minecraft:mangrove_fence','minecraft:cherry_fence',
+    'minecraft:bamboo_fence','minecraft:crimson_fence','minecraft:warped_fence','minecraft:nether_brick_fence',
+    // フェンスゲート
+    'minecraft:oak_fence_gate','minecraft:spruce_fence_gate','minecraft:birch_fence_gate','minecraft:jungle_fence_gate',
+    'minecraft:acacia_fence_gate','minecraft:dark_oak_fence_gate','minecraft:mangrove_fence_gate','minecraft:cherry_fence_gate',
+    'minecraft:bamboo_fence_gate','minecraft:crimson_fence_gate','minecraft:warped_fence_gate',
+    // ドア
+    'minecraft:oak_door','minecraft:spruce_door','minecraft:birch_door','minecraft:jungle_door',
+    'minecraft:acacia_door','minecraft:dark_oak_door','minecraft:mangrove_door','minecraft:cherry_door',
+    'minecraft:bamboo_door','minecraft:crimson_door','minecraft:warped_door',
+    // トラップドア
+    'minecraft:oak_trapdoor','minecraft:spruce_trapdoor','minecraft:birch_trapdoor','minecraft:jungle_trapdoor',
+    'minecraft:acacia_trapdoor','minecraft:dark_oak_trapdoor','minecraft:mangrove_trapdoor','minecraft:cherry_trapdoor',
+    'minecraft:bamboo_trapdoor','minecraft:crimson_trapdoor','minecraft:warped_trapdoor',
+    // ガラスパネル
+    'minecraft:glass_pane',
+    'minecraft:white_stained_glass_pane','minecraft:orange_stained_glass_pane','minecraft:magenta_stained_glass_pane','minecraft:light_blue_stained_glass_pane',
+    'minecraft:yellow_stained_glass_pane','minecraft:lime_stained_glass_pane','minecraft:pink_stained_glass_pane','minecraft:gray_stained_glass_pane',
+    'minecraft:light_gray_stained_glass_pane','minecraft:cyan_stained_glass_pane','minecraft:purple_stained_glass_pane','minecraft:blue_stained_glass_pane',
+    'minecraft:brown_stained_glass_pane','minecraft:green_stained_glass_pane','minecraft:red_stained_glass_pane','minecraft:black_stained_glass_pane',
+    // カーペット
+    'minecraft:white_carpet','minecraft:orange_carpet','minecraft:magenta_carpet','minecraft:light_blue_carpet',
+    'minecraft:yellow_carpet','minecraft:lime_carpet','minecraft:pink_carpet','minecraft:gray_carpet',
+    'minecraft:light_gray_carpet','minecraft:cyan_carpet','minecraft:purple_carpet','minecraft:blue_carpet',
+    'minecraft:brown_carpet','minecraft:green_carpet','minecraft:red_carpet','minecraft:black_carpet','minecraft:moss_carpet',
+    // キャンドル
+    'minecraft:candle',
+    'minecraft:white_candle','minecraft:orange_candle','minecraft:magenta_candle','minecraft:light_blue_candle',
+    'minecraft:yellow_candle','minecraft:lime_candle','minecraft:pink_candle','minecraft:gray_candle',
+    'minecraft:light_gray_candle','minecraft:cyan_candle','minecraft:purple_candle','minecraft:blue_candle',
+    'minecraft:brown_candle','minecraft:green_candle','minecraft:red_candle','minecraft:black_candle',
+    // 植物・自然装飾
+    'minecraft:dandelion','minecraft:poppy','minecraft:blue_orchid','minecraft:allium','minecraft:azure_bluet',
+    'minecraft:red_tulip','minecraft:orange_tulip','minecraft:white_tulip','minecraft:pink_tulip',
+    'minecraft:oxeye_daisy','minecraft:cornflower','minecraft:lily_of_the_valley','minecraft:wither_rose',
+    'minecraft:sunflower','minecraft:lilac','minecraft:peony','minecraft:rose_bush',
+    'minecraft:short_grass','minecraft:fern','minecraft:tall_grass','minecraft:large_fern',
+    'minecraft:torchflower','minecraft:pitcher_plant',
+    'minecraft:vine','minecraft:glow_lichen','minecraft:hanging_roots',
+    'minecraft:azalea','minecraft:flowering_azalea','minecraft:spore_blossom','minecraft:big_dripleaf','minecraft:small_dripleaf',
+    'minecraft:lily_pad',
+    'minecraft:oak_leaves','minecraft:spruce_leaves','minecraft:birch_leaves','minecraft:jungle_leaves',
+    'minecraft:acacia_leaves','minecraft:dark_oak_leaves','minecraft:mangrove_leaves','minecraft:cherry_leaves',
+    'minecraft:azalea_leaves','minecraft:flowering_azalea_leaves',
+    'minecraft:brown_mushroom','minecraft:red_mushroom',
+    'minecraft:sugar_cane','minecraft:bamboo','minecraft:cactus',
+    'minecraft:snow','minecraft:pointed_dripstone',
+    'minecraft:seagrass','minecraft:kelp','minecraft:sea_pickle',
+    'minecraft:brain_coral','minecraft:bubble_coral','minecraft:fire_coral','minecraft:horn_coral','minecraft:tube_coral',
+    'minecraft:brain_coral_fan','minecraft:bubble_coral_fan','minecraft:fire_coral_fan','minecraft:horn_coral_fan','minecraft:tube_coral_fan',
+    'minecraft:dead_brain_coral','minecraft:dead_bubble_coral','minecraft:dead_fire_coral','minecraft:dead_horn_coral','minecraft:dead_tube_coral',
+    'minecraft:dead_brain_coral_fan','minecraft:dead_bubble_coral_fan','minecraft:dead_fire_coral_fan','minecraft:dead_horn_coral_fan','minecraft:dead_tube_coral_fan',
+    'minecraft:large_amethyst_cluster','minecraft:medium_amethyst_cluster','minecraft:small_amethyst_cluster','minecraft:amethyst_bud',
+    'minecraft:sculk_vein',
+    'minecraft:nether_sprouts','minecraft:crimson_roots','minecraft:warped_roots','minecraft:weeping_vines','minecraft:twisting_vines',
+    'minecraft:bee_nest','minecraft:beehive',
+    'minecraft:chain','minecraft:iron_bars','minecraft:ladder',
+    'minecraft:iron_door','minecraft:copper_door','minecraft:exposed_copper_door','minecraft:weathered_copper_door','minecraft:oxidized_copper_door',
+    'minecraft:waxed_copper_door','minecraft:waxed_exposed_copper_door','minecraft:waxed_weathered_copper_door','minecraft:waxed_oxidized_copper_door',
+    'minecraft:iron_trapdoor','minecraft:copper_trapdoor','minecraft:exposed_copper_trapdoor','minecraft:weathered_copper_trapdoor','minecraft:oxidized_copper_trapdoor',
+    'minecraft:waxed_copper_trapdoor','minecraft:waxed_exposed_copper_trapdoor','minecraft:waxed_weathered_copper_trapdoor','minecraft:waxed_oxidized_copper_trapdoor'
   ],
 
-  /** 特殊・変換 (Macros) */
+  // ===== 発光 =====
+  light: [
+    'minecraft:torch','minecraft:soul_torch',
+    'minecraft:lantern','minecraft:soul_lantern',
+    'minecraft:glowstone','minecraft:sea_lantern','minecraft:shroomlight',
+    'minecraft:ochre_froglight','minecraft:verdant_froglight','minecraft:pearlescent_froglight',
+    'minecraft:candle',
+    'minecraft:white_candle','minecraft:orange_candle','minecraft:magenta_candle','minecraft:light_blue_candle',
+    'minecraft:yellow_candle','minecraft:lime_candle','minecraft:pink_candle','minecraft:gray_candle',
+    'minecraft:light_gray_candle','minecraft:cyan_candle','minecraft:purple_candle','minecraft:blue_candle',
+    'minecraft:brown_candle','minecraft:green_candle','minecraft:red_candle','minecraft:black_candle',
+    'minecraft:jack_o_lantern','minecraft:sea_pickle','minecraft:glow_lichen','minecraft:redstone_lamp',
+    'minecraft:beacon','minecraft:end_rod','minecraft:conduit','minecraft:crying_obsidian','minecraft:magma_block'
+  ],
+
+  // ===== 機能 =====
+  functional: [
+    'minecraft:chest','minecraft:trapped_chest','minecraft:barrel','minecraft:ender_chest',
+    'minecraft:crafting_table','minecraft:furnace','minecraft:blast_furnace','minecraft:smoker',
+    'minecraft:stonecutter','minecraft:cartography_table','minecraft:fletching_table','minecraft:loom',
+    'minecraft:smithing_table','minecraft:grindstone','minecraft:enchanting_table',
+    'minecraft:anvil','minecraft:chipped_anvil','minecraft:damaged_anvil',
+    'minecraft:brewing_stand','minecraft:cauldron','minecraft:composter','minecraft:bell',
+    'minecraft:rail','minecraft:powered_rail','minecraft:detector_rail','minecraft:activator_rail',
+    'minecraft:redstone_torch','minecraft:lever',
+    'minecraft:stone_button','minecraft:oak_button','minecraft:spruce_button','minecraft:birch_button',
+    'minecraft:jungle_button','minecraft:acacia_button','minecraft:dark_oak_button','minecraft:mangrove_button',
+    'minecraft:cherry_button','minecraft:bamboo_button','minecraft:crimson_button','minecraft:warped_button',
+    'minecraft:stone_pressure_plate','minecraft:oak_pressure_plate',
+    'minecraft:heavy_weighted_pressure_plate','minecraft:light_weighted_pressure_plate',
+    'minecraft:piston','minecraft:sticky_piston','minecraft:observer',
+    'minecraft:dropper','minecraft:dispenser','minecraft:hopper',
+    'minecraft:comparator','minecraft:repeater','minecraft:daylight_detector',
+    'minecraft:tripwire_hook','minecraft:target','minecraft:tnt','minecraft:redstone_lamp',
+    'minecraft:sculk_catalyst','minecraft:sculk_sensor','minecraft:sculk_shrieker'
+  ],
+
+  // ===== 特殊 =====
   special: [
-    "minecraft:barrier", "minecraft:structure_block", "minecraft:command_block", "minecraft:jigsaw", "minecraft:light_block",
+    'minecraft:command_block','minecraft:repeating_command_block','minecraft:chain_command_block',
+    'minecraft:structure_block','minecraft:structure_void','minecraft:jigsaw',
+    'minecraft:barrier','minecraft:light_block',
+    'minecraft:mob_spawner','minecraft:trial_spawner','minecraft:vault',
+    'minecraft:end_portal_frame','minecraft:reinforced_deepslate',
+    'minecraft:bedrock','minecraft:dragon_egg','minecraft:turtle_egg','minecraft:item_frame','minecraft:glow_item_frame'
   ]
+
 };
-
-// 重複を除いた全ブロックリスト（検索用）
-export const ALL_BLOCK_IDS = [
-  ...new Set(Object.values(BLOCK_CATALOG).flat())
-].filter(id => id !== "");
-
-BLOCK_CATALOG.all = ALL_BLOCK_IDS;

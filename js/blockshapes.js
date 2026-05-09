@@ -89,7 +89,7 @@ export function _getState(states, key) {
 }
 
 /** _getState の拡張版: キー候補を複数受け取り最初に見つかった値を返す */
-export function _getStateAny(states, ...keys) {
+function _getStateAny(states, ...keys) {
     for (const key of keys) {
         const v = _getState(states, key);
         if (v !== undefined) return v;
@@ -107,7 +107,7 @@ export function _isTrue(val) {
  * ※ 'direction'(0-3直接)・'cardinal_direction'(文字列)・'facing_direction'(2=N,3=S,4=W,5=E)
  *    をキーごとに正しくマッピング。混合すると direction=3(east) が south に化けるバグを防ぐ。
  */
-export function _getDirection(states) {
+function _getDirection(states) {
     if (!states) return 0;
     const STR_MAP = { south: 0, west: 1, north: 2, east: 3, down: 4, up: 5 };
 

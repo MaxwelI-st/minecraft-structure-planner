@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Silkscreen&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./css/style.css?v=2.0">
+  <link rel="stylesheet" href="./css/style.css">
 
   <!-- JSZip / Three.js は遅延ロード可能だがここで先読みしてキャッシュさせる -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="window.__jszipFailed=true"></script>
@@ -35,7 +35,7 @@
 <div id="loading-overlay" class="loading-overlay hidden">
   <div class="loading-spinner">
     <span class="spinner-icon">🧱</span>
-    <p>解析中...</p>
+    <p id="loading-text">解析中...</p>
   </div>
 </div>
 
@@ -66,16 +66,12 @@
     <div class="sidebar-section">
       <div class="section-label">プロジェクト</div>
       <div id="project-list" class="project-list"></div>
-    </div>
-
-    <div class="sidebar-footer">
-      <button class="sidebar-link" id="btn-import-file">
-        📂 ファイルを開く
-      </button>
-      <div style="font-size:0.65rem;color:var(--muted2);padding:0.5rem;text-align:center">
-        v2.5.10 (Cache Buster Active)
+      <div id="sidebar-drop-hint" class="sidebar-drop-hint">
+        📂 ここにドロップ
       </div>
     </div>
+
+
   </aside>
 
   <!-- ── Main Content ──────────────────────────────────────────── -->
@@ -118,6 +114,7 @@
         <button class="tab-btn" data-tab="viewer3d">🧊 3Dビュー</button>
         <button class="tab-btn" data-tab="dotart">🎨 ドット絵</button>
         <button class="tab-btn" data-tab="settings">⚙️ 設定</button>
+        <button id="btn-tour" title="このタブの使い方ガイドを見る" style="margin-left:auto;background:none;border:1.5px solid var(--accent,#63b3ed);color:var(--accent,#63b3ed);border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:0.85rem;flex-shrink:0;display:flex;align-items:center;justify-content:center;align-self:center;">?</button>
       </nav>
 
       <!-- ── Tab Panels ──────────────────────────────────────────── -->
@@ -371,14 +368,40 @@
                     <span>表示する構造</span>
                     <select id="viewer3d-structure-select" class="control-select"></select>
                   </label>
-                  <label class="v3d-field">
-                    <span>Y層フィルター（最小） <code id="layer-min-val">0</code></span>
-                    <input type="range" id="layer-min" min="0" max="255" value="0" class="range-input">
-                  </label>
-                  <label class="v3d-field">
-                    <span>Y層フィルター（最大） <code id="layer-max-val">255</code></span>
-                    <input type="range" id="layer-max" min="0" max="255" value="255" class="range-input">
-                  </label>
+                  <!-- 断面スライダー -->
+                  <div class="v3d-field" style="gap:0.15rem">
+                    <span style="font-size:0.72rem;color:var(--muted2)">✂️ 断面フィルター</span>
+                    <div style="display:grid;grid-template-columns:1.2rem 1fr 1fr;gap:0.2rem 0.4rem;align-items:center;font-size:0.7rem;">
+                      <span style="color:#fc8181;font-weight:bold">X</span>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">左 <code id="layer-xmin-val">0</code></span>
+                        <input type="range" id="layer-xmin" min="0" max="255" value="0" class="range-input">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">右 <code id="layer-xmax-val">255</code></span>
+                        <input type="range" id="layer-xmax" min="0" max="255" value="255" class="range-input">
+                      </label>
+                      <span style="color:#68d391;font-weight:bold">Y</span>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">下 <code id="layer-min-val">0</code></span>
+                        <input type="range" id="layer-min" min="0" max="255" value="0" class="range-input">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">上 <code id="layer-max-val">255</code></span>
+                        <input type="range" id="layer-max" min="0" max="255" value="255" class="range-input">
+                      </label>
+                      <span style="color:#63b3ed;font-weight:bold">Z</span>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">手前 <code id="layer-zmin-val">0</code></span>
+                        <input type="range" id="layer-zmin" min="0" max="255" value="0" class="range-input">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">奥 <code id="layer-zmax-val">255</code></span>
+                        <input type="range" id="layer-zmax" min="0" max="255" value="255" class="range-input">
+                      </label>
+                    </div>
+                    <button id="btn-slice-reset" class="mc-btn small" style="font-size:0.68rem;background:var(--surface3);margin-top:0.2rem">↺ リセット</button>
+                  </div>
                   <div class="v3d-field">
                     <span>表示色モード</span>
                     <div class="color-mode-toggle">
@@ -387,8 +410,8 @@
                         <span class="toggle-label">マテリアル色</span>
                       </label>
                       <label class="toggle-item" id="opt-realtexture-label">
-                        <input type="radio" name="viewer3d-colormode" value="realtexture" disabled>
-                        <span class="toggle-label">リアル ※開発中※</span>
+                        <input type="radio" name="viewer3d-colormode" value="realtexture">
+                        <span class="toggle-label">リアル</span>
                       </label>
                     </div>
                   </div>
@@ -423,10 +446,10 @@
                   </label>
                   <div id="pack-status" class="v3d-status">未読込</div>
                   <div class="v3d-hint">
-                    💡 おすすめ:
-                    ・<a href="https://github.com/Mojang/bedrock-samples/releases/latest" target="_blank" rel="noopener">Mojang 公式</a>
-                    ・<a href="https://github.com/Faithful-Resource-Pack/Faithful-Java-32x/releases" target="_blank" rel="noopener">Faithful 32x</a>
-                    ・<a href="https://www.curseforge.com/minecraft/texture-packs" target="_blank" rel="noopener">CurseForge</a>
+                    💡 おすすめ: <strong>Java Edition のリソースパック (.zip) が最も充実しています。</strong>
+                    公式サイト等でダウンロードした .zip のままアップロード可能です（解凍不要）。<br>
+                    ・<a href="https://github.com/Mojang/bedrock-samples/releases/latest" target="_blank" rel="noopener">Mojang 公式 (統合版)</a>
+                    ・<a href="https://github.com/Faithful-Resource-Pack/Faithful-Java-32x/releases" target="_blank" rel="noopener">Faithful 32x (Java版)</a>
                   </div>
                 </div>
               </details>
@@ -620,22 +643,26 @@
         </div>
         <div class="tab-pills" style="flex-wrap: wrap; gap: 4px;" id="block-selector-tabs">
           <button class="tab-pill active" data-cat="current">現在のブロック</button>
-          <button class="tab-pill" data-cat="all">すべて</button>
-          <button class="tab-pill" data-cat="full">フルブロック</button>
-          <button class="tab-pill" data-cat="slab">ハーフ</button>
-          <button class="tab-pill" data-cat="stairs">階段</button>
-          <button class="tab-pill" data-cat="deco">装飾</button>
-          <button class="tab-pill" data-cat="special">特殊・変換</button>
+          <button class="tab-pill" data-cat="dotart">ドット絵用</button>
+          <button class="tab-pill" data-cat="all">📂 すべて</button>
+          <button class="tab-pill" data-cat="full">🧱 フルブロック</button>
+          <button class="tab-pill" data-cat="slab">🔲 ハーフ</button>
+          <button class="tab-pill" data-cat="stairs">📐 階段</button>
+          <button class="tab-pill" data-cat="deco">🌸 装飾</button>
+          <button class="tab-pill" data-cat="light">💡 発光</button>
+          <button class="tab-pill" data-cat="functional">⚙️ 機能</button>
+          <button class="tab-pill" data-cat="special">✨ 特殊</button>
         </div>
       </div>
-      <div class="block-selector-grid" id="block-selector-grid">
-        <!-- JSで動的に生成 -->
+      <div class="block-grid" id="block-selector-grid"></div>
+      <div class="modal-footer">
+        <button class="mc-btn-border secondary" onclick="document.getElementById('modal-block-selector').classList.remove('active');document.getElementById('modal-block-selector').parentNode.classList.add('hidden')">閉じる</button>
       </div>
     </div>
   </div>
 </div>
 
-<script type="module" src="./js/app.js?v=2.6.0"></script>
+<!-- JS -->
+<script type="module" src="./js/app.js?v=2.7.2"></script>
 </body>
 </html>
-   

@@ -24,7 +24,7 @@ import { normalizeBedrockBlock, normalizeId } from './bedrock_normalize.js';
 const ASSETS_BASE = 'https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/';
 let _useJavaFallback = false; // デフォルトでは Java アセットを使用しない
 
-export function setUseJavaFallback(val) { _useJavaFallback = !!val; }
+function setUseJavaFallback(val) { _useJavaFallback = !!val; }
 
 const JAVA_VARIANTS = {
     'hay_block': { top: 'hay_block_top', side: 'hay_block_side' },
@@ -248,7 +248,11 @@ export async function savePackToIDB(blob, fileName) {
             size: blob.size,
         }, _IDB_KEY);
         tx.oncomplete = () => { db.close(); resolve(true); };
-        tx.onerror = () => { db.close(); reject(tx.error); };
+        tx.onerror = () => { 
+            console.error('IndexedDB savePack error:', tx.error);
+            db.close(); 
+            reject(tx.error); 
+        };
     });
 }
 
@@ -411,7 +415,6 @@ export async function loadFromZip(file) {
         const hasBlockDir = zip.folder(/textures\/blocks/i).length > 0 
                          || zip.folder(/resource_pack\/textures\/blocks/i).length > 0;
         if (hasBlockDir) {
-            console.log('--- ResourcePack: No terrain_texture.json found, but textures/blocks/ folder exists. Enabling Bedrock mode. ---');
             _state.isBedrock = true;
         }
     }
@@ -1123,7 +1126,7 @@ export function getBestIconUrl(blockId, states = {}) {
     return getTextureUrl(localId);
 }
 
-export function listAvailable() { return Array.from(_state.textures.keys()).sort(); }
+function listAvailable() { return Array.from(_state.textures.keys()).sort(); }
 
 
 /* ─── 構造バッファ永続化 (.mcstructure を再アップロード不要に) ─────────── */
@@ -1143,7 +1146,11 @@ export async function saveStructureBuffer(structureId, buffer, name = '', editio
             size: buffer.byteLength || buffer.size || 0,
         }, structureId);
         tx.oncomplete = () => { db.close(); resolve(true); };
-        tx.onerror = () => { db.close(); reject(tx.error); };
+        tx.onerror = () => { 
+            console.error('IndexedDB saveStructure error:', tx.error);
+            db.close(); 
+            reject(tx.error); 
+        };
     });
 }
 

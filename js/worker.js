@@ -9,7 +9,7 @@ import { NBTParser, decompressIfNeeded, detectEndian } from './nbt.js';
 import { normalizeBedrockBlock, normalizeId } from './bedrock_normalize.js';
 
 self.onmessage = async (e) => {
-    const { buffer, fileName } = e.data;
+    const { taskId, buffer, fileName } = e.data;
     try {
         const data = await decompressIfNeeded(buffer);
         const endian = detectEndian(data, fileName || '');
@@ -34,6 +34,7 @@ self.onmessage = async (e) => {
         }).sort((a, b) => b.count - a.count);
 
         self.postMessage({
+            taskId,
             success: true, results, coords, edition,
             size: { x: sx, y: sy, z: sz },
             totalCount, uniqueCount: counts.size,
@@ -41,6 +42,7 @@ self.onmessage = async (e) => {
         });
     } catch (err) {
         self.postMessage({
+            taskId,
             success: false,
             error: err.message,
             stack: err.stack ? String(err.stack).split('\n').slice(0, 4).join('\n') : null
