@@ -1129,12 +1129,35 @@ body::before {
     min-height: 480px;
     position: relative;
 }
-.v3d-canvas {
-    flex: 1 1 auto;
+.v3d-main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     min-width: 0;
+    gap: 0.5rem;
+}
+.v3d-canvas {
+    flex: 1;
+    min-height: 0;
     position: relative;
     border-radius: 8px;
     overflow: hidden;
+    background: #0a0f1a;
+}
+.v3d-footer-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+.v3d-control-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
 }
 .v3d-side-panel {
     flex: 0 0 320px;
@@ -1144,11 +1167,7 @@ body::before {
     overflow-y: auto;
     transition: margin-right 0.25s, opacity 0.25s;
 }
-.v3d-side-panel.collapsed {
-    margin-right: -320px;
-    opacity: 0;
-    visibility: hidden;
-}
+/* .v3d-side-panel.collapsed は使用しないため削除 */
 .v3d-panel-header {
     display: flex;
     justify-content: space-between;
@@ -1156,9 +1175,6 @@ body::before {
     padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
     background: rgba(0,0,0,0.15);
-    position: sticky;
-    top: 0;
-    z-index: 1;
     font-weight: 700;
     font-size: 0.85rem;
 }

@@ -148,7 +148,9 @@ class App {
         // カスタムフォルダシステム: [{id, name, blockIds:[]}]
         this._customFolders = JSON.parse(localStorage.getItem('mc_planner_block_folders') || '[]');
         this._dragEditMode = false;
-        this._deletedPositions = new Set(); // 3Dビューで1つだけ削除したブロック位置
+        this._deletedPositions = new Set(); // 表示上の削除済み座標 "x,y,z"
+        this._rangeStart = null; // 3D範囲選択の始点 {x, y, z}
+        this._editHistory = []; // 操作履歴 [{type:'delete', positions:[]}]
 
         this._setupWorker();
         this._init();
@@ -309,14 +311,23 @@ class App {
             overlay.addEventListener('click', e => { if (e.target === overlay) this._hideModal(overlay.id); });
         });
 
-        // Undo / Redo for DotArt
+        // Keyboard Shortcuts
         document.addEventListener('keydown', (e) => {
+            // 入力フィールド（input, textarea, select）にフォーカスがある場合はスキップ
+            const active = document.activeElement;
+            const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable);
+            
+            // Ctrl+Z / Ctrl+Y (Undo/Redo) - ドット絵
             if (e.ctrlKey || e.metaKey) {
                 if (e.key === 'z' || e.key === 'Z') {
                     if (this.currentTab === 'dotart' && this.dotArtEditor && !document.querySelector('.modal-overlay:not(.hidden)')) {
                         e.preventDefault();
                         if (e.shiftKey) this.dotArtEditor.redo();
                         else this.dotArtEditor.undo();
+                    } else if (this.currentTab === 'viewer3d' && !isInput) {
+                        // 3DビューでのUndo（範囲削除など）
+                        e.preventDefault();
+                        this._undoLastAction();
                     }
                 } else if (e.key === 'y' || e.key === 'Y') {
                     if (this.currentTab === 'dotart' && this.dotArtEditor && !document.querySelector('.modal-overlay:not(.hidden)')) {
@@ -324,6 +335,21 @@ class App {
                         this.dotArtEditor.redo();
                     }
                 }
+                return; // Ctrlキー併用時はタブ切り替えをさせない
+            }
+
+            if (isInput) return; // 入力中は他のショートカットを無効化
+
+            // タブ切り替え (1-4)
+            if (['1','2','3','4'].includes(e.key)) {
+                const tabs = ['materials', 'viewer3d', 'dotart', 'settings'];
+                this._switchTab(tabs[parseInt(e.key) - 1]);
+            }
+
+            // スペースキー: 3Dビューのリセット
+            if (e.code === 'Space' && this.currentTab === 'viewer3d' && this.viewer3d) {
+                e.preventDefault();
+                this.viewer3d.resetCamera();
             }
         });
 
@@ -587,22 +613,7 @@ class App {
         const btnExportMc = $('btn-export-mcstructure');
         if (btnExportMc) btnExportMc.onclick = () => this._exportMcStructure();
 
-        // ─── サイドパネル開閉 ────────────────────────────────
-        const panel = document.getElementById('viewer3d-side-panel');
-        const togglePanel = (forceState) => {
-            if (!panel) return;
-            const willCollapse = forceState !== undefined ? forceState : !panel.classList.contains('collapsed');
-            panel.classList.toggle('collapsed', willCollapse);
-            try { localStorage.setItem('v3d_panel_collapsed', willCollapse ? '1' : '0'); } catch (_) {}
-            // canvas resize 通知
-            setTimeout(() => this.viewer3d?._handleResize?.(), 300);
-        };
-        const toggleBtn = document.getElementById('btn-toggle-3d-panel');
-        const collapseBtn = document.getElementById('btn-collapse-3d-panel');
-        if (toggleBtn) toggleBtn.onclick = () => togglePanel();
-        if (collapseBtn) collapseBtn.onclick = () => togglePanel(true);
-        // パネルは常に展開状態でスタート（collapsed だと pointer-events が無効になるため）
-        try { localStorage.removeItem('v3d_panel_collapsed'); } catch (_) {}
+        // 設定パネルは固定表示とする
 
         // 各 details の開閉状態も保存
         document.querySelectorAll('.v3d-section').forEach(sec => {
@@ -2624,7 +2635,6 @@ class App {
         const panel = document.getElementById('viewer3d-side-panel');
         if (panel) {
             panel.classList.remove('collapsed');
-            try { localStorage.removeItem('v3d_panel_collapsed'); } catch (_) {}
         }
         // ブロック編集セクションを必ず展開
         const replaceSection = document.querySelector('.v3d-section[data-section="replace"]');
@@ -2639,6 +2649,8 @@ class App {
             // すでに3Dビューが初期化されている場合、プロジェクト切り替えに合わせて自動再読込
             if (this.viewer3d?.isInitialized) {
                 this._load3DView();
+                // 表示切り替え直後のリサイズ対応
+                requestAnimationFrame(() => this.viewer3d.handleResize());
             }
         }
     }
@@ -2730,10 +2742,12 @@ class App {
         // 1つだけ削除
         document.getElementById('v3d-pop-del-one')?.addEventListener('click', () => {
             if (coord) {
-                this._deletedPositions.add(`${coord.x},${coord.y},${coord.z}`);
+                const pos = `${coord.x},${coord.y},${coord.z}`;
+                this._deletedPositions.add(pos);
+                this._editHistory.push({ type: 'delete', positions: [pos] });
                 this._applySlice();
                 popup.remove();
-                this._toast(`🗑️ 1ブロック削除しました (合計 ${this._deletedPositions.size} 件)`);
+                this._toast(`🗑️ 1ブロック削除しました`);
             }
         });
 
@@ -2753,16 +2767,10 @@ class App {
             this._toast(`💥 「${name}」を削除置換に追加しました`);
         });
 
-        // 直前の削除を1つ戻す（Undo）
+        // 直前の削除を戻す（Undo）
         document.getElementById('v3d-pop-restore')?.addEventListener('click', () => {
-            if (this._deletedPositions.size > 0) {
-                const arr = Array.from(this._deletedPositions);
-                arr.pop(); // 最後に追加された座標を削除
-                this._deletedPositions = new Set(arr);
-                this._applySlice();
-                popup.remove();
-                this._toast('↺ 直前の削除を取り消しました');
-            }
+            this._undoLastAction();
+            popup.remove();
         });
 
         // 他の場所クリックで閉じる（ハイライトも解除）
@@ -2774,6 +2782,188 @@ class App {
             }
         };
         setTimeout(() => document.addEventListener('pointerdown', close), 10);
+    }
+
+    _onViewer3DRangeClick(info) {
+        // 既存ポップアップを閉じる
+        document.getElementById('v3d-range-popup')?.remove();
+        
+        if (!info) {
+            // 空白クリックでリセット
+            this._rangeStart = null;
+            this.viewer3d?.clearRangeIndicator();
+            return;
+        }
+
+        const { coord, screenX, screenY } = info;
+
+        if (!this._rangeStart) {
+            // 1回目：始点
+            this._rangeStart = coord;
+            this.viewer3d?.setRangeIndicator(coord, null);
+            this._toast('📍 始点を選択しました。終点を Shift+右クリック してください。');
+        } else {
+            // 2回目：終点
+            const start = this._rangeStart;
+            const end = coord;
+            this.viewer3d?.setRangeIndicator(start, end);
+
+            const popup = document.createElement('div');
+            popup.id = 'v3d-range-popup';
+            popup.className = 'glass-card';
+            popup.style.cssText = `
+                position:fixed; z-index:9999;
+                left:${Math.min(screenX + 8, window.innerWidth - 230)}px;
+                top:${Math.min(screenY + 8, window.innerHeight - 170)}px;
+                background:var(--surface2,#1e2a3a); border:1px solid var(--accent,#63b3ed);
+                border-radius:10px; padding:0.8rem; min-width:220px;
+                box-shadow:0 8px 32px rgba(0,0,0,0.7); font-size:0.82rem; color:var(--text,#e2e8f0);
+            `;
+
+            const minX = Math.min(start.x, end.x), maxX = Math.max(start.x, end.x);
+            const minY = Math.min(start.y, end.y), maxY = Math.max(start.y, end.y);
+            const minZ = Math.min(start.z, end.z), maxZ = Math.max(start.z, end.z);
+            const volume = (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+
+            popup.innerHTML = `
+                <div style="font-weight:bold;color:var(--accent);margin-bottom:0.5rem;border-bottom:1px solid var(--border);padding-bottom:0.4rem">
+                    📐 範囲選択 (${volume}ブロック)
+                </div>
+                <div style="font-size:0.7rem;color:var(--muted2);margin-bottom:0.6rem">
+                    始点: ${start.x},${start.y},${start.z}<br>
+                    終点: ${end.x},${end.y},${end.z}
+                </div>
+                <div style="display:flex;flex-direction:column;gap:0.4rem">
+                    <button id="v3d-range-del" class="mc-btn secondary small" style="width:100%;text-align:left;color:var(--danger)">🗑️ この範囲をすべて削除</button>
+                    <button id="v3d-range-prepared" class="mc-btn secondary small" style="width:100%;text-align:left">✅ この範囲をすべて準備済みにする</button>
+                    <div id="v3d-range-block-list" style="margin-top:0.4rem;border-top:1px solid var(--border);padding-top:0.4rem;max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;">
+                        <div style="font-size:0.65rem;color:var(--muted2);margin-bottom:2px">範囲内のブロック (クリックで置換元へ):</div>
+                        <!-- Block list injected here -->
+                    </div>
+                    <button id="v3d-range-cancel" class="mc-btn secondary small" style="width:100%;text-align:left;opacity:0.7;margin-top:0.2rem">✕ 選択を解除</button>
+                </div>
+            `;
+            document.body.appendChild(popup);
+
+            // 範囲内のブロック解析
+            const selId = document.getElementById('viewer3d-structure-select')?.value;
+            const coords = this.coordsCache.get(selId);
+            const uniqueBlocksInRange = new Set();
+            if (coords) {
+                coords.forEach(c => {
+                    if (c.x >= minX && c.x <= maxX && c.y >= minY && c.y <= maxY && c.z >= minZ && c.z <= maxZ) {
+                        uniqueBlocksInRange.add(c.blockId);
+                    }
+                });
+            }
+
+            const listEl = document.getElementById('v3d-range-block-list');
+            uniqueBlocksInRange.forEach(bid => {
+                if (bid.includes('air')) return;
+                const bname = this.langData[bid] || bid.replace('minecraft:', '');
+                const row = document.createElement('button');
+                row.className = 'mc-btn secondary small';
+                row.style.cssText = 'width:100%;text-align:left;font-size:0.7rem;padding:2px 6px;display:flex;align-items:center;gap:4px;';
+                row.innerHTML = `<span style="width:16px;height:16px;display:inline-block;flex-shrink:0;">${this._getBlockIconHtml(bid)}</span> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${bname}</span>`;
+                row.onclick = () => {
+                    const fromEl = document.getElementById('replace-from');
+                    const fromNameEl = document.getElementById('replace-from-name');
+                    if (fromEl) fromEl.value = bid;
+                    if (fromNameEl) fromNameEl.textContent = bname;
+                    this._toast(`🔄 「${bname}」を置換元に設定しました`);
+                    // ポップアップは閉じない（続けて選べるように）
+                };
+                listEl.appendChild(row);
+            });
+
+            // 削除実行
+            document.getElementById('v3d-range-del').onclick = () => {
+                if (confirm(`${volume} ブロックを一括削除しますか？`)) {
+                    const deletedInThisAction = [];
+                    for (let x = minX; x <= maxX; x++) {
+                        for (let y = minY; y <= maxY; y++) {
+                            for (let z = minZ; z <= maxZ; z++) {
+                                const pos = `${x},${y},${z}`;
+                                if (!this._deletedPositions.has(pos)) {
+                                    this._deletedPositions.add(pos);
+                                    deletedInThisAction.push(pos);
+                                }
+                            }
+                        }
+                    }
+                    if (deletedInThisAction.length > 0) {
+                        this._editHistory.push({ type: 'delete', positions: deletedInThisAction });
+                    }
+                    this._applySlice();
+                    this._rangeStart = null;
+                    this.viewer3d?.clearRangeIndicator();
+                    popup.remove();
+                    this._toast(`🗑️ ${deletedInThisAction.length}ブロックを一括削除しました（履歴から戻せます）`);
+                }
+            };
+
+            // 準備済みにする
+            document.getElementById('v3d-range-prepared').onclick = () => {
+                const sel = document.getElementById('viewer3d-structure-select')?.value;
+                const project = this._currentProject();
+                if (!sel || !project) return;
+                
+                const coords = this.coordsCache.get(sel);
+                if (!coords) return;
+
+                let count = 0;
+                let preparedSet = this.preparedItems.get(sel);
+                if (!preparedSet) {
+                    preparedSet = new Set();
+                    this.preparedItems.set(sel, preparedSet);
+                }
+
+                coords.forEach(c => {
+                    if (c.x >= minX && c.x <= maxX && c.y >= minY && c.y <= maxY && c.z >= minZ && c.z <= maxZ) {
+                        if (!preparedSet.has(c.blockId)) {
+                            preparedSet.add(c.blockId);
+                            count++;
+                        }
+                    }
+                });
+
+                this._savePrepared();
+                this._renderBlockList();
+                this._rangeStart = null;
+                this.viewer3d?.clearRangeIndicator();
+                popup.remove();
+                this._toast(`✅ 範囲内のブロックを「準備済み」にしました`);
+            };
+
+            // キャンセル
+            document.getElementById('v3d-range-cancel').onclick = () => {
+                this._rangeStart = null;
+                this.viewer3d?.clearRangeIndicator();
+                popup.remove();
+            };
+
+            // 他の場所クリックで閉じる
+            const close = (e) => {
+                if (!popup.contains(e.target)) {
+                    popup.remove();
+                    document.removeEventListener('pointerdown', close);
+                }
+            };
+            setTimeout(() => document.addEventListener('pointerdown', close), 10);
+        }
+    }
+
+    _undoLastAction() {
+        if (this._editHistory.length === 0) {
+            this._toast('履歴がありません', 'info');
+            return;
+        }
+        const last = this._editHistory.pop();
+        if (last.type === 'delete') {
+            last.positions.forEach(p => this._deletedPositions.delete(p));
+            this._applySlice();
+            this._toast(`↺ ${last.positions.length}ブロックの削除を取り消しました`);
+        }
     }
 
     _applySlice() {
@@ -2837,8 +3027,14 @@ class App {
             if (!this.viewer3d || this.viewer3d.container !== container) {
                 if (this.viewer3d) this.viewer3d.destroy();
                 this.viewer3d = new Viewer3D(container);
+                this.viewer3d.onBlockClick = (info) => this._onViewer3DClick(info);
+                this.viewer3d.onBlockRightClick = (info) => this._onViewer3DRangeClick(info);
             }
             await this.viewer3d.init();
+            
+            // 3Dビュー内の Undoボタン
+            const undoBtn = document.getElementById('btn-v3d-undo');
+            if (undoBtn) undoBtn.onclick = () => this._undoLastAction();
             
             // 現在の床タイプを適用
             const floorType = document.getElementById('floor-type-select')?.value || 'grass';
@@ -2887,10 +3083,8 @@ class App {
         } finally {
             if (btn) {
                 btn.disabled = false;
-                btn.style.display = 'none'; // 開始ボタンは隠す
+                btn.textContent = '🧊 3D表示を開始';
             }
-            const reloadBtn = document.getElementById('btn-reload-3d');
-            if (reloadBtn) reloadBtn.style.display = 'inline-block'; // 代わりに更新ボタンを出す
         }
     }
 
@@ -3084,11 +3278,12 @@ class App {
             viewer3d: [
                 { target: '#btn-load-3d',                pos: 'bottom', title: '① 3D表示を開始',         body: 'このボタンを押すと構造が3Dでレンダリングされます。' + nl + 'はじめに必ず押してください。' },
                 { target: '#viewer3d-structure-select',  pos: 'bottom', title: '② 構造を選択',           body: '複数の構造がある場合、ここで表示したいものを切り替えられます。' },
-                { target: '#viewer3d-container',         pos: 'right',  title: '③ 3Dビューの操作',       body: '【回転】左ドラッグ' + nl + '【パン】右ドラッグ' + nl + '【ズーム】マウスホイール' + nl + '【ブロック選択】Shift + 左クリック → 名前・置換・削除メニュー' },
-                { target: '[data-section="replace"]',    pos: 'left',   title: '④ ブロック置換',          body: '素材Aを素材Bに一括置換できます。' + nl + 'コスト削減やデザイン変更に便利です。' },
-                { target: '[data-section="textures"]',   pos: 'left',   title: '⑤ テクスチャパック',      body: '公式リソースパック（zip）をアップロードすると' + nl + 'リアルなテクスチャになります。' },
-                { target: '#btn-export-mcstructure',     pos: 'left',   title: '⑥ 構造をエクスポート',    body: '置換後の構造を .mcstructure でダウンロードできます。' + nl + 'そのままMinecraftでインポートして使えます。' },
-                { target: '#layer-min',                      pos: 'left',   title: '⑦ 断面フィルター',          body: 'Y/X/Z 各軸の最小・最大スライダーを動かすと' + nl + 'その範囲だけを切り出して3D表示できます。' + nl + '内部構造の確認に便利です。↺ リセットで全体に戻ります。' }
+                { target: '#viewer3d-container',         pos: 'right',  title: '③ 3Dビューの操作',       body: '【回転】左ドラッグ' + nl + '【パン】右ドラッグ' + nl + '【ズーム】マウスホイール' + nl + '【単体選択】Shift + 左クリック' + nl + '【範囲選択】Shift + 右クリック (2回)' },
+                { target: '#viewer3d-container',         pos: 'right',  title: '④ 範囲選択と一括編集',    body: 'Shift + 右クリックで始点と終点を選ぶと、' + nl + '範囲内のブロックを「一括削除」したり、' + nl + '「準備済み」に設定したりできます。履歴からUndoも可能です。' },
+                { target: '[data-section="replace"]',    pos: 'left',   title: '⑤ ブロック置換',          body: '素材Aを素材Bに一括置換できます。' + nl + 'コスト削減やデザイン変更に便利です。' },
+                { target: '[data-section="textures"]',   pos: 'left',   title: '⑥ テクスチャパック',      body: '公式リソースパック（zip）をアップロードすると' + nl + 'リアルなテクスチャになります。' },
+                { target: '#btn-export-mcstructure',     pos: 'left',   title: '⑦ 構造をエクスポート',    body: '置換後の構造を .mcstructure でダウンロードできます。' + nl + 'そのままMinecraftでインポートして使えます。' },
+                { target: '#layer-min',                      pos: 'left',   title: '⑧ 断面フィルター',          body: 'Y/X/Z 各軸の最小・最大スライダーを動かすと' + nl + 'その範囲だけを切り出して3D表示できます。' + nl + '内部構造の確認に便利です。↺ リセットで全体に戻ります。' }
             ],
             dotart: [
                 { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像を選んで自動変換',  body: 'まずはこのボタンで画像を選びましょう。' + nl + '一瞬でマイクラのドット絵に変換されます！' },

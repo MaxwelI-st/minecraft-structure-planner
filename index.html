@@ -386,31 +386,34 @@
         <div class="tab-panel hidden" id="panel-viewer3d">
           <div class="viewer3d-layout v3d-flex">
 
-            <!-- 3D Canvas（最大化） -->
-            <div id="viewer3d-container" class="viewer3d-container v3d-canvas">
-              <div class="viewer3d-placeholder">
-                <p>「3D表示を開始」を押してレンダリング</p>
-                <p class="hint">右側のパネルから設定 / カメラ操作: ドラッグ=回転 / 右ドラッグ=パン / ホイール=ズーム</p>
+            <!-- 3Dメインエリア（キャンバス + 下部コントロール） -->
+            <div class="v3d-main-area">
+              <div id="viewer3d-container" class="viewer3d-container v3d-canvas">
+                <div class="viewer3d-placeholder">
+                  <p>「3D表示を開始」を押してレンダリング</p>
+                  <p class="hint">カメラ操作: ドラッグ=回転 / 右ドラッグ=パン / ホイール=ズーム</p>
+                </div>
+                <div id="viewer3d-info" class="viewer3d-info-floating"></div>
               </div>
-              <!-- フローティング情報バナー -->
-              <div id="viewer3d-info" class="viewer3d-info-floating"></div>
-              <!-- フローティング操作ボタン -->
-              <div class="v3d-fab-row">
-                <button class="mc-btn primary" id="btn-load-3d">🧊 3D表示を開始</button>
-                <button class="mc-btn secondary" id="btn-reset-camera" title="カメラリセット (R)">📷</button>
-                <button class="icon-btn v3d-panel-toggle" id="btn-toggle-3d-panel" title="設定パネル開閉">⚙️</button>
+
+              <!-- 下部コントロールエリア -->
+              <div class="v3d-footer-controls">
+                <div class="v3d-control-group">
+                  <button class="mc-btn primary" id="btn-load-3d">🧊 3D表示を開始</button>
+                  <button class="mc-btn secondary" id="btn-v3d-undo" title="直前の操作を元に戻す">↺ 元に戻す</button>
+                  <button class="mc-btn secondary" id="btn-reset-camera" title="カメラリセット">📷 カメラリセット</button>
+                </div>
               </div>
             </div>
 
-            <!-- 右サイド: アコーディオン式設定パネル -->
+            <!-- 右サイド: 固定パネル -->
             <aside class="v3d-side-panel" id="viewer3d-side-panel">
               <header class="v3d-panel-header">
                 <span>⚙️ 設定パネル</span>
-                <button class="icon-btn" id="btn-collapse-3d-panel" title="パネル閉じる">✕</button>
               </header>
 
-              <details class="v3d-section" data-section="display" open>
-                <summary>📺 表示設定</summary>
+              <div class="v3d-section" data-section="display">
+                <div class="section-title">📺 表示設定</div>
                 <div class="v3d-section-body">
                   <label class="v3d-field">
                     <span>表示する構造</span>
@@ -478,10 +481,10 @@
                     </select>
                   </label>
                 </div>
-              </details>
+              </div>
 
-              <details class="v3d-section" data-section="textures">
-                <summary>🎨 テクスチャ</summary>
+              <div class="v3d-section" data-section="textures">
+                <div class="section-title">🎨 テクスチャ</div>
                 <div class="v3d-section-body">
                   <div class="v3d-field" style="flex-direction:row;gap:0.4rem;align-items:center;flex-wrap:wrap">
                     <button class="mc-btn secondary small" id="btn-upload-pack">📦 アップロード</button>
@@ -500,10 +503,10 @@
                     ・<a href="https://github.com/Faithful-Resource-Pack/Faithful-Java-32x/releases" target="_blank" rel="noopener">Faithful 32x (Java版)</a>
                   </div>
                 </div>
-              </details>
+              </div>
 
-              <details class="v3d-section" data-section="replace" open>
-                <summary>🔁 ブロック編集</summary>
+              <div class="v3d-section" data-section="replace">
+                <div class="section-title">🔁 ブロック編集</div>
                 <div class="v3d-section-body">
                   <div class="v3d-field">
                     <span>素材A → 素材B</span>
@@ -553,7 +556,7 @@
                     <button class="mc-btn secondary small" id="btn-export-mcstructure">💾 .mcstructure ダウンロード</button>
                   </div>
                 </div>
-              </details>
+              </div>
             </aside>
           </div>
         </div><!-- /panel-viewer3d -->

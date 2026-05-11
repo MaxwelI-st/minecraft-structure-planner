@@ -120,6 +120,9 @@ export class Viewer3D {
         this._highlightedBlockId = null;
         // 置換を再適用して再描画が必要な場合に呼び出すコールバック（app.js がセット）
         this.onNeedsReload = null;
+        // 範囲選択用の始点マーカーとボックス
+        this._rangeStartMesh = null;
+        this._rangeBoxMesh = null;
     }
 
     async init() {
@@ -203,6 +206,9 @@ export class Viewer3D {
     _setupControls() {
         const el = this.renderer.domElement;
 
+        // ─── リサイズ対応 ─────────────────────────────────────────────
+        window.addEventListener('resize', () => this.handleResize());
+
         // ─── 回転（左ドラッグ）─────────────────────────────────────────────
         const orbitBy = (dx, dy) => {
             // 右ドラッグ → カメラが右へ周回（直感的なターンテーブル回転）
@@ -246,8 +252,8 @@ export class Viewer3D {
                 // 左: Shift押しなら選択待ち、それ以外は回転
                 dragMode = e.shiftKey ? 'click' : 'orbit';
             } else if (e.button === 2) {
-                // 右ドラッグ → パン
-                dragMode = 'pan';
+                // 右: Shift押しなら範囲選択待ち、それ以外はパン
+                dragMode = e.shiftKey ? 'range-click' : 'pan';
             } else if (e.button === 1) {
                 // 中ドラッグ → パン
                 dragMode = 'pan';
@@ -260,17 +266,19 @@ export class Viewer3D {
             const dy = e.clientY - prevMouse.y;
             if (Math.abs(e.clientX - _mouseDownAt.x) > 4 || Math.abs(e.clientY - _mouseDownAt.y) > 4) {
                 _dragMoved = true;
-                // 左ドラッグ中にShiftを押したらパンに切り替え
-                if (dragMode === 'click' && e.shiftKey) dragMode = 'pan';
             }
             if (dragMode === 'orbit') orbitBy(dx, dy);
             else if (dragMode === 'pan') panBy(dx, dy);
             prevMouse = { x: e.clientX, y: e.clientY };
         });
         window.addEventListener('mouseup', (e) => {
-            // 左クリック（ほぼ動かしていない）→ ブロック選択
-            if (!_dragMoved && dragMode === 'click' && e.button === 0) {
-                this._handleClick(e);
+            // 左クリック → ブロック選択（Shift時は移動制限しているので多少の動きを許容）
+            if (dragMode === 'click' && e.button === 0) {
+                if (!_dragMoved || e.shiftKey) this._handleClick(e, false);
+            }
+            // 右クリック → 範囲選択（Shift時は移動制限しているので多少の動きを許容）
+            else if (dragMode === 'range-click' && e.button === 2) {
+                this._handleClick(e, true);
             }
             dragMode = null;
         });
@@ -336,9 +344,21 @@ export class Viewer3D {
     loadStructure(coords, size, options = {}) {
         if (!this.isInitialized) return;
         const THREE = window.THREE;
-        const { yMin = 0, yMax = 999, xMin = 0, xMax = 9999, zMin = 0, zMax = 9999, colorMode } = options;
+        const { yMin = 0, yMax = 999, xMin = 0, xMax = 9999, zMin = 0, zMax = 9999, colorMode, autoFocus = true } = options;
         if (colorMode) this.colorMode = colorMode;
         this._lastCoords = coords; this._lastSize = size; this._lastOptions = { yMin, yMax, xMin, xMax, zMin, zMax };
+
+        // ─── オートフォーカス（注視点と距離の自動調整） ───────────────────────
+        if (autoFocus && size && size.x !== undefined) {
+            // 中心を注視点に
+            this.target.x = size.x / 2;
+            this.target.y = size.y / 2;
+            this.target.z = size.z / 2;
+            // 最大辺の約1.5～2.0倍の距離を確保して全体を映す
+            const maxDim = Math.max(size.x, size.y, size.z);
+            this.spherical.radius = Math.max(10, maxDim * 1.5);
+            this._updateCamera();
+        }
 
         // キャッシュをクリア（置換後ブロックIDでテクスチャを正しく引き直すため）
         this._matCache.clear();
@@ -482,6 +502,50 @@ export class Viewer3D {
             if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
             this.scene.add(mesh);
             this.meshes.push(mesh);
+        }
+    }
+
+    /** 特定のブロックタイプをハイライトする */
+    highlightBlock(blockId) {
+        if (!this.isInitialized) return;
+        const THREE = window.THREE;
+        this._highlightedBlockId = blockId;
+        
+        const hlColor = new THREE.Color(0xffff00); // 黄色
+        const normalColor = new THREE.Color(0xffffff);
+
+        for (const mesh of this.meshes) {
+            if (!mesh.instanceColor) continue;
+            const isTarget = (mesh.userData.blockId === blockId);
+            for (let i = 0; i < mesh.count; i++) {
+                mesh.setColorAt(i, isTarget ? hlColor : normalColor);
+            }
+            mesh.instanceColor.needsUpdate = true;
+        }
+    }
+
+    /** 現在ハイライトされているブロックIDを取得 */
+    getHighlighted() {
+        return this._highlightedBlockId;
+    }
+
+    /** ハイライトを解除 */
+    clearSelectionIndicator() {
+        this.highlightBlock(null);
+    }
+
+    /** カメラを初期位置にリセット（オートフォーカスを再適用） */
+    resetCamera() {
+        if (this._lastSize) {
+            const size = this._lastSize;
+            this.target.x = size.x / 2;
+            this.target.y = size.y / 2;
+            this.target.z = size.z / 2;
+            const maxDim = Math.max(size.x, size.y, size.z);
+            this.spherical.radius = Math.max(10, maxDim * 1.5);
+            this.spherical.theta = 0.5;
+            this.spherical.phi = 0.8;
+            this._updateCamera();
         }
     }
 
@@ -631,8 +695,10 @@ export class Viewer3D {
             this.loadStructure(this._lastCoords, this._lastSize, this._lastOptions || {});
         }
     }
-    _handleClick(e) {
-        if (!this.onBlockClick) return;
+    _handleClick(e, isRightClick = false) {
+        if (!isRightClick && !this.onBlockClick) return;
+        if (isRightClick && !this.onBlockRightClick) return;
+
         const THREE = window.THREE;
         if (!THREE) return;
         const rect = this.renderer.domElement.getBoundingClientRect();
@@ -644,18 +710,69 @@ export class Viewer3D {
         raycaster.setFromCamera(mouse, this.camera);
         const hits = raycaster.intersectObjects(this.meshes);
         if (hits.length === 0) {
-            this.onBlockClick(null); // 空白クリック → ポップアップを閉じる
+            if (!isRightClick) this.onBlockClick(null);
+            else this.onBlockRightClick(null);
             return;
         }
         const hit = hits[0];
         const mesh = hit.object;
         const coord = mesh.userData.instanceCoords?.[hit.instanceId] ?? null;
-        this.onBlockClick({
+
+        const callbackInfo = {
             blockId: mesh.userData.blockId,
             coord,
             screenX: e.clientX,
             screenY: e.clientY
-        });
+        };
+
+        if (isRightClick) this.onBlockRightClick(callbackInfo);
+        else this.onBlockClick(callbackInfo);
+    }
+
+    /** 範囲選択の可視化 */
+    setRangeIndicator(start, end) {
+        this.clearRangeIndicator();
+        if (!start || !this.scene) return;
+        const THREE = window.THREE;
+
+        // 始点マーカー（小さな青い箱）
+        const startGeo = new THREE.BoxGeometry(1.1, 1.1, 1.1);
+        const startMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5, depthTest: false });
+        this._rangeStartMesh = new THREE.Mesh(startGeo, startMat);
+        this._rangeStartMesh.position.set(start.x, start.y, start.z);
+        this._rangeStartMesh.renderOrder = 999;
+        this.scene.add(this._rangeStartMesh);
+
+        if (!end) return;
+
+        // 範囲ボックス
+        const minX = Math.min(start.x, end.x), maxX = Math.max(start.x, end.x);
+        const minY = Math.min(start.y, end.y), maxY = Math.max(start.y, end.y);
+        const minZ = Math.min(start.z, end.z), maxZ = Math.max(start.z, end.z);
+
+        const width = maxX - minX + 1.1, height = maxY - minY + 1.1, depth = maxZ - minZ + 1.1;
+        const boxGeo = new THREE.BoxGeometry(width, height, depth);
+        const edges = new THREE.EdgesGeometry(boxGeo);
+        const boxMat = new THREE.LineBasicMaterial({ color: 0xff4444, linewidth: 2, depthTest: false });
+        this._rangeBoxMesh = new THREE.LineSegments(edges, boxMat);
+        this._rangeBoxMesh.renderOrder = 1000;
+        this._rangeBoxMesh.position.set((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+        this.scene.add(this._rangeBoxMesh);
+    }
+
+    clearRangeIndicator() {
+        if (this._rangeStartMesh) {
+            this.scene?.remove(this._rangeStartMesh);
+            this._rangeStartMesh.geometry?.dispose();
+            this._rangeStartMesh.material?.dispose();
+            this._rangeStartMesh = null;
+        }
+        if (this._rangeBoxMesh) {
+            this.scene?.remove(this._rangeBoxMesh);
+            this._rangeBoxMesh.geometry?.dispose();
+            this._rangeBoxMesh.material?.dispose();
+            this._rangeBoxMesh = null;
+        }
     }
 
     resetCamera() {
@@ -789,4 +906,24 @@ export class Viewer3D {
     // 旧APIとの互換ラッパー
     highlightBlock(blockId) {}
     clearHighlight() { this.clearSelectionIndicator(); }
+
+    /** ウィンドウリサイズ時の処理 */
+    handleResize() {
+        if (!this.isInitialized || !this.container || !this.renderer || !this.camera) return;
+        
+        // タブ切り替え直後などは clientWidth が 0 になることがあるため、
+        // 0 の場合は少し待ってから再試行するか、デフォルト値を使う
+        let w = this.container.clientWidth;
+        let h = this.container.clientHeight;
+        
+        if (w === 0 || h === 0) {
+            // サイズが確定していない場合は、アニメーションフレームのタイミングで再試行
+            requestAnimationFrame(() => this.handleResize());
+            return;
+        }
+
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(w, h);
+    }
 }
