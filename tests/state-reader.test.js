@@ -93,10 +93,12 @@ describe('buildShapeSignature (キャッシュ衝突防止)', () => {
   });
 
   test('Java と Bedrock の同じ視覚状態 → 同じ signature', () => {
+    // Per TRAPDOOR_DIR_TO_FACING = ['west', 'east', 'north', 'south']
+    // direction=2 → north (same as Java facing='north')
     const javaSig = buildShapeSignature('minecraft:spruce_trapdoor', 'trapdoor',
       { facing: 'north', half: 'bottom', open: 'true' });
     const beSig   = buildShapeSignature('minecraft:spruce_trapdoor', 'trapdoor',
-      { direction: 0, upside_down_bit: 0, open_bit: 1 });
+      { direction: 2, upside_down_bit: 0, open_bit: 1 });
     expect(javaSig).toBe(beSig);
   });
 });

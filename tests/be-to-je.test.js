@@ -18,25 +18,27 @@ beforeAll(() => {
 
 // [name, states, expectedName, expectedPropsSubset, expectWarningCount=0]
 const cases = [
-  // === modern flat trapdoors (JSON 直接ヒット) ===
-  ['minecraft:dark_oak_trapdoor closed north',
+  // === modern flat trapdoors (force-override facing; JSON values are rotated wrong) ===
+  // ユーザー検証構造: direction=N が N 方向の隣接ブロックに付く → Java facing=N
+  ['minecraft:dark_oak_trapdoor cardinal=north → facing=north (preserved)',
     'minecraft:dark_oak_trapdoor', { 'minecraft:cardinal_direction': 'north', open_bit: 0, upside_down_bit: 0 },
     'minecraft:dark_oak_trapdoor', { open: 'false', half: 'bottom', facing: 'north', powered: 'false', waterlogged: 'false' }],
 
-  ['minecraft:dark_oak_trapdoor open east',
+  ['minecraft:dark_oak_trapdoor cardinal=east → facing=east',
     'minecraft:dark_oak_trapdoor', { 'minecraft:cardinal_direction': 'east', open_bit: 1, upside_down_bit: 0 },
     'minecraft:dark_oak_trapdoor', { open: 'true', half: 'bottom', facing: 'east' }],
 
-  ['minecraft:dark_oak_trapdoor closed top half',
+  ['minecraft:dark_oak_trapdoor cardinal=south top → facing=south',
     'minecraft:dark_oak_trapdoor', { 'minecraft:cardinal_direction': 'south', open_bit: 0, upside_down_bit: 1 },
     'minecraft:dark_oak_trapdoor', { open: 'false', half: 'top', facing: 'south' }],
 
-  ['minecraft:spruce_trapdoor (legacy direction int)',
+  // direction=1 → facing=east per TRAPDOOR_DIR_TO_FACING = [west, east, north, south]
+  ['minecraft:spruce_trapdoor (legacy direction=1 → east)',
     'minecraft:spruce_trapdoor', { direction: 1, open_bit: 0, upside_down_bit: 0 },
     'minecraft:spruce_trapdoor', { open: 'false', facing: 'east' }],
 
   // === oak (legacy name 化が必要) ===
-  ['minecraft:oak_trapdoor → trapdoor',
+  ['minecraft:oak_trapdoor cardinal=north → facing=north',
     'minecraft:oak_trapdoor', { 'minecraft:cardinal_direction': 'north', open_bit: 0, upside_down_bit: 0 },
     'minecraft:oak_trapdoor', { open: 'false', facing: 'north' }],
 

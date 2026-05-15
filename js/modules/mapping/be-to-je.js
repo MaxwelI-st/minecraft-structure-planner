@@ -353,12 +353,11 @@ const SPECIAL_CASES = [
       if (p.half === undefined && beStates.upside_down_bit !== undefined) {
         p.half = (beStates.upside_down_bit === 1 || beStates.upside_down_bit === true) ? 'top' : 'bottom';
       }
-      if (p.facing === undefined) {
-        if (typeof beStates.direction === 'number') {
-          p.facing = TRAPDOOR_DIR_TO_FACING[beStates.direction] ?? 'north';
-        } else if (beStates['minecraft:cardinal_direction']) {
-          p.facing = String(beStates['minecraft:cardinal_direction']);
-        }
+      // facing: JSON の値は間違いなので **強制上書き** (ユーザー検証構造で確認済)
+      if (typeof beStates.direction === 'number') {
+        p.facing = TRAPDOOR_DIR_TO_FACING[beStates.direction] ?? 'north';
+      } else if (beStates['minecraft:cardinal_direction']) {
+        p.facing = String(beStates['minecraft:cardinal_direction']);
       }
       if (p.open === undefined)        p.open        = 'false';
       if (p.half === undefined)        p.half        = 'bottom';
