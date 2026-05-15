@@ -222,8 +222,8 @@ export const UIMixin = {
 
             if (isInput) return;
 
-            if (['1','2','3','4'].includes(e.key)) {
-                const tabs = ['materials', 'viewer3d', 'dotart', 'settings'];
+            if (['1','2','3','4','5'].includes(e.key)) {
+                const tabs = ['materials', 'viewer3d', 'dotart', 'themes', 'settings'];
                 this._switchTab(tabs[parseInt(e.key) - 1]);
             }
 

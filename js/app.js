@@ -49,6 +49,13 @@ class App {
         this.pendingParses = new Map();   // taskId => resolve
         this.settingsData = JSON.parse(localStorage.getItem('mc_planner_settings') || '{}');
         this._customFolders = JSON.parse(localStorage.getItem('mc_planner_block_folders') || '[]');
+
+        // テーマ復元（DOM 描画前に適用するため constructor で）
+        try {
+            const savedTheme = localStorage.getItem('mc_planner_theme');
+            if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+        } catch (_) {}
+
         this._dragEditMode = false;
         this._deletedPositions = new Set();
         this._rangeStart = null;
@@ -303,6 +310,11 @@ class App {
                 this.coordsCache.set(existing.id, data.coords);
                 if (buf) this.bufferCache.set(existing.id, buf);
                 savedId = existing.id;
+                // 既存構造の再アップロード → viewer の mesh cache を invalidate
+                if (this.viewer3d) {
+                    this.viewer3d._matCache?.clear();
+                    this.viewer3d._meshCache?.clear?.();
+                }
             } else {
                 const s = ProjectManager.addStructure(project, { name, ...data });
                 this.coordsCache.set(s.id, data.coords);
@@ -464,6 +476,52 @@ class App {
         if (tab === 'materials') this._renderMaterialsTab();
         else if (tab === 'dotart') this._initDotArt();
         else if (tab === 'viewer3d') this._initViewer3DTab();
+        else if (tab === 'themes') this._setupThemesTab();
+    }
+
+    // ── テーマ ──────────────────────────────────────────────────────────
+    static THEMES = [
+        { id: 'dark-1',  name: 'Default Dark',       kind: 'dark',  sample: ['#070c14', '#f59e0b', '#4ade80'] },
+        { id: 'dark-2',  name: 'RTX Neon Glass',     kind: 'dark',  sample: ['#121212', '#4ade80', '#22c55e'] },
+        { id: 'dark-3',  name: 'Anemo Wanderer',     kind: 'dark',  sample: ['#0e1f24', '#67e8f9', '#a5f3fc'] },
+        { id: 'dark-4',  name: 'Stim Rush',          kind: 'dark',  sample: ['#1a1a1a', '#a3e635', '#c084fc'] },
+        { id: 'dark-5',  name: 'Obsidian Architect', kind: 'dark',  sample: ['#000000', '#cbd5e1', '#64748b'] },
+        { id: 'dark-6',  name: 'Midnight Espresso',  kind: 'dark',  sample: ['#2a1810', '#fb923c', '#fed7aa'] },
+        { id: 'dark-7',  name: 'Deep Ocean',         kind: 'dark',  sample: ['#0c1e3e', '#1e40af', '#ffffff'] },
+        { id: 'dark-8',  name: 'Retro Terminal',     kind: 'dark',  sample: ['#000000', '#ff00ff', '#00ffff'] },
+        { id: 'light-1', name: 'Default Light',      kind: 'light', sample: ['#f5f7fa', '#1a2332', '#5a6577'] },
+        { id: 'light-2', name: 'Frosted Crystal',    kind: 'light', sample: ['#eef2f7', '#1d4ed8', '#ffffff'] },
+        { id: 'light-3', name: 'Sakura Spring',      kind: 'light', sample: ['#fce7f3', '#e11d48', '#fbcfe8'] },
+        { id: 'light-4', name: 'Blueprint Paper',    kind: 'light', sample: ['#ffffff', '#dc2626', '#000000'] },
+    ];
+
+    _setupThemesTab() {
+        const grid = document.getElementById('themes-grid');
+        if (!grid) return;
+        const current = document.documentElement.getAttribute('data-theme') || 'dark-1';
+        grid.innerHTML = App.THEMES.map(t => {
+            const pixels = Array.from({ length: 12 }, (_, i) => {
+                const c = t.sample[i % t.sample.length];
+                return `<div class="px" style="background:${c}"></div>`;
+            }).join('');
+            return `
+                <div class="theme-card${t.id === current ? ' active' : ''}" data-theme-id="${t.id}">
+                    <div class="theme-card-preview">${pixels}</div>
+                    <div class="theme-card-name">${t.name}</div>
+                    <div class="theme-card-kind">${t.kind === 'dark' ? '🌙 Dark' : '☀️ Light'}</div>
+                </div>`;
+        }).join('');
+        grid.querySelectorAll('.theme-card').forEach(card => {
+            card.addEventListener('click', () => this._applyTheme(card.dataset.themeId));
+        });
+    }
+
+    _applyTheme(id) {
+        document.documentElement.setAttribute('data-theme', id);
+        try { localStorage.setItem('mc_planner_theme', id); } catch (_) {}
+        document.querySelectorAll('.theme-card').forEach(c => {
+            c.classList.toggle('active', c.dataset.themeId === id);
+        });
     }
 
     _renderMaterialsTab() {
@@ -1558,7 +1616,9 @@ class App {
         const btn = document.getElementById('btn-load-3d');
         if (btn) { btn.disabled = true; btn.textContent = '読み込み中...'; }
         try {
-            if (!this.viewer3d || this.viewer3d.container !== container) {
+            // container が DOM から外れていたら強制再生成 (タブ切替で detach されたケース対応)
+            const containerDetached = this.viewer3d?.container && !document.body.contains(this.viewer3d.container);
+            if (!this.viewer3d || this.viewer3d.container !== container || containerDetached) {
                 if (this.viewer3d) this.viewer3d.destroy();
                 this.viewer3d = new Viewer3D(container);
                 this.viewer3d.onBlockClick = (info) => this._onViewer3DClick(info);

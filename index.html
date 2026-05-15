@@ -113,7 +113,8 @@
       <nav class="tab-nav">
         <button class="tab-btn active" data-tab="materials">📦 素材一覧</button>
         <button class="tab-btn" data-tab="viewer3d">🧊 3Dビュー</button>
-        <button class="tab-btn" data-tab="dotart">🎨 ドット絵</button>
+        <button class="tab-btn" data-tab="dotart">🖼️ ドット絵</button>
+        <button class="tab-btn" data-tab="themes">🎨 テーマ</button>
         <button class="tab-btn" data-tab="settings">⚙️ 設定</button>
         <button class="tab-btn" data-tab="debug">🐛 デバッグ <span id="debug-tab-badge" style="display:none;background:#f56565;color:white;border-radius:10px;padding:1px 6px;font-size:0.7rem;margin-left:4px;">0</span></button>
         <button id="btn-tour" title="このタブの使い方ガイドを見る" style="margin-left:auto;background:none;border:1.5px solid var(--accent,#63b3ed);color:var(--accent,#63b3ed);border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:0.85rem;flex-shrink:0;display:flex;align-items:center;justify-content:center;align-self:center;">?</button>
@@ -690,6 +691,17 @@
           </div>
         </div><!-- /panel-settings -->
 
+        <!-- Tab: テーマ -->
+        <div class="tab-panel hidden" id="panel-themes">
+          <div class="panel-content">
+            <div class="settings-section">
+              <h3>🎨 デザインテーマ</h3>
+              <p class="hint" style="color:var(--muted2);font-size:0.85rem;margin:6px 0 12px;">クリックでテーマを切替。設定はブラウザに保存されます。</p>
+              <div class="themes-grid" id="themes-grid"></div>
+            </div>
+          </div>
+        </div><!-- /panel-themes -->
+
         <!-- Tab: デバッグ -->
         <div class="tab-panel hidden" id="panel-debug">
           <section style="margin-bottom:1rem">
@@ -782,9 +794,6 @@
         </div>
       </div>
       <div class="block-grid" id="block-selector-grid"></div>
-      <div class="modal-footer">
-        <button class="mc-btn-border secondary" onclick="document.getElementById('modal-block-selector').classList.remove('active');document.getElementById('modal-block-selector').parentNode.classList.add('hidden')">閉じる</button>
-      </div>
     </div>
   </div>
 </div>
