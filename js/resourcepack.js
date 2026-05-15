@@ -852,6 +852,21 @@ export function getFaceUrls(blockId, options = {}) {
     }
     local = sanitizedIdLower.replace(/^minecraft:/, '');
 
+    // ── トラップドア専用早期リターン ──────────────────────────────────────
+    // bedrockBlocks に flat name エントリが無い場合、strip-suffix フォールバックが
+    // _trapdoor → wood_planks 系のテクスチャに falsely 着地する問題を回避。
+    // 直接ファイル名 (dark_oak_trapdoor.png 等) で texture を引く。
+    if (local.endsWith('_trapdoor') || local === 'trapdoor') {
+        const candidates = [local, local.replace(/^minecraft:/, '')];
+        // oak は legacy 名 "trapdoor" (oak ベース)
+        if (local === 'oak_trapdoor') candidates.push('trapdoor');
+        const trapUrl = candidates.map(n => _state.textures.get(n)).find(Boolean);
+        if (trapUrl) {
+            const t = { url: trapUrl, tint: null };
+            return { east: t, west: t, top: t, bottom: t, north: t, south: t, found: true };
+        }
+    }
+
     // ── 焚き火専用早期リターン ──────────────────────────────────────────
     // 炎のアニメーションストリップ画像が丸太部分に貼り付けられてしまう問題を防ぐ。
     // リソースパック内でロード済みのテクスチャから直接 URL を引いて正しい面を構築する。
