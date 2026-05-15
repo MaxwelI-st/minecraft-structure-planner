@@ -569,7 +569,9 @@ export class Viewer3D {
             let stairCornerSig = '';
             if (classifyShape(c.blockId, c.states) === 'stairs') {
                 const nb = neighborBlocks;
-                const nbStr = (b) => b ? `${b.blockId}:${b.states?.weirdo_direction ?? ''}` : 'null';
+                // Bedrock weirdo_direction (int) + Java facing (string) どちらも含めて
+                // 隣接階段の向き変化でキャッシュ衝突を防ぐ
+                const nbStr = (b) => b ? `${b.blockId}:${b.states?.weirdo_direction ?? b.states?.facing ?? ''}` : 'null';
                 stairCornerSig = `|stairs[${nbStr(nb.n)},${nbStr(nb.s)},${nbStr(nb.w)},${nbStr(nb.e)}]`;
             }
             const sig = _shapeSignature(c.blockId, c.states) + neighborSig + stairCornerSig;

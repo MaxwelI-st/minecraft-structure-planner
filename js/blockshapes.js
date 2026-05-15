@@ -6,7 +6,17 @@
  *   resolveGeometry(THREE, blockId, states, neighbors, nb)  → BufferGeometry or null
  *   _getState(states, key)                                  → raw state value helper
  *   _isTrue(val)                                            → boolean normaliser
+ *
+ * 2026-05-15: Bedrock/Java 両形式の state を統一的に扱うため
+ *   `render/state-reader.js` を新規追加し、各 builder で使用するように改修。
  */
+
+import {
+  readSlabType, readTrapdoorFacing, readTrapdoorHalf, readTrapdoorOpen,
+  readStairsFacing, readStairsHalf, readDoorFacing, readDoorHalf,
+  readDoorOpen, readDoorHinge, readFenceGateFacing, readFenceGateOpen,
+  readFenceConnections, readWallConnections, readAxis, readFacing6, readHanging,
+} from './render/state-reader.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State helpers (used by resourcepack.js and viewer3d.js)
@@ -421,16 +431,9 @@ function _mergeBoxes(THREE, boxes) {
 
 // ── Slab ──────────────────────────────────────────────────────────────────────
 function _buildSlab(THREE, states) {
-  // Java: type=double → 全ブロック (両半分埋まる)
-  if (_getState(states, 'type') === 'double') {
-    return _mergeBoxes(THREE, [{ y: 0, w: 1, h: 1, d: 1 }]);
-  }
-  const isTop = _getState(states, 'type') === 'top'             // Java: type=top/bottom
-             || _isTrue(_getState(states, 'top_slot_bit'))      // Bedrock 旧
-             || _getState(states, 'vertical_half') === 'top'    // Bedrock 新
-             || _getState(states, 'minecraft:vertical_half') === 'top'
-             || _isTrue(_getState(states, 'upside_down_bit'));
-  return _mergeBoxes(THREE, [{ y: isTop ? 0.25 : -0.25, w: 1, h: 0.5, d: 1 }]);
+  const t = readSlabType(states);
+  if (t === 'double') return _mergeBoxes(THREE, [{ y: 0, w: 1, h: 1, d: 1 }]);
+  return _mergeBoxes(THREE, [{ y: t === 'top' ? 0.25 : -0.25, w: 1, h: 0.5, d: 1 }]);
 }
 
 // ── Stairs ────────────────────────────────────────────────────────────────────
@@ -439,11 +442,8 @@ const _STAIR_DIR = { 0:'east', 1:'west', 2:'south', 3:'north',
   east:'east', west:'west', south:'south', north:'north' };
 
 function _buildStairs(THREE, states, neighbors, neighborBlocks) {
-  const dirVal  = _getState(states, 'weirdo_direction') ?? _getState(states, 'facing') ?? 0;
-  const facing  = _STAIR_DIR[dirVal] ?? 'east';
-  // Bedrock: upside_down_bit / Java: half=top
-  const flipped = _getState(states, 'half') === 'top'
-              || _isTrue(_getState(states, 'upside_down_bit'));
+  const facing  = readStairsFacing(states);
+  const flipped = readStairsHalf(states) === 'top';
 
   // main slab half
   const baseY = flipped ? 0.25  : -0.25;
@@ -494,14 +494,8 @@ const _GATE_DIR = { 0:'south', 1:'west', 2:'north', 3:'east',
   south:'south', west:'west', north:'north', east:'east' };
 
 function _buildFenceGate(THREE, states) {
-  // Java: open=true/false / Bedrock: open_bit
-  const open   = _isTrue(_getState(states, 'open_bit')) || _getState(states, 'open') === 'true';
-  // Java: facing=string / Bedrock: minecraft:cardinal_direction (string) or direction (int)
-  const dirVal = _getState(states, 'facing')
-              ?? _getState(states, 'minecraft:cardinal_direction')
-              ?? _getState(states, 'direction')
-              ?? 0;
-  const facing = typeof dirVal === 'string' ? dirVal : (_GATE_DIR[dirVal] ?? 'south');
+  const open   = readFenceGateOpen(states);
+  const facing = readFenceGateFacing(states);
   const isNS   = facing === 'north' || facing === 'south';
 
   // Gate posts (wall connection)
@@ -606,27 +600,18 @@ const _TRAP_DIR = { 0:'north', 1:'south', 2:'west', 3:'east',
   south:'south', north:'north', east:'east', west:'west' };
 
 function _buildTrapdoor(THREE, states) {
-  // Java: open=true/false / Bedrock: open_bit
-  const open    = _isTrue(_getState(states, 'open_bit'))
-              || _getState(states, 'open') === 'true';
-  // Java: half=top/bottom / Bedrock: upside_down_bit
-  const flipped = _getState(states, 'half') === 'top'
-              || _isTrue(_getState(states, 'upside_down_bit'));
+  const open    = readTrapdoorOpen(states);
+  const flipped = readTrapdoorHalf(states) === 'top';
+  const dir     = readTrapdoorFacing(states);
   const T = 0.1875; // 3/16 thick
 
   if (!open) {
-    // Closed: flat panel at top or bottom
+    // Closed: flat panel at top or bottom (facing doesn't visually matter)
     const y = flipped ? (0.5 - T / 2) : (-0.5 + T / 2);
     return _mergeBoxes(THREE, [{ y, w: 1, h: T, d: 1 }]);
   }
 
-  // Open: vertical panel against the hinge wall
-  // Java: facing=string (north/south/east/west) / Bedrock: direction (int)
-  const javaFacing = _getState(states, 'facing');
-  const dirVal = typeof javaFacing === 'string'
-    ? javaFacing
-    : (_getState(states, 'direction') ?? 0);
-  const dir    = _TRAP_DIR[dirVal] ?? 'south';
+  // Open: vertical panel against the hinge wall (facing = outward direction)
   const ec     = 0.5 - T / 2; // edge center
 
   switch (dir) {
@@ -650,20 +635,9 @@ function _buildDoor(THREE, states) {
   const T  = 0.1875;           // 3/16 thick
   const ec = 0.5 - T / 2;
 
-  // Java: facing=string / Bedrock: minecraft:cardinal_direction (string) or direction (int)
-  const dirVal = _getState(states, 'facing')   // Java 最優先
-              ?? _getState(states, 'minecraft:cardinal_direction')
-              ?? _getState(states, 'direction')
-              ?? _getState(states, 'facing_direction')
-              ?? 0;
-  const facing = typeof dirVal === 'string' ? dirVal : (_DOOR_DIR[dirVal] ?? 'east');
-  // Java: open=true/false (string) / Bedrock: open_bit
-  const open   = _isTrue(_getState(states, 'open_bit'))
-              || _getState(states, 'open') === 'true';
-  // hinge_bit=0 → left hinge / Java: hinge='left'|'right'
-  const hinge  = _isTrue(_getState(states, 'door_hinge_bit'))
-              || _isTrue(_getState(states, 'hinge_bit'))
-              || _getState(states, 'hinge') === 'right';
+  const facing = readDoorFacing(states);
+  const open   = readDoorOpen(states);
+  const hinge  = readDoorHinge(states) === 'right';
 
   if (!open) {
     // Closed: panel sits at the block edge corresponding to the facing direction
