@@ -47,8 +47,9 @@ describe('readDoorFacing (block-type aware)', () => {
 describe('readDoorHinge / readDoorHalf / readDoorOpen', () => {
   test('Java hinge=right', () => expect(readDoorHinge({ hinge: 'right' })).toBe('right'));
   test('Java hinge=left', () => expect(readDoorHinge({ hinge: 'left' })).toBe('left'));
-  test('Bedrock door_hinge_bit=1', () => expect(readDoorHinge({ door_hinge_bit: 1 })).toBe('right'));
-  test('Bedrock door_hinge_bit=0', () => expect(readDoorHinge({ door_hinge_bit: 0 })).toBe('left'));
+  // Bedrock door_hinge_bit は内側視点なので Java の外側視点と flip
+  test('Bedrock door_hinge_bit=1 → left (flipped)', () => expect(readDoorHinge({ door_hinge_bit: 1 })).toBe('left'));
+  test('Bedrock door_hinge_bit=0 → right (flipped)', () => expect(readDoorHinge({ door_hinge_bit: 0 })).toBe('right'));
   test('Java half=upper', () => expect(readDoorHalf({ half: 'upper' })).toBe('upper'));
   test('Bedrock upper_block_bit=1', () => expect(readDoorHalf({ upper_block_bit: 1 })).toBe('upper'));
 });

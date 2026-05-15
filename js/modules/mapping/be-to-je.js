@@ -396,7 +396,8 @@ const SPECIAL_CASES = [
         p.open = _asBool(beStates.open_bit);
       }
       if (p.hinge === undefined && beStates.door_hinge_bit !== undefined) {
-        p.hinge = (beStates.door_hinge_bit === 1 || beStates.door_hinge_bit === true) ? 'right' : 'left';
+        // Bedrock 内側視点 / Java 外側視点 — flip
+        p.hinge = (beStates.door_hinge_bit === 1 || beStates.door_hinge_bit === true) ? 'left' : 'right';
       }
       if (p.half === undefined && beStates.upper_block_bit !== undefined) {
         p.half = (beStates.upper_block_bit === 1 || beStates.upper_block_bit === true) ? 'upper' : 'lower';

@@ -205,13 +205,15 @@ export function readDoorOpen(states) {
 
 /** @returns {'left' | 'right'} */
 export function readDoorHinge(states) {
-  // Java: hinge=left/right
+  // Java: hinge=left/right (Java は **外側視点** で left/right)
   const jh = _raw(states, 'hinge');
   if (jh === 'left') return 'left';
   if (jh === 'right') return 'right';
-  // Bedrock: door_hinge_bit / hinge_bit
-  if (_isBool(_any(states, 'door_hinge_bit', 'hinge_bit'))) return 'right';
-  return 'left';
+  // Bedrock: door_hinge_bit (Bedrock は **内側視点** なので flip)
+  //   door_hinge_bit=0 (Bedrock left) → Java right
+  //   door_hinge_bit=1 (Bedrock right) → Java left
+  if (_isBool(_any(states, 'door_hinge_bit', 'hinge_bit'))) return 'left';
+  return 'right';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
