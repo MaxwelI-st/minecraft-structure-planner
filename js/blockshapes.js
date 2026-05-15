@@ -641,32 +641,31 @@ function _buildDoor(THREE, states) {
   const open   = readDoorOpen(states);
   const hinge  = readDoorHinge(states) === 'right';
 
+  // Java DoorBlock の bounding box に合わせる:
+  // 閉じた状態: 板は facing と **反対側** の壁にある (facing=north → 板は south 端)
+  // 開いた状態: ヒンジ側の壁に板が swung する
+  // hinge=false (left) は外側から見て左 = 外側方向に対して反時計回りの方向
   if (!open) {
-    // Closed: panel sits at the block edge corresponding to the facing direction
     switch (facing) {
-      case 'east':  return _mergeBoxes(THREE, [{ x:  ec, w: T, h: 1, d: 1 }]);
-      case 'west':  return _mergeBoxes(THREE, [{ x: -ec, w: T, h: 1, d: 1 }]);
-      case 'south': return _mergeBoxes(THREE, [{ z:  ec, w: 1, h: 1, d: T }]);
-      case 'north': return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]);
+      case 'east':  return _mergeBoxes(THREE, [{ x: -ec, w: T, h: 1, d: 1 }]); // panel at west
+      case 'west':  return _mergeBoxes(THREE, [{ x:  ec, w: T, h: 1, d: 1 }]); // panel at east
+      case 'south': return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]); // panel at north
+      case 'north': return _mergeBoxes(THREE, [{ z:  ec, w: 1, h: 1, d: T }]); // panel at south
     }
   }
 
-  // Open: panel has swung 90° around its hinge post
-  // The hinge post is at one END of the closed panel.
-  // "Left hinge" (hinge_bit=0) when looking at the door from outside:
-  //   east-facing door → outside = east side, left = south → hinge at z=+0.5 → open panel at z=+ec
-  //   west-facing door → outside = west side, left = north → hinge at z=-0.5 → open panel at z=-ec
-  //   south-facing door → outside = south, left = west → hinge at x=-0.5 → open panel at x=-ec
-  //   north-facing door → outside = north, left = east → hinge at x=+0.5 → open panel at x=+ec
+  // 開いた状態 (hinge=true は right hinge / Java's "right")
+  // facing=north + hinge=left → ヒンジは west → 板は west 壁
+  // facing=north + hinge=right → ヒンジは east → 板は east 壁
   switch (facing) {
-    case 'east':
-      return _mergeBoxes(THREE, [{ z: hinge ? -ec :  ec, w: 1, h: 1, d: T }]);
-    case 'west':
-      return _mergeBoxes(THREE, [{ z: hinge ?  ec : -ec, w: 1, h: 1, d: T }]);
-    case 'south':
-      return _mergeBoxes(THREE, [{ x: hinge ?  ec : -ec, w: T, h: 1, d: 1 }]);
     case 'north':
+      return _mergeBoxes(THREE, [{ x: hinge ?  ec : -ec, w: T, h: 1, d: 1 }]);
+    case 'south':
       return _mergeBoxes(THREE, [{ x: hinge ? -ec :  ec, w: T, h: 1, d: 1 }]);
+    case 'east':
+      return _mergeBoxes(THREE, [{ z: hinge ?  ec : -ec, w: 1, h: 1, d: T }]);
+    case 'west':
+      return _mergeBoxes(THREE, [{ z: hinge ? -ec :  ec, w: 1, h: 1, d: T }]);
   }
   return _mergeBoxes(THREE, [{ w: T, h: 1, d: 1 }]);
 }
@@ -836,9 +835,9 @@ function _buildFrame(THREE) {
 
 // ── Hopper ────────────────────────────────────────────────────────────────────
 function _buildHopper(THREE, states) {
-  const dirVal = _getState(states, 'facing_direction') ?? _getState(states, 'minecraft:facing_direction') ?? 0;
-  // 0:down, 1:up, 2:north, 3:south, 4:west, 5:east
-  const isDown = dirVal === 0 || dirVal === 'down';
+  // Java/Bedrock 両対応: readFacing6 が 'down'|'up'|'north'|'south'|'east'|'west' を返す
+  const dirVal = readFacing6(states);
+  const isDown = dirVal === 'down';
 
   const boxes = [
     // Top rim (16x16, 6 thick). Uses autoUV so the transparent 'top' texture maps correctly.
@@ -858,10 +857,10 @@ function _buildHopper(THREE, states) {
   } else {
     const sy = -0.125;
     const dist = 0.375;
-    if (dirVal === 2 || dirVal === 'north') boxes.push({ x: 0, y: sy, z: -dist, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
-    else if (dirVal === 3 || dirVal === 'south') boxes.push({ x: 0, y: sy, z: dist, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
-    else if (dirVal === 4 || dirVal === 'west') boxes.push({ x: -dist, y: sy, z: 0, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
-    else if (dirVal === 5 || dirVal === 'east') boxes.push({ x: dist, y: sy, z: 0, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
+    if      (dirVal === 'north') boxes.push({ x: 0, y: sy, z: -dist, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
+    else if (dirVal === 'south') boxes.push({ x: 0, y: sy, z:  dist, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
+    else if (dirVal === 'west')  boxes.push({ x: -dist, y: sy, z: 0, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
+    else if (dirVal === 'east')  boxes.push({ x:  dist, y: sy, z: 0, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
   }
 
   return _mergeBoxes(THREE, boxes);
@@ -910,22 +909,20 @@ function _buildScaffolding(THREE) {
 
 // ── Ladder ────────────────────────────────────────────────────────────────────
 function _buildLadder(THREE, states) {
-  const dirVal = _getState(states, 'facing_direction') ?? 0;
-  const isNorth = dirVal === 2 || dirVal === 'north';
-  const isSouth = dirVal === 3 || dirVal === 'south';
-  const isWest  = dirVal === 4 || dirVal === 'west';
-  const isEast  = dirVal === 5 || dirVal === 'east';
+  // Java/Bedrock 両形式対応: readFacing6 が Java 'facing' string と Bedrock 'facing_direction' int を統一
+  const face = readFacing6(states); // 'down'|'up'|'north'|'south'|'east'|'west'
 
-  const T = 0.125; // 2/16 thick (gives it nice 3D depth)
+  const T = 0.125; // 2/16 thick
   const ec = 0.5 - T / 2;
 
+  // ladder の facing は「プレイヤーが向く方向」= 板が attach されている**反対**の壁
+  // facing='south' → プレイヤー南向き → 板は北壁 (z=-ec)
   let boxes = [];
-  // Use a single box so the ladder texture applies fully without autoUV squashing
-  if (isSouth) boxes.push({ z: -ec, w: 1, h: 1, d: T }); // Attached to North wall
-  else if (isNorth) boxes.push({ z:  ec, w: 1, h: 1, d: T }); // Attached to South wall
-  else if (isEast) boxes.push({ x: -ec, w: T, h: 1, d: 1 }); // Attached to West wall
-  else if (isWest) boxes.push({ x:  ec, w: T, h: 1, d: 1 }); // Attached to East wall
-  else boxes.push({ z:  ec, w: 1, h: 1, d: T }); // default north
+  if (face === 'south')      boxes.push({ z: -ec, w: 1, h: 1, d: T });
+  else if (face === 'north') boxes.push({ z:  ec, w: 1, h: 1, d: T });
+  else if (face === 'east')  boxes.push({ x: -ec, w: T, h: 1, d: 1 });
+  else if (face === 'west')  boxes.push({ x:  ec, w: T, h: 1, d: 1 });
+  else                       boxes.push({ z:  ec, w: 1, h: 1, d: T });
 
   return _mergeBoxes(THREE, boxes);
 }
