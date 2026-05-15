@@ -611,17 +611,17 @@ function _buildTrapdoor(THREE, states) {
     return _mergeBoxes(THREE, [{ y, w: 1, h: T, d: 1 }]);
   }
 
-  // Open: トラップドアの "facing" は閉じた時の正面方向 = ヒンジから見て反対側。
-  // 開いた時の板はヒンジ側の壁に立つ。よって `facing` の **反対側** の壁に描画する。
-  // 例: facing='north' → ヒンジは south 壁 → 板は south 側 (z=+ec)
+  // Open: トラップドアの `facing` は隣接ブロックの方向 (ヒンジ側の壁の方向)。
+  // 板はその壁に立つので、facing と同じ側に描画する。
+  // 例: facing='north' → 隣接は北 → 板は north 側 (z=-ec)
   const ec     = 0.5 - T / 2; // edge center
 
   switch (dir) {
-    case 'north': return _mergeBoxes(THREE, [{ z:  ec, w: 1, h: 1, d: T }]); // hinge at south wall
-    case 'south': return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]); // hinge at north wall
-    case 'west':  return _mergeBoxes(THREE, [{ x:  ec, w: T, h: 1, d: 1 }]); // hinge at east wall
-    case 'east':  return _mergeBoxes(THREE, [{ x: -ec, w: T, h: 1, d: 1 }]); // hinge at west wall
-    default:      return _mergeBoxes(THREE, [{ z:  ec, w: 1, h: 1, d: T }]);
+    case 'north': return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]);
+    case 'south': return _mergeBoxes(THREE, [{ z:  ec, w: 1, h: 1, d: T }]);
+    case 'west':  return _mergeBoxes(THREE, [{ x: -ec, w: T, h: 1, d: 1 }]);
+    case 'east':  return _mergeBoxes(THREE, [{ x:  ec, w: T, h: 1, d: 1 }]);
+    default:      return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]);
   }
 }
 
