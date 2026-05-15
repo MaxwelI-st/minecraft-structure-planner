@@ -20,10 +20,10 @@ describe('readSlabType (Java優先 + Bedrock fallback)', () => {
 describe('readTrapdoorFacing', () => {
   test('Java facing=north', () => expect(readTrapdoorFacing({ facing: 'north' })).toBe('north'));
   test('Java facing=east', () => expect(readTrapdoorFacing({ facing: 'east' })).toBe('east'));
-  test('Bedrock direction=0 → north', () => expect(readTrapdoorFacing({ direction: 0 })).toBe('north'));
-  test('Bedrock direction=1 → south', () => expect(readTrapdoorFacing({ direction: 1 })).toBe('south'));
-  test('Bedrock direction=2 → west', () => expect(readTrapdoorFacing({ direction: 2 })).toBe('west'));
-  test('Bedrock direction=3 → east', () => expect(readTrapdoorFacing({ direction: 3 })).toBe('east'));
+  test('Bedrock direction=0 → west',  () => expect(readTrapdoorFacing({ direction: 0 })).toBe('west'));
+  test('Bedrock direction=1 → east',  () => expect(readTrapdoorFacing({ direction: 1 })).toBe('east'));
+  test('Bedrock direction=2 → north', () => expect(readTrapdoorFacing({ direction: 2 })).toBe('north'));
+  test('Bedrock direction=3 → south', () => expect(readTrapdoorFacing({ direction: 3 })).toBe('south'));
   test('Bedrock minecraft:cardinal_direction=south', () => expect(readTrapdoorFacing({ 'minecraft:cardinal_direction': 'south' })).toBe('south'));
 });
 

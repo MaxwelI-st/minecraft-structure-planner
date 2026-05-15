@@ -33,7 +33,7 @@ const cases = [
 
   ['minecraft:spruce_trapdoor (legacy direction int)',
     'minecraft:spruce_trapdoor', { direction: 1, open_bit: 0, upside_down_bit: 0 },
-    'minecraft:spruce_trapdoor', { open: 'false', facing: 'south' }],
+    'minecraft:spruce_trapdoor', { open: 'false', facing: 'east' }],
 
   // === oak (legacy name 化が必要) ===
   ['minecraft:oak_trapdoor → trapdoor',

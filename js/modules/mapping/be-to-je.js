@@ -33,15 +33,16 @@ const WALL_TYPES_LEGACY = [
   'nether_brick','red_nether_brick','cobblestone',
 ];
 
-// direction (int) → facing (string) — ブロック種ごとに異なる (JSON 実測値)
-const TRAPDOOR_DIR_TO_FACING   = ['north', 'south', 'west', 'east']; // direction 0-3
+// direction (int) → facing (string) — ブロック種ごとに異なる
+// trapdoor: visual で確認した値 (Bedrock direction=0 は west 壁、ユーザー検証)
+const TRAPDOOR_DIR_TO_FACING   = ['west', 'east', 'north', 'south']; // direction 0-3
 const DOOR_DIR_TO_FACING       = ['east',  'south', 'west', 'north'];
 const FENCE_GATE_DIR_TO_FACING = ['south', 'west', 'north', 'east']; // 独自順
 const STAIR_DIR_BE_TO_JE       = ['east', 'west', 'south', 'north']; // weirdo_direction 0-3
 const FACING6_BE_TO_JE         = ['down', 'up', 'north', 'south', 'west', 'east'];
 
 // 逆引き: cardinal_direction string → direction int (block-specific)
-const TRAPDOOR_FACING_TO_DIR   = { north: 0, south: 1, west: 2, east: 3 };
+const TRAPDOOR_FACING_TO_DIR   = { west: 0, east: 1, north: 2, south: 3 };
 const DOOR_FACING_TO_DIR       = { east:  0, south: 1, west: 2, north: 3 };
 const FENCE_GATE_FACING_TO_DIR = { south: 0, west:  1, north: 2, east: 3 };
 

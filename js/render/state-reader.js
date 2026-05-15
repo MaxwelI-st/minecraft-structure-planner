@@ -22,7 +22,9 @@
 // 方向マッピング (block-type aware)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TRAPDOOR_DIR_TO_FACING   = ['north', 'south', 'west', 'east'];
+// 旧 _TRAP_DIR (Bedrock visual で動いてた値) と一致させる
+// BE direction=0 → 視覚 west wall (Java facing='west' と同じ視覚)
+const TRAPDOOR_DIR_TO_FACING   = ['west', 'east', 'north', 'south'];
 const DOOR_DIR_TO_FACING       = ['east',  'south', 'west', 'north'];
 const FENCE_GATE_DIR_TO_FACING = ['south', 'west',  'north', 'east'];
 const STAIR_WD_TO_FACING       = ['east',  'west',  'south', 'north'];
