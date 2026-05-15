@@ -164,21 +164,25 @@ export function readStairsShape(states) {
 // Door — facing / half / open / hinge
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ドア用 90° 回転 (CW): Bedrock cardinal_direction → Java facing
+// north → east → south → west → north
+const ROT_CW90 = { north: 'east', east: 'south', south: 'west', west: 'north' };
+
 /** @returns {'north' | 'south' | 'east' | 'west'} */
 export function readDoorFacing(states) {
-  // Java: facing
+  // Java: facing (そのまま)
   const jf = _raw(states, 'facing');
   if (typeof jf === 'string') {
     const f = jf.toLowerCase();
     if (f === 'north' || f === 'south' || f === 'east' || f === 'west') return f;
   }
-  // Bedrock 新: minecraft:cardinal_direction
+  // Bedrock cardinal_direction: Bedrock と Java で 90° 回転 (試行錯誤中)
   const cd = _raw(states, 'cardinal_direction');
   if (typeof cd === 'string') {
     const f = cd.toLowerCase();
-    if (f === 'north' || f === 'south' || f === 'east' || f === 'west') return f;
+    if (ROT_CW90[f]) return ROT_CW90[f];
   }
-  // Bedrock 旧: direction (int 0-3)
+  // Bedrock direction (int 0-3) — JSON 値ベース
   const dir = _raw(states, 'direction');
   if (typeof dir === 'number') return DOOR_DIR_TO_FACING[dir] ?? 'east';
   if (typeof dir === 'string' && !isNaN(parseInt(dir))) return DOOR_DIR_TO_FACING[parseInt(dir)] ?? 'east';

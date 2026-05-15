@@ -395,19 +395,21 @@ const SPECIAL_CASES = [
       if (p.open === undefined && beStates.open_bit !== undefined) {
         p.open = _asBool(beStates.open_bit);
       }
-      if (p.hinge === undefined && beStates.door_hinge_bit !== undefined) {
-        // Bedrock 内側視点 / Java 外側視点 — flip
+      // hinge: 強制上書き (JSON は Bedrock convention のままなので flip)
+      if (beStates.door_hinge_bit !== undefined) {
         p.hinge = (beStates.door_hinge_bit === 1 || beStates.door_hinge_bit === true) ? 'left' : 'right';
       }
       if (p.half === undefined && beStates.upper_block_bit !== undefined) {
         p.half = (beStates.upper_block_bit === 1 || beStates.upper_block_bit === true) ? 'upper' : 'lower';
       }
-      if (p.facing === undefined) {
-        if (typeof beStates.direction === 'number') {
-          p.facing = DOOR_DIR_TO_FACING[beStates.direction] ?? 'north';
-        } else if (beStates['minecraft:cardinal_direction']) {
-          p.facing = String(beStates['minecraft:cardinal_direction']);
-        }
+      // facing: 強制上書き
+      // ドア: Bedrock cardinal_direction と Java facing は 90° CW 回転
+      const ROT_CW = { north: 'east', east: 'south', south: 'west', west: 'north' };
+      if (typeof beStates.direction === 'number') {
+        p.facing = DOOR_DIR_TO_FACING[beStates.direction] ?? 'north';
+      } else if (beStates['minecraft:cardinal_direction']) {
+        const cd = String(beStates['minecraft:cardinal_direction']).toLowerCase();
+        p.facing = ROT_CW[cd] ?? cd;
       }
       if (p.open === undefined)    p.open    = 'false';
       if (p.hinge === undefined)   p.hinge   = 'left';

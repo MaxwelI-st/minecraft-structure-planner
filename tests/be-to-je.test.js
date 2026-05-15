@@ -42,18 +42,19 @@ const cases = [
     'minecraft:oak_trapdoor', { 'minecraft:cardinal_direction': 'north', open_bit: 0, upside_down_bit: 0 },
     'minecraft:oak_trapdoor', { open: 'false', facing: 'north' }],
 
-  ['minecraft:oak_door → wooden_door',
+  // cardinal_direction は 90° CW rotation (north→east→south→west→north)
+  // hinge は内側→外側視点 flip
+  ['minecraft:oak_door cardinal=east hinge_bit=0 → facing=south hinge=right',
     'minecraft:oak_door', { 'minecraft:cardinal_direction': 'east', open_bit: 0, door_hinge_bit: 0, upper_block_bit: 0 },
-    'minecraft:oak_door', { open: 'false', facing: 'east', hinge: 'left', half: 'lower' }],
+    'minecraft:oak_door', { open: 'false', facing: 'south', hinge: 'right', half: 'lower' }],
 
-  // === modern flat doors ===
-  ['minecraft:spruce_door closed',
+  ['minecraft:spruce_door cardinal=east → facing=south',
     'minecraft:spruce_door', { 'minecraft:cardinal_direction': 'east', open_bit: 0, door_hinge_bit: 0, upper_block_bit: 0 },
-    'minecraft:spruce_door', { open: 'false', facing: 'east', hinge: 'left', half: 'lower' }],
+    'minecraft:spruce_door', { open: 'false', facing: 'south', hinge: 'right', half: 'lower' }],
 
-  ['minecraft:spruce_door open',
+  ['minecraft:spruce_door cardinal=south hinge_bit=1 → facing=west hinge=left',
     'minecraft:spruce_door', { 'minecraft:cardinal_direction': 'south', open_bit: 1, door_hinge_bit: 1, upper_block_bit: 1 },
-    'minecraft:spruce_door', { open: 'true', hinge: 'right', half: 'upper', facing: 'south' }],
+    'minecraft:spruce_door', { open: 'true', hinge: 'left', half: 'upper', facing: 'west' }],
 
   // === wooden slabs (JSON 無 → identity passthrough、警告無) ===
   ['minecraft:dark_oak_slab top',
