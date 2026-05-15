@@ -1,0 +1,775 @@
+/**
+ * blockshapes.js — Bedrock 統合版のブロック形状を Three.js ジオメトリで再現
+ *
+ * 設計方針：deepslate / prismarine-viewer の Java BlockModel 慣習を参考に、
+ * 「element box の集合」で形状を表現し、Bedrock の block_states に応じて
+ * 配置・回転を決定する。
+ *
+ * 座標系：Three.js の各 mesh はブロック中心 (0, 0, 0) を中央とする 1×1×1 空間。
+ *   X+ = 東 / X- = 西 / Y+ = 上 / Y- = 下 / Z+ = 南 / Z- = 北
+ *
+ * Bedrock states:
+ *   weirdo_direction (stairs):   0=east, 1=west, 2=south, 3=north
+ *     ※ 「ステア（上段の半分）が出ている方向」= ascend する向きと一致
+ *   upside_down_bit (stairs):    0=normal, 1=top（天井に張り付く形）
+ *   top_slot_bit (slab):         0=bottom, 1=top（新形式）
+ *   vertical_half (legacy slab): 'bottom' / 'top'
+ *   open_bit (door/trapdoor/gate): 0=closed, 1=open
+ *   direction (door/trapdoor):   0=south, 1=west, 2=north, 3=east
+ */
+
+/** ID の正規化（小文字化、トリム、空白をアンダースコアへ変換） */
+function normalizeId(id) {
+    if (!id) return '';
+    return String(id).toLowerCase().trim().replace(/\s+/g, '_');
+}
+
+/** ブロックID から形状種別を判定 */
+export function classifyShape(blockId, states = {}) {
+    const id = normalizeId(blockId).replace(/^minecraft:/, '');
+    
+    // ダブルスラブ判定：ID名または states の bit 値
+    if (id.includes('double')) return 'cube';
+    const type = _getState(states, 'type');
+    const doubleSlabBit = _getState(states, 'double_slab_bit');
+    if (type === 'double' || doubleSlabBit === 1 || doubleSlabBit === true) return 'cube';
+
+    if (/_stairs$/.test(id)) return 'stairs';
+    if (/_slab$/.test(id)) {
+        // ダブルスラブ完全統合プロトコルをベースにしつつ、矛盾を突破する
+        const fullBlockKeywords = ['brick', 'plank', 'quartz', 'stone', 'sandstone', 'oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark', 'crimson', 'warped', 'mangrove', 'cherry', 'pale', 'bamboo'];
+        
+        // 状態を取得（上付きかどうか）— Java `type=top` も対応
+        const javaType2 = _getState(states, 'type');
+        const verticalHalf = _getState(states, 'vertical_half');
+        const topSlot = _getState(states, 'top_slot_bit');
+        const upsideDown = _getState(states, 'upside_down_bit');
+        const isTop = (javaType2 === 'top')
+                   || (verticalHalf === 'top')
+                   || (topSlot === 1 || topSlot === true)
+                   || (upsideDown === 1 || upsideDown === true);
+
+        // 「重い素材」かつ「上付き」の場合のみ、隙間を埋めるためにフルブロック（cube）にする
+        // 下付きの場合は、たとえ石素材でもハーフ（slab）として描画（煙突対策）
+        if (isTop && fullBlockKeywords.some(k => id.includes(k))) return 'cube';
+        
+        return 'slab';
+    }
+    if (/_fence_gate$/.test(id)) return 'fence_gate';
+    if (/_fence$|^nether_brick_fence$/.test(id)) return 'fence';
+    if (/_wall$|cobblestone_wall$|red_sandstone_wall$/.test(id)) return 'wall';
+    if (/_trapdoor$/.test(id)) return 'trapdoor';
+    if (/_door$/.test(id)) return 'door';
+    if (/_carpet$|moss_carpet/.test(id)) return 'carpet';
+    if (/pressure_plate$/.test(id)) return 'pressure_plate';
+    if (/_button$/.test(id)) return 'button';
+    if (/_pane$|^iron_bars$/.test(id)) return 'pane';
+    // chain ブロックは縦長の細い柱 → 専用形状
+    if (/^chain$/.test(id)) return 'chain';
+    // ランタン（吊り下げ or 床置き）→ 本体+チェーン
+    if (/^lantern$|^soul_lantern$/.test(id)) return 'lantern';
+    // たいまつ系 → 細い棒
+    if (/torch$/.test(id)) return 'torch';
+    // ホッパー → 上部ボックス + 下スパウト
+    if (/^hopper$/.test(id)) return 'hopper';
+    // 大釜 → 外枠 + 内部空洞（近似）
+    if (/^cauldron$|^lava_cauldron$|^powder_snow_cauldron$|^water_cauldron$/.test(id)) return 'cauldron';
+    // 金床 → 2ボックス（刃+台座）
+    if (/^anvil$|^chipped_anvil$|^damaged_anvil$/.test(id)) return 'anvil';
+    // 植物・花・サボテン・キノコ等 → クロス平面
+    if (/flower|sapling|^dandelion$|^poppy$|^allium$|^azure_bluet$|^oxeye_daisy$|^cornflower$|^lily_of_the_valley$|^wither_rose$|^torchflower$|tulip|orchid|^dead_bush$|^fern$|short_grass|^kelp_plant$|^seagrass$|^nether_sprouts$|^warped_roots$|^crimson_roots$|^bamboo_sapling$|^pitcher_plant$|^spore_blossom$/.test(id)) return 'cross';
+    if (/^brown_mushroom$|^red_mushroom$|^mushroom_stem$/.test(id)) return 'cross';
+    return 'cube';
+}
+
+/** 'minecraft:' プレフィックスの有無に関わらずステート値を取得し、NBT形式(value)なら展開する */
+export function _getState(states, key) {
+    if (!states) return undefined;
+    const v = states[key] ?? states['minecraft:' + key];
+    if (v === undefined) return undefined;
+    // NBTオブジェクト { type, value } の場合は .value を返す
+    if (typeof v === 'object' && v !== null && 'value' in v) return v.value;
+    return v;
+}
+
+/** _getState の拡張版: キー候補を複数受け取り最初に見つかった値を返す */
+function _getStateAny(states, ...keys) {
+    for (const key of keys) {
+        const v = _getState(states, key);
+        if (v !== undefined) return v;
+    }
+    return undefined;
+}
+
+/** 値が 1, "1", true のいずれかであるか判定する (Bedrock のビット値・真偽値対応) */
+export function _isTrue(val) {
+    return val === 1 || val === "1" || val === true || val === "true";
+}
+
+/** 
+ * 方向を統一して返す (0=south, 1=west, 2=north, 3=east)
+ * ※ 'direction'(0-3直接)・'cardinal_direction'(文字列)・'facing_direction'(2=N,3=S,4=W,5=E)
+ *    をキーごとに正しくマッピング。混合すると direction=3(east) が south に化けるバグを防ぐ。
+ */
+function _getDirection(states) {
+    if (!states) return 0;
+    const STR_MAP = { south: 0, west: 1, north: 2, east: 3, down: 4, up: 5 };
+
+    // 0. Java の 'facing' (string) — 変換後 .litematic 用 (最優先)
+    const javaFacing = _getState(states, 'facing');
+    if (javaFacing !== undefined && typeof javaFacing === 'string') {
+        const mapped = STR_MAP[javaFacing.toLowerCase()];
+        if (mapped !== undefined) return mapped;
+    }
+
+    // 1. 'direction' — Bedrock ドア/トラップドア/フェンスゲート等は 0=south, 1=west, 2=north, 3=east
+    const dir = _getState(states, 'direction');
+    if (dir !== undefined) {
+        if (typeof dir === 'string') return STR_MAP[dir.toLowerCase()] ?? 0;
+        const n = typeof dir === 'number' ? dir : parseInt(dir);
+        return (isNaN(n) ? 0 : n) % 4;  // 0-3 をそのまま使う
+    }
+
+    // 2. 'cardinal_direction' — 文字列 "north" / "south" 等
+    const card = _getState(states, 'cardinal_direction');
+    if (card !== undefined) {
+        if (typeof card === 'string') return STR_MAP[card.toLowerCase()] ?? 0;
+        const n = typeof card === 'number' ? card : parseInt(card);
+        return (isNaN(n) ? 0 : n) % 4;
+    }
+
+    // 3. 'facing_direction' — Bedrock 数値: 2=N, 3=S, 4=W, 5=E (ピストン・ディスペンサー等)
+    const facing = _getState(states, 'facing_direction');
+    if (facing !== undefined) {
+        if (typeof facing === 'string') return STR_MAP[facing.toLowerCase()] ?? 0;
+        const n = typeof facing === 'number' ? facing : parseInt(facing);
+        if (n === 2) return 2; // North
+        if (n === 3) return 0; // South
+        if (n === 4) return 1; // West
+        if (n === 5) return 3; // East
+        return (isNaN(n) ? 0 : n) % 4;
+    }
+
+    return 0;
+}
+
+/* ─── 共通ヘルパー：位置と寸法から BoxGeometry を作る ──────────────────
+ * cuboid(THREE, fromX, fromY, fromZ, toX, toY, toZ)
+ *   from / to は 0..1 範囲（ブロック内座標）。
+ *   生成された geometry は最終的に「ブロック中心 (0,0,0) を中央」にずらされる。
+ */
+function cuboid(THREE, fromX, fromY, fromZ, toX, toY, toZ) {
+    const w = toX - fromX;
+    const h = toY - fromY;
+    const d = toZ - fromZ;
+    const cx = (fromX + toX) / 2 - 0.5;
+    const cy = (fromY + toY) / 2 - 0.5;
+    const cz = (fromZ + toZ) / 2 - 0.5;
+    const geo = new THREE.BoxGeometry(w, h, d);
+    geo.translate(cx, cy, cz);
+    return geo;
+}
+
+/* ─── 階段 ───────────────────────────────────────────────────
+ * Java BlockModel の block/stairs と同じ構造：
+ *   element 1: bottom 半分 (1×0.5×1) — 全面に伸びる
+ *   element 2: top 半分の半分 (0.5×0.5×1) — facing 方向の側だけ
+ *
+ * weirdo_direction の表記：
+ *   0 = east  → top の半分が +X 側
+ *   1 = west  → top の半分が -X 側
+ *   2 = south → top の半分が +Z 側
+ *   3 = north → top の半分が -Z 側
+ *
+ * upside_down_bit=1 のときは Y 軸対称に反転（bottom↔top 入れ替え）。
+ */
+/* ─── 階段 ───────────────────────────────────────────────────
+ * weirdo_direction: 0=east(+X), 1=west(-X), 2=south(+Z), 3=north(-Z)
+ * upside_down_bit=1 のときは Y 軸対称に反転（bottom↔top 入れ替え）。
+ *
+ * コーナー判定: neighborBlocks = { n, s, w, e } 各々 { blockId, states } | null
+ */
+
+function _getStairsCornerShape(wd, upsideDown, neighborBlocks) {
+    if (!neighborBlocks) return 'straight';
+
+    const isStairs = (nb) => {
+        if (!nb || !nb.blockId) return false;
+        const id = String(nb.blockId).toLowerCase().replace(/^minecraft:/, '');
+        return id.endsWith('_stairs');
+    };
+    const getWd = (nb) => {
+        if (!nb || !nb.states) return -1;
+        // Bedrock: weirdo_direction (0-3)
+        const wRaw = nb.states['weirdo_direction'] ?? nb.states['minecraft:weirdo_direction'];
+        if (wRaw !== undefined) return parseInt(wRaw);
+        // Java: facing (string) → weirdo_direction
+        const facing = nb.states['facing'];
+        if (typeof facing === 'string') {
+            const F2W = { east: 0, west: 1, south: 2, north: 3 };
+            return F2W[facing.toLowerCase()] ?? -1;
+        }
+        return -1;
+    };
+    const getUpside = (nb) => {
+        if (!nb || !nb.states) return false;
+        if (nb.states['half'] === 'top') return true;
+        return _isTrue(_getState(nb.states, 'upside_down_bit'));
+    };
+
+    // weirdo_direction: 0=east, 1=west, 2=south, 3=north
+    // 時計回り (CW):   east→south→west→north→east = [2,3,1,0]
+    // 反時計回り (CCW): east→north→west→south→east = [3,2,0,1]
+    const CW  = [2, 3, 1, 0];
+    const CCW = [3, 2, 0, 1];
+
+    const { n, s, w, e } = neighborBlocks;
+    // 自分の facing 方向に対して front（段上がる側）と back（後ろ）を割り当てる
+    // weirdo_direction は「ステップが高くなる方向」= 段の上側が front 側にある
+    let front, back;
+    if      (wd === 0) { front = e; back = w; }
+    else if (wd === 1) { front = w; back = e; }
+    else if (wd === 2) { front = s; back = n; }
+    else               { front = n; back = s; }
+
+    // ─── inner コーナー判定（back 側の隣接階段が垂直方向を向いている場合）───
+    // Java Edition 準拠: back 隣接が CCW を向く → inner_left / CW → inner_right
+    if (isStairs(back) && getUpside(back) === upsideDown) {
+        const bwd = getWd(back);
+        if (bwd === CCW[wd]) return upsideDown ? 'inner_right' : 'inner_left';
+        if (bwd === CW[wd])  return upsideDown ? 'inner_left'  : 'inner_right';
+    }
+    // ─── outer コーナー判定（front 側の隣接階段が垂直方向を向いている場合）──
+    // Java Edition 準拠: front 隣接が CCW を向く → outer_left / CW → outer_right
+    if (isStairs(front) && getUpside(front) === upsideDown) {
+        const fwd = getWd(front);
+        if (fwd === CCW[wd]) return upsideDown ? 'outer_right' : 'outer_left';
+        if (fwd === CW[wd])  return upsideDown ? 'outer_left'  : 'outer_right';
+    }
+    return 'straight';
+}
+
+function _buildCornerStairsGeometry(THREE, wd, upsideDown, cornerShape) {
+    const yLow    = upsideDown ? 0.5 : 0.0;
+    const yLowEnd = upsideDown ? 1.0 : 0.5;
+    const yHigh   = upsideDown ? 0.0 : 0.5;
+    const yHighEnd= upsideDown ? 0.5 : 1.0;
+
+    const geos = [];
+    geos.push(cuboid(THREE, 0, yLow, 0, 1, yLowEnd, 1)); // ベース
+
+    const isLeft = cornerShape.endsWith('_left');
+
+    if (cornerShape.startsWith('inner')) {
+        // Inner: 上半分を3/4埋める（1/4を欠かす）→ 2つのcuboidで表現
+        // 欠けるセルは「前方×左右いずれか」の1/4
+        // wd=0(east)+inner_left → 欠け: x:0.5-1.0, z:0.0-0.5 → 残: z後半フル + z前半の西側
+        // wd=0(east)+inner_right → 欠け: x:0.5-1.0, z:0.5-1.0 → 残: z前半フル + z後半の西側
+        if (wd === 0) {
+            if (isLeft) { // 欠け: (+X, -Z)
+                geos.push(cuboid(THREE, 0, yHigh, 0.5, 1, yHighEnd, 1));    // z後半フル
+                geos.push(cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 0.5));  // z前半の-X側
+            } else {      // 欠け: (+X, +Z)
+                geos.push(cuboid(THREE, 0, yHigh, 0, 1, yHighEnd, 0.5));    // z前半フル
+                geos.push(cuboid(THREE, 0, yHigh, 0.5, 0.5, yHighEnd, 1));  // z後半の-X側
+            }
+        } else if (wd === 1) {
+            if (isLeft) { // 欠け: (-X, +Z)
+                geos.push(cuboid(THREE, 0, yHigh, 0, 1, yHighEnd, 0.5));
+                geos.push(cuboid(THREE, 0.5, yHigh, 0.5, 1, yHighEnd, 1));
+            } else {      // 欠け: (-X, -Z)
+                geos.push(cuboid(THREE, 0, yHigh, 0.5, 1, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 0.5));
+            }
+        } else if (wd === 2) {
+            if (isLeft) { // 欠け: (+Z, +X)
+                geos.push(cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 0.5));
+            } else {      // 欠け: (+Z, -X)
+                geos.push(cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 0.5));
+            }
+        } else { // wd===3
+            if (isLeft) { // 欠け: (-Z, -X)
+                geos.push(cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0, yHigh, 0.5, 0.5, yHighEnd, 1));
+            } else {      // 欠け: (-Z, +X)
+                geos.push(cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 1));
+                geos.push(cuboid(THREE, 0.5, yHigh, 0.5, 1, yHighEnd, 1));
+            }
+        }
+    } else {
+        // Outer: 上半分は1/4のみ
+        if (wd === 0) {
+            geos.push(isLeft
+                ? cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 0.5)
+                : cuboid(THREE, 0.5, yHigh, 0.5, 1, yHighEnd, 1));
+        } else if (wd === 1) {
+            geos.push(isLeft
+                ? cuboid(THREE, 0, yHigh, 0.5, 0.5, yHighEnd, 1)
+                : cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 0.5));
+        } else if (wd === 2) {
+            geos.push(isLeft
+                ? cuboid(THREE, 0.5, yHigh, 0.5, 1, yHighEnd, 1)
+                : cuboid(THREE, 0, yHigh, 0.5, 0.5, yHighEnd, 1));
+        } else {
+            geos.push(isLeft
+                ? cuboid(THREE, 0, yHigh, 0, 0.5, yHighEnd, 0.5)
+                : cuboid(THREE, 0.5, yHigh, 0, 1, yHighEnd, 0.5));
+        }
+    }
+
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+export function buildStairsGeometry(THREE, states = {}, neighborBlocks = null) {
+    let wd = _getState(states, 'weirdo_direction');
+    if (wd === undefined) {
+        const dir = _getDirection(states);
+        const map = [2, 1, 3, 0];
+        wd = map[dir];
+    } else {
+        wd = parseInt(wd);
+    }
+    // Java `half=top/bottom` も対応
+    const javaHalf = _getState(states, 'half');
+    const upsideDown = (javaHalf === 'top') || _isTrue(_getState(states, 'upside_down_bit'));
+
+    const cornerShape = _getStairsCornerShape(wd, upsideDown, neighborBlocks);
+    if (cornerShape !== 'straight') {
+        return _buildCornerStairsGeometry(THREE, wd, upsideDown, cornerShape);
+    }
+
+    // ストレート（通常の階段）
+    const yLow    = upsideDown ? 0.5 : 0.0;
+    const yLowEnd = upsideDown ? 1.0 : 0.5;
+    const yHigh   = upsideDown ? 0.0 : 0.5;
+    const yHighEnd= upsideDown ? 0.5 : 1.0;
+
+    const geos = [];
+    geos.push(cuboid(THREE, 0, yLow, 0, 1, yLowEnd, 1));
+    if      (wd === 0) geos.push(cuboid(THREE, 0.5, yHigh, 0,   1.0, yHighEnd, 1));
+    else if (wd === 1) geos.push(cuboid(THREE, 0.0, yHigh, 0,   0.5, yHighEnd, 1));
+    else if (wd === 2) geos.push(cuboid(THREE, 0,   yHigh, 0.5, 1,   yHighEnd, 1.0));
+    else               geos.push(cuboid(THREE, 0,   yHigh, 0.0, 1,   yHighEnd, 0.5));
+
+    return _mergeBufferGeometries(THREE, geos);
+}
+/* ─── スラブ ───────────────────────────────────────────────────
+ * それ以外 → 下半分
+ */
+export function buildSlabGeometry(THREE, states = {}) {
+    // Java: type=top/bottom/double
+    const javaType = _getState(states, 'type');
+    // Bedrock: vertical_half / top_slot_bit / upside_down_bit
+    const verticalHalf = _getState(states, 'vertical_half');
+    const topSlot = _getState(states, 'top_slot_bit');
+    const upsideDown = _getState(states, 'upside_down_bit');
+
+    const top = (javaType === 'top')
+             || (verticalHalf === 'top')
+             || _isTrue(topSlot)
+             || _isTrue(upsideDown);
+
+    if (top) return cuboid(THREE, 0, 0.5, 0, 1, 1, 1);
+    return cuboid(THREE, 0, 0, 0, 1, 0.5, 1);
+}
+
+/* ─── カーペット ────────────────────────────────────────── */
+export function buildCarpetGeometry(THREE) {
+    return cuboid(THREE, 0, 0, 0, 1, 1/16, 1);
+}
+
+/* ─── 圧力板 ───────────────────────────────────────────── */
+export function buildPressurePlateGeometry(THREE) {
+    return cuboid(THREE, 1/16, 0, 1/16, 15/16, 1/16, 15/16);
+}
+
+/* ─── ボタン（床配置簡易） ────────────────────────────────── */
+export function buildButtonGeometry(THREE) {
+    return cuboid(THREE, 5/16, 0, 6/16, 11/16, 2/16, 10/16);
+}
+
+/* ─── フェンス（中央ポスト＋4方向の腕、隣接情報無しで常に十字） ──── */
+/* ─── フェンス（中央ポスト 4/16×4/16、隣接接続あり） ───────── */
+export function buildFenceGeometry(THREE, states = {}, neighbors = {}) {
+    const geos = [];
+    // Bedrock: 'north_bit' etc. / Java: 'north'='true'|'false'
+    const javaTrue = (v) => v === 'true' || v === true;
+    const n = _isTrue(_getState(states, 'north_bit')) || javaTrue(_getState(states, 'north')) || neighbors.n;
+    const s = _isTrue(_getState(states, 'south_bit')) || javaTrue(_getState(states, 'south')) || neighbors.s;
+    const w = _isTrue(_getState(states, 'west_bit'))  || javaTrue(_getState(states, 'west'))  || neighbors.w;
+    const e = _isTrue(_getState(states, 'east_bit'))  || javaTrue(_getState(states, 'east'))  || neighbors.e;
+
+    geos.push(cuboid(THREE, 6/16, 0, 6/16, 10/16, 1, 10/16)); // 中央
+    if (n) {
+        geos.push(cuboid(THREE, 7/16, 6/16, 0, 9/16, 9/16, 6/16));
+        geos.push(cuboid(THREE, 7/16, 12/16, 0, 9/16, 15/16, 6/16));
+    }
+    if (s) {
+        geos.push(cuboid(THREE, 7/16, 6/16, 10/16, 9/16, 9/16, 1));
+        geos.push(cuboid(THREE, 7/16, 12/16, 10/16, 9/16, 15/16, 1));
+    }
+    if (w) {
+        geos.push(cuboid(THREE, 0, 6/16, 7/16, 6/16, 9/16, 9/16));
+        geos.push(cuboid(THREE, 0, 12/16, 7/16, 6/16, 15/16, 9/16));
+    }
+    if (e) {
+        geos.push(cuboid(THREE, 10/16, 6/16, 7/16, 1, 9/16, 9/16));
+        geos.push(cuboid(THREE, 10/16, 12/16, 7/16, 1, 15/16, 9/16));
+    }
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 壁（中央 8/16×8/16、隣接接続あり） ─────────────────── */
+export function buildWallGeometry(THREE, states = {}, neighbors = {}) {
+    const geos = [];
+    // Bedrock: 'north_bit' (boolean) / Java: 'north'='none'|'low'|'tall'
+    const javaConn = (v) => v === 'low' || v === 'tall';
+    const n = _isTrue(_getState(states, 'north_bit')) || javaConn(_getState(states, 'north')) || neighbors.n;
+    const s = _isTrue(_getState(states, 'south_bit')) || javaConn(_getState(states, 'south')) || neighbors.s;
+    const w = _isTrue(_getState(states, 'west_bit'))  || javaConn(_getState(states, 'west'))  || neighbors.w;
+    const e = _isTrue(_getState(states, 'east_bit'))  || javaConn(_getState(states, 'east'))  || neighbors.e;
+
+    geos.push(cuboid(THREE, 4/16, 0, 4/16, 12/16, 1, 12/16)); // 中央
+    if (n) geos.push(cuboid(THREE, 5/16, 0, 0, 11/16, 14/16, 4/16));
+    if (s) geos.push(cuboid(THREE, 5/16, 0, 12/16, 11/16, 14/16, 1));
+    if (w) geos.push(cuboid(THREE, 0, 0, 5/16, 4/16, 14/16, 11/16));
+    if (e) geos.push(cuboid(THREE, 12/16, 0, 5/16, 1, 14/16, 11/16));
+
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── トラップドア ────────────────────────────────────────
+ * direction: 0=south, 1=west, 2=north, 3=east（壁付け方向＝ヒンジ位置）
+ * upside_down_bit: 0=床近く / 1=天井近く
+ * open_bit: 0=水平 / 1=垂直に立つ
+ */
+export function buildTrapdoorGeometry(THREE, states = {}) {
+    // Bedrock: 'open_bit' (byte 0/1)、新形式では 'open' の場合もある
+    const open = _isTrue(_getStateAny(states, 'open_bit', 'open'));
+    // Java: 'half=top/bottom', Bedrock: 'upside_down_bit'
+    const javaHalf = _getState(states, 'half');
+    const upsideDown = (javaHalf === 'top') || _isTrue(_getStateAny(states, 'upside_down_bit', 'upside_down'));
+    const dir = _getDirection(states);
+
+    if (!open) {
+        // 水平：薄板（天井 or 床）
+        return upsideDown
+            ? cuboid(THREE, 0, 13/16, 0, 1, 1,    1)
+            : cuboid(THREE, 0, 0,     0, 1, 3/16, 1);
+    }
+    // 開いた状態：壁に張り付く垂直な薄板
+    // dir=south(0) → +Z 側に板が立つ
+    if (dir === 0) return cuboid(THREE, 0, 0, 13/16, 1, 1, 1);    // south wall (+Z)
+    if (dir === 1) return cuboid(THREE, 0, 0, 0,     3/16, 1, 1); // west wall (-X)
+    if (dir === 2) return cuboid(THREE, 0, 0, 0,     1, 1, 3/16); // north wall (-Z)
+    if (dir === 3) return cuboid(THREE, 13/16, 0, 0, 1, 1, 1);    // east wall (+X)
+    return cuboid(THREE, 0, 0, 13/16, 1, 1, 1);
+}
+
+/* ─── ドア（縦長 1×2×0.1875、頭部スキップは worker.js で済） ─── */
+/*
+ * direction (Bedrock):  0=south (+Z 向きに開口), 1=west, 2=north, 3=east
+ * hinge_bit:            0=左ヒンジ, 1=右ヒンジ
+ * open_bit:             0=閉, 1=開
+ *
+ * 【ヒンジ位置と回転の対応】
+ *   閉じた状態のドア板の「壁」は direction に沿った面に貼り付く：
+ *     dir=0(south): Z=1 側の薄板（Z 軸に垂直）
+ *     dir=1(west) : X=0 側の薄板
+ *     dir=2(north): Z=0 側の薄板
+ *     dir=3(east) : X=1 側の薄板
+ *
+ *   開いた状態は、ヒンジを軸にY軸で ±90度 回転させる：
+ *     hinge_bit=0 (左ヒンジ): +90度回転 → direction を +1 (時計回り) に見せる
+ *     hinge_bit=1 (右ヒンジ): -90度回転 → direction を -1 に見せる
+ */
+export function buildDoorGeometry(THREE, states = {}) {
+    const dir = _getDirection(states);
+    const open = _isTrue(_getStateAny(states, 'open_bit', 'open'));
+    // Bedrock では 'door_hinge_bit'、Java では 'hinge' を使う
+    const hinge = _isTrue(_getState(states, 'door_hinge_bit'))
+               || _isTrue(_getState(states, 'hinge_bit'))
+               || (_getState(states, 'hinge') === 'right');
+
+    let placement = dir;
+    if (open) {
+        // hinge_bit=0: 左ヒンジ → -1方向 (反時計回り) に開く
+        // hinge_bit=1: 右ヒンジ → +1方向 (時計回り) に開く
+        const offset = hinge ? 1 : -1;
+        placement = (dir + offset + 4) % 4;
+    }
+
+    const t = 3 / 16;
+    switch (placement) {
+        case 0: return cuboid(THREE, 0,   0, 1-t, 1,   1, 1);   // south: Z+ 側
+        case 1: return cuboid(THREE, 0,   0, 0,   t,   1, 1);   // west:  X- 側
+        case 2: return cuboid(THREE, 0,   0, 0,   1,   1, t);   // north: Z- 側
+        case 3: return cuboid(THREE, 1-t, 0, 0,   1,   1, 1);   // east:  X+ 側
+    }
+    return cuboid(THREE, 0, 0, 1-t, 1, 1, 1);
+}
+
+/* ─── フェンスゲート ───────────────────────────────────────
+ * direction: 0=south, 1=west, 2=north, 3=east
+ * open_bit: 0=closed, 1=open
+ */
+export function buildFenceGateGeometry(THREE, states = {}) {
+    const dir = _getDirection(states);
+    const open = _isTrue(_getStateAny(states, 'open_bit', 'open'));
+
+    if (open) {
+        // 開いた時は壁に張り付く小ポスト 2 つ
+        const geos = [];
+        if (dir === 0 || dir === 2) { // south/north：壁が +X/-X 方向に開く
+            geos.push(cuboid(THREE, 0,    5/16, 7/16, 2/16, 1, 9/16));
+            geos.push(cuboid(THREE, 14/16,5/16, 7/16, 1,    1, 9/16));
+        } else {
+            geos.push(cuboid(THREE, 7/16, 5/16, 0,    9/16, 1, 2/16));
+            geos.push(cuboid(THREE, 7/16, 5/16, 14/16,9/16, 1, 1));
+        }
+        return _mergeBufferGeometries(THREE, geos);
+    }
+    // 閉じた状態：縦ポスト2 + 横棒2
+    const geos = [];
+    if (dir === 0 || dir === 2) { // south/north：ゲートが東西に伸びる
+        geos.push(cuboid(THREE, 0,     5/16, 7/16, 2/16, 1,     9/16));
+        geos.push(cuboid(THREE, 14/16, 5/16, 7/16, 1,    1,     9/16));
+        geos.push(cuboid(THREE, 2/16, 12/16, 7/16, 14/16, 15/16, 9/16));
+        geos.push(cuboid(THREE, 2/16,  6/16, 7/16, 14/16,  9/16, 9/16));
+    } else { // east/west：南北に伸びる
+        geos.push(cuboid(THREE, 7/16, 5/16, 0,     9/16, 1,     2/16));
+        geos.push(cuboid(THREE, 7/16, 5/16, 14/16, 9/16, 1,     1));
+        geos.push(cuboid(THREE, 7/16,12/16, 2/16,  9/16, 15/16,14/16));
+        geos.push(cuboid(THREE, 7/16, 6/16, 2/16,  9/16,  9/16,14/16));
+    }
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 窓ガラスペイン・鉄格子（中央十字、隣接接続あり） ────── */
+export function buildPaneGeometry(THREE, states = {}, neighbors = {}) {
+    const geos = [];
+    // Bedrock '*_bit' / Java 'north'='true'/'false'
+    const javaTrue = (v) => v === 'true' || v === true;
+    const n = _isTrue(_getState(states, 'north_bit')) || javaTrue(_getState(states, 'north')) || neighbors.n;
+    const s = _isTrue(_getState(states, 'south_bit')) || javaTrue(_getState(states, 'south')) || neighbors.s;
+    const w = _isTrue(_getState(states, 'west_bit'))  || javaTrue(_getState(states, 'west'))  || neighbors.w;
+    const e = _isTrue(_getState(states, 'east_bit'))  || javaTrue(_getState(states, 'east'))  || neighbors.e;
+
+    // 中央にわずかな隙間も残さないよう、腕を 8.5/16 まで伸ばして重ねる
+    if (n) geos.push(cuboid(THREE, 7/16, 0, 0,    9/16, 1, 8.5/16));
+    if (s) geos.push(cuboid(THREE, 7/16, 0, 7.5/16, 9/16, 1, 1));
+    if (w) geos.push(cuboid(THREE, 0,    0, 7/16, 8.5/16, 1, 9/16));
+    if (e) geos.push(cuboid(THREE, 7.5/16, 0, 7/16, 1,    1, 9/16));
+
+    // 全く接続がない場合のみ、中央の支柱を表示
+    if (!(n || s || w || e)) {
+        geos.push(cuboid(THREE, 7/16, 0, 7/16, 9/16, 1, 9/16));
+    }
+
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 小オブジェクト（松明など） ─────────────────────────── */
+export function buildSmallGeometry(THREE) {
+    return cuboid(THREE, 7/16, 0, 7/16, 9/16, 10/16, 9/16);
+}
+
+/* ─── たいまつ ──────────────────────────────────────────────
+ * 2/16 × 10/16 × 2/16 の細い棒（中央配置）
+ */
+export function buildTorchGeometry(THREE) {
+    return cuboid(THREE, 7/16, 0, 7/16, 9/16, 10/16, 9/16);
+}
+
+/* ─── クロス平面（花・植物等）──────────────────────────────
+ * 2つの薄い板を中央でクロスさせた X 型
+ * Minecraft の花・木の若木に相当
+ */
+export function buildCrossGeometry(THREE) {
+    const geos = [
+        cuboid(THREE, 0,     0, 7/16, 1,     13/16, 9/16),  // N-S 板
+        cuboid(THREE, 7/16,  0, 0,    9/16,  13/16, 1),      // E-W 板
+    ];
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── ランタン ───────────────────────────────────────────────
+ * 本体 (6×9×6) + 上部チェーン (2×7×2)
+ * hanging_bit=1 なら天井吊り下げ、0 なら床置き
+ */
+export function buildLanternGeometry(THREE, states = {}) {
+    const hanging = _isTrue(_getStateAny(states, 'hanging_bit', 'hanging'));
+    const geos = [];
+    if (hanging) {
+        // 吊り下げ: 本体は上寄り、チェーンは上に延びる
+        geos.push(cuboid(THREE, 5/16, 1/16,  5/16, 11/16, 8/16,  11/16)); // 本体
+        geos.push(cuboid(THREE, 7/16, 8/16,  7/16, 9/16,  1,     9/16));  // チェーン
+    } else {
+        // 床置き: 本体は下寄り、小さな脚
+        geos.push(cuboid(THREE, 5/16, 1/16,  5/16, 11/16, 9/16,  11/16)); // 本体
+        geos.push(cuboid(THREE, 6/16, 0,     6/16, 10/16, 1/16,  10/16)); // 底脚
+    }
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 鎖（チェーンブロック）─────────────────────────────────
+ * axis=x/y/z に対応した細い棒
+ * デフォルトは縦（Y軸）
+ */
+export function buildChainGeometry(THREE, states = {}) {
+    const axis = _getStateAny(states, 'pillar_axis', 'axis') || 'y';
+    if (axis === 'x') {
+        return cuboid(THREE, 0, 7/16, 7/16, 1, 9/16, 9/16);
+    } else if (axis === 'z') {
+        return cuboid(THREE, 7/16, 7/16, 0, 9/16, 9/16, 1);
+    }
+    // y軸（デフォルト）
+    return cuboid(THREE, 7/16, 0, 7/16, 9/16, 1, 9/16);
+}
+
+/* ─── ホッパー ───────────────────────────────────────────
+ * 上部リム（全幅）+ 斜め胴体（内側に向かって絞られる台形近似）+ 出口スパウト（方向依存）
+ * facing_direction: 0=下, 2=north, 3=south, 4=west, 5=east
+ */
+export function buildHopperGeometry(THREE, states = {}) {
+    const facing = _getStateAny(states, 'facing_direction', 'facing') ?? 0;
+    const geos = [];
+
+    // リム（上面外周）: 全幅 16px, 高さ 10px〜16px
+    geos.push(cuboid(THREE, 0,     10/16, 0,     1,      1,      1     ));  // 上リム full
+
+    // 斜め胴体（台形を3段で近似）: 10/16 y → 4/16 y, 幅 12/16 → 8/16
+    geos.push(cuboid(THREE, 2/16,  4/16,  2/16,  14/16, 10/16, 14/16 ));   // 中胴 12/16 幅
+
+    // 出口スパウト（4/16 高さ、方向によって側面に飛び出す）
+    if (facing === 2 || facing === 'north') {
+        geos.push(cuboid(THREE, 4/16, 0, 0,     12/16, 4/16, 6/16 ));
+    } else if (facing === 3 || facing === 'south') {
+        geos.push(cuboid(THREE, 4/16, 0, 10/16, 12/16, 4/16, 1    ));
+    } else if (facing === 4 || facing === 'west') {
+        geos.push(cuboid(THREE, 0,     0, 4/16, 6/16,  4/16, 12/16));
+    } else if (facing === 5 || facing === 'east') {
+        geos.push(cuboid(THREE, 10/16, 0, 4/16, 1,     4/16, 12/16));
+    } else {
+        // facing=0 下向き: 中央下スパウト
+        geos.push(cuboid(THREE, 4/16, 0, 4/16, 12/16, 4/16, 12/16));
+    }
+
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 大釜（カルドロン）───────────────────────────────────
+ * 4枚の壁 + 底 （上面は開口）
+ */
+export function buildCauldronGeometry(THREE) {
+    const T = 2/16;  // 壁厚
+    const geos = [];
+    geos.push(cuboid(THREE, 0,   0,   0,   T,   1,   1   ));  // 西壁
+    geos.push(cuboid(THREE, 1-T, 0,   0,   1,   1,   1   ));  // 東壁
+    geos.push(cuboid(THREE, T,   0,   0,   1-T, T,   1   ));  // 底
+    geos.push(cuboid(THREE, T,   0,   0,   1-T, 1,   T   ));  // 北壁（内側）
+    geos.push(cuboid(THREE, T,   0,   1-T, 1-T, 1,   1   ));  // 南壁（内側）
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 金床（アンビル）─────────────────────────────────────
+ * 刃（上部大ブロック）+ 首（細い中間）+ 底座（下部大ブロック）
+ * direction: 0=z軸平行, 1=x軸平行
+ */
+export function buildAnvilGeometry(THREE, states = {}) {
+    const dir = _getStateAny(states, 'direction', 'facing_direction') ?? 0;
+    const geos = [];
+    if (dir === 0 || dir === 'north' || dir === 'south') {
+        // Z軸平行（デフォルト）
+        geos.push(cuboid(THREE, 2/16,  10/16, 0,     14/16, 1,     1    ));  // 刃
+        geos.push(cuboid(THREE, 4/16,  5/16,  3/16,  12/16, 10/16, 13/16));  // 首
+        geos.push(cuboid(THREE, 0,     0,     2/16,  1,     5/16,  14/16));  // 底座
+    } else {
+        // X軸平行
+        geos.push(cuboid(THREE, 0,     10/16, 2/16,  1,     1,     14/16));  // 刃
+        geos.push(cuboid(THREE, 3/16,  5/16,  4/16,  13/16, 10/16, 12/16));  // 首
+        geos.push(cuboid(THREE, 2/16,  0,     0,     14/16, 5/16,  1    ));  // 底座
+    }
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 公開：形状取得 ─────────────────────────────────────── */
+/**
+ * @param {object} neighbors - フェンス/壁/ペイン用の接続フラグ { n, s, w, e }
+ * @param {object} neighborBlocks - 階段コーナー判定用 { n, s, w, e } 各 { blockId, states }
+ */
+export function resolveGeometry(THREE, blockId, states = {}, neighbors = {}, neighborBlocks = null) {
+    const shape = classifyShape(blockId, states);
+    switch (shape) {
+        case 'stairs':         return buildStairsGeometry(THREE, states, neighborBlocks);
+        case 'slab':           return buildSlabGeometry(THREE, states);
+        case 'fence':          return buildFenceGeometry(THREE, states, neighbors);
+        case 'wall':           return buildWallGeometry(THREE, states, neighbors);
+        case 'fence_gate':     return buildFenceGateGeometry(THREE, states);
+        case 'trapdoor':       return buildTrapdoorGeometry(THREE, states);
+        case 'door':           return buildDoorGeometry(THREE, states);
+        case 'carpet':         return buildCarpetGeometry(THREE);
+        case 'pressure_plate': return buildPressurePlateGeometry(THREE);
+        case 'button':         return buildButtonGeometry(THREE);
+        case 'pane':           return buildPaneGeometry(THREE, states, neighbors);
+        case 'torch':          return buildTorchGeometry(THREE);
+        case 'cross':          return buildCrossGeometry(THREE);
+        case 'lantern':        return buildLanternGeometry(THREE, states);
+        case 'chain':          return buildChainGeometry(THREE, states);
+        case 'hopper':         return buildHopperGeometry(THREE, states);
+        case 'cauldron':       return buildCauldronGeometry(THREE);
+        case 'anvil':          return buildAnvilGeometry(THREE, states);
+        case 'small':          return buildSmallGeometry(THREE);
+        case 'cube':
+        default:               return cuboid(THREE, 0, 0, 0, 1, 1, 1);
+    }
+}
+
+/* ─── 簡易 BufferGeometry マージ（r128 互換）───────────────── */
+function _mergeBufferGeometries(THREE, geometries) {
+    let totalVertices = 0;
+    let hasNormal = true;
+    let hasUV = true;
+    for (const g of geometries) {
+        totalVertices += g.attributes.position.count;
+        if (!g.attributes.normal) hasNormal = false;
+        if (!g.attributes.uv) hasUV = false;
+    }
+    const positions = new Float32Array(totalVertices * 3);
+    const normals = hasNormal ? new Float32Array(totalVertices * 3) : null;
+    const uvs = hasUV ? new Float32Array(totalVertices * 2) : null;
+
+    let totalIndex = 0;
+    for (const g of geometries) totalIndex += (g.index ? g.index.count : g.attributes.position.count);
+    const Indices = totalVertices < 65536 ? Uint16Array : Uint32Array;
+    const indices = new Indices(totalIndex);
+
+    let posOffset = 0, normOffset = 0, uvOffset = 0, idxOffset = 0, vertOffset = 0;
+    for (const g of geometries) {
+        const pCount = g.attributes.position.count;
+        positions.set(g.attributes.position.array, posOffset);
+        if (normals) normals.set(g.attributes.normal.array, normOffset);
+        if (uvs) uvs.set(g.attributes.uv.array, uvOffset);
+        if (g.index) {
+            for (let i = 0; i < g.index.count; i++) indices[idxOffset + i] = g.index.array[i] + vertOffset;
+            idxOffset += g.index.count;
+        } else {
+            for (let i = 0; i < pCount; i++) indices[idxOffset + i] = i + vertOffset;
+            idxOffset += pCount;
+        }
+        posOffset += pCount * 3;
+        normOffset += pCount * 3;
+        uvOffset += pCount * 2;
+        vertOffset += pCount;
+        g.dispose && g.dispose();
+    }
+
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    if (normals) merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    if (uvs) merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    merged.setIndex(new THREE.BufferAttribute(indices, 1));
+    return merged;
+}
