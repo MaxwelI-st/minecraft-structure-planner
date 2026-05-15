@@ -16,6 +16,7 @@ import {
   readStairsFacing, readStairsHalf, readDoorFacing, readDoorHalf,
   readDoorOpen, readDoorHinge, readFenceGateFacing, readFenceGateOpen,
   readFenceConnections, readWallConnections, readAxis, readFacing6, readHanging,
+  readRailShape,
 } from './render/state-reader.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -309,19 +310,19 @@ export function resolveGeometry(THREE, blockId, states, neighbors, neighborBlock
     case SHAPES.TORCH:          return _buildTorch(THREE);
     case SHAPES.LANTERN:        return _buildLantern(THREE, states);
     case SHAPES.END_ROD:        return _buildEndRod(THREE, states);
-    case SHAPES.CHAIN:          return _buildChain(THREE);
+    case SHAPES.CHAIN:          return _buildChain(THREE, states);
     case SHAPES.CANDLE:         return _buildCandle(THREE);
     case SHAPES.CAMPFIRE:       return _buildCampfire(THREE);
     case SHAPES.SKULL:          return _buildSkull(THREE);
     case SHAPES.FLOWER_POT:     return _buildFlowerPot(THREE);
     case SHAPES.LIQUID:         return _buildLiquid(THREE);
-    case SHAPES.RAIL:           return _buildRail(THREE);
+    case SHAPES.RAIL:           return _buildRail(THREE, states);
     case SHAPES.SIGN:           return _buildSign(THREE);
     case SHAPES.WALL_SIGN:      return _buildWallSign(THREE);
     case SHAPES.HANGING_SIGN:   return _buildHangingSign(THREE, states, false);
     case SHAPES.BED:            return _buildBed(THREE);
     case SHAPES.LEVER:          return _buildLever(THREE);
-    case SHAPES.FRAME:          return _buildFrame(THREE);
+    case SHAPES.FRAME:          return _buildFrame(THREE, states);
     case SHAPES.HOPPER:         return _buildHopper(THREE, states);
     case SHAPES.ANVIL:          return _buildAnvil(THREE, states);
     case SHAPES.SCAFFOLDING:    return _buildScaffolding(THREE);
@@ -762,7 +763,10 @@ function _buildEndRod(THREE, states) {
 }
 
 // ── Chain ─────────────────────────────────────────────────────────────────────
-function _buildChain(THREE) {
+function _buildChain(THREE, states) {
+  const axis = readAxis(states); // 'x' | 'y' | 'z'
+  if (axis === 'x') return _mergeBoxes(THREE, [{ w: 1,       h: 0.09375, d: 0.09375 }]);
+  if (axis === 'z') return _mergeBoxes(THREE, [{ w: 0.09375, h: 0.09375, d: 1       }]);
   return _mergeBoxes(THREE, [{ w: 0.09375, h: 1, d: 0.09375 }]);
 }
 
@@ -794,9 +798,43 @@ function _buildLiquid(THREE) {
   return _mergeBoxes(THREE, [{ y: -0.0625, w: 1, h: 0.875, d: 1 }]);
 }
 
-// ── Rail (flat) ───────────────────────────────────────────────────────────────
-function _buildRail(THREE) {
-  return _mergeBoxes(THREE, [{ y: -0.46875, w: 1, h: 0.0625, d: 1 }]);
+// ── Rail (方向対応) ──────────────────────────────────────────────────────────
+// shape: 'north_south' | 'east_west' | 'ascending_*' | 'south_east' | 'south_west' | 'north_west' | 'north_east'
+function _buildRail(THREE, states) {
+  const shape = readRailShape(states);
+  const yFloor = -0.46875;
+  const H = 0.0625;
+
+  // 直線 (north_south / east_west) — 平板 (向きは UV だけだが視覚は同じ)
+  if (shape === 'north_south' || shape === 'east_west') {
+    return _mergeBoxes(THREE, [{ y: yFloor, w: 1, h: H, d: 1 }]);
+  }
+
+  // 上り坂 — 一端を持ち上げる
+  if (shape.startsWith('ascending_')) {
+    // 斜め板を作る代わりに 2 つの板を段差表示 (簡略)
+    const dir = shape.replace('ascending_', '');
+    const low  = { y: yFloor,        w: 1, h: H, d: 1 };
+    const mid  = { y: yFloor + 0.5,  w: 0.5, h: H, d: 0.5 };
+    // 上端を方向側に
+    if (dir === 'east')  mid.x =  0.25;
+    if (dir === 'west')  mid.x = -0.25;
+    if (dir === 'north') mid.z = -0.25;
+    if (dir === 'south') mid.z =  0.25;
+    return _mergeBoxes(THREE, [low, mid]);
+  }
+
+  // カーブ (north_east / north_west / south_east / south_west) — L 字
+  if (shape === 'north_east' || shape === 'north_west' ||
+      shape === 'south_east' || shape === 'south_west') {
+    const half1 = { y: yFloor, w: 1, h: H, d: 0.5 };
+    const half2 = { y: yFloor, w: 0.5, h: H, d: 1 };
+    half1.z = (shape.startsWith('north')) ? -0.25 :  0.25;
+    half2.x = (shape.endsWith('east'))    ?  0.25 : -0.25;
+    return _mergeBoxes(THREE, [half1, half2]);
+  }
+
+  return _mergeBoxes(THREE, [{ y: yFloor, w: 1, h: H, d: 1 }]);
 }
 
 // ── Standing Sign ─────────────────────────────────────────────────────────────
@@ -827,10 +865,44 @@ function _buildLever(THREE) {
 }
 
 // ── Item Frame / Painting ──────────────────────────────────────────────────────
-function _buildFrame(THREE) {
-  return _mergeBoxes(THREE, [
-    { z: -(0.5 - 0.03125), w: 0.75, h: 0.75, d: 0.0625 }, // frame face
-  ]);
+// 額縁 = 背面薄板 + 上下左右の枠 4 本。facing で 6 方向に配置
+function _buildFrame(THREE, states) {
+  const face = readFacing6(states);
+  const W = 0.75;       // 額縁の幅・高さ (12/16)
+  const F = 0.0625;     // 壁からの飛び出し厚 (1/16)
+  const T = 0.0625;     // 枠の太さ (1/16)
+  const inner = W - T * 2;
+  // base: 北壁 (z = -ec) に対する 5 box 構成
+  // 中央背面板
+  const baseBoxes = [
+    { x: 0, y: 0, z: 0, w: W, h: T, d: F }, // 上の枠 (placeholder, 後で z 軸基準にする)
+  ];
+
+  // 北壁 (facing='north') に向けた額縁: 背面 + 4 枠を z=-(0.5-F/2) に配置
+  const ec = 0.5 - F / 2;
+  const boxesNorth = [
+    // 背面板 (薄い)
+    { x: 0, y: 0, z: -ec, w: inner, h: inner, d: F * 0.5, autoUV: true },
+    // 上枠
+    { x: 0, y:  W/2 - T/2, z: -ec, w: W, h: T, d: F, autoUV: true },
+    // 下枠
+    { x: 0, y: -W/2 + T/2, z: -ec, w: W, h: T, d: F, autoUV: true },
+    // 左枠
+    { x: -W/2 + T/2, y: 0, z: -ec, w: T, h: inner, d: F, autoUV: true },
+    // 右枠
+    { x:  W/2 - T/2, y: 0, z: -ec, w: T, h: inner, d: F, autoUV: true },
+  ];
+
+  // facing で回転
+  let ry = 0, rx = 0;
+  if      (face === 'south') ry =  Math.PI;
+  else if (face === 'east')  ry = -Math.PI / 2;
+  else if (face === 'west')  ry =  Math.PI / 2;
+  else if (face === 'up')    rx =  Math.PI / 2;
+  else if (face === 'down')  rx = -Math.PI / 2;
+
+  // 回転を各 box に適用
+  return _mergeBoxes(THREE, boxesNorth.map(b => ({ ...b, ry, rx })));
 }
 
 // ── Hopper ────────────────────────────────────────────────────────────────────

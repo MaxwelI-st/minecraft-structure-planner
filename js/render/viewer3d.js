@@ -110,6 +110,8 @@ function _shapeSignature(blockId, states) {
     else if (shape === 'fence_gate')     keys.push('open_bit', 'open', 'direction', 'facing', 'minecraft:cardinal_direction');
     else if (shape === 'lantern')        keys.push('hanging_bit', 'hanging');
     else if (shape === 'chain')          keys.push('pillar_axis', 'axis');
+    else if (shape === 'rail')           keys.push('rail_direction', 'shape');
+    else if (shape === 'frame')          keys.push('facing_direction', 'facing');
     else if (shape === 'end_rod')        keys.push('pillar_axis', 'axis', 'facing_direction');
     else if (shape === 'snow_layer')     keys.push('height', 'snow_layer_height');
     else if (shape === 'button')         keys.push('facing_direction', 'face');

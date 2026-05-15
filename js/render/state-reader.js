@@ -352,6 +352,37 @@ export function readHanging(states) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Rail shape — Bedrock rail_direction (int 0-9) ↔ Java shape (string)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Bedrock rail_direction 値 → Java shape 文字列
+// 0/1: 直線 ns/ew, 2-5: 上り坂 (4方向), 6-9: カーブ (4種)
+const RAIL_DIR_TO_SHAPE = [
+  'north_south',          // 0
+  'east_west',            // 1
+  'ascending_east',       // 2
+  'ascending_west',       // 3
+  'ascending_north',      // 4
+  'ascending_south',      // 5
+  'south_east',           // 6
+  'south_west',           // 7
+  'north_west',           // 8
+  'north_east',           // 9
+];
+
+/** @returns {string} Java rail shape (north_south, east_west, ascending_X, curves) */
+export function readRailShape(states) {
+  // Java: shape (string)
+  const js = _raw(states, 'shape');
+  if (typeof js === 'string') return js;
+  // Bedrock: rail_direction (int 0-9)
+  const dir = _raw(states, 'rail_direction');
+  if (typeof dir === 'number') return RAIL_DIR_TO_SHAPE[dir] ?? 'north_south';
+  if (typeof dir === 'string' && !isNaN(parseInt(dir))) return RAIL_DIR_TO_SHAPE[parseInt(dir)] ?? 'north_south';
+  return 'north_south';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Persistent (leaves)
 // ─────────────────────────────────────────────────────────────────────────────
 
