@@ -1,4 +1,4 @@
-import { expandCraftingTree, computeShulkerPacking } from '../../modules/logic/crafting-tree.js';
+import { computeShulkerPacking } from '../../modules/logic/crafting-tree.js';
 import { getBlockColor } from '../../render/viewer3d.js';
 
 function _colorHex(id) {
@@ -9,16 +9,12 @@ function _colorHex(id) {
 const $ = id => document.getElementById(id);
 
 export function initMaterialsPanel(app) {
-  $('crafting-tree-details')?.addEventListener('toggle', (e) => {
-    if (e.target.open) _renderCraftingTree(app);
-  });
   $('shulker-pack-details')?.addEventListener('toggle', (e) => {
     if (e.target.open) _renderShulkerPack(app);
   });
 
   app.onMaterialsUpdated = () => {
-    if ($('crafting-tree-details')?.open) _renderCraftingTree(app);
-    if ($('shulker-pack-details')?.open)  _renderShulkerPack(app);
+    if ($('shulker-pack-details')?.open) _renderShulkerPack(app);
   };
 }
 
@@ -37,90 +33,6 @@ function _toMap(app) {
 function _name(app, id) {
   if (!id) return '不明';
   return (app.langData && app.langData[id]) || String(id).replace('minecraft:', '');
-}
-
-// ── クラフトツリー ──────────────────────────────────────────────────
-function _renderCraftingTree(app) {
-  const body = $('crafting-tree-body');
-  if (!body) return;
-
-  try {
-    const matMap = _toMap(app);
-    if (!matMap) {
-      body.innerHTML = '<p class="empty-hint">素材がありません</p>';
-      return;
-    }
-
-    const tree = expandCraftingTree(matMap);
-
-    // rawMaterials: Map<id, number>
-    const rawRows = [];
-    for (const [id, count] of tree.rawMaterials) {
-      const c = typeof count === 'number' ? count : 0;
-      rawRows.push({ id, count: c });
-    }
-    rawRows.sort((a, b) => b.count - a.count);
-
-    const tableRows = rawRows.map(({ id, count }) => {
-      const stacks = Math.floor(count / 64);
-      const rem = count % 64;
-      const stackStr = stacks > 0
-        ? (rem > 0 ? stacks + 'st+' + rem : stacks + 'st')
-        : String(count);
-      return '<tr>'
-        + '<td class="mat-name">' + _name(app, id) + '</td>'
-        + '<td class="mat-count">' + count.toLocaleString() + '</td>'
-        + '<td class="mat-stacks">' + stackStr + '</td>'
-        + '</tr>';
-    }).join('');
-
-    // craftingSteps: Array<{ output, outputCount, runs, type, inputs }>
-    const craftSteps = (tree.craftingSteps || []).filter(s => s && s.type === 'craft');
-    const smeltSteps = (tree.craftingSteps || []).filter(s => s && s.type === 'smelt');
-
-    let stepsHtml = '';
-    if (craftSteps.length > 0) {
-      const rows = craftSteps.map(s => {
-        const cnt = typeof s.outputCount === 'number' ? s.outputCount : 0;
-        return '<div class="craft-step-row">'
-          + '<span class="step-name">' + _name(app, s.output) + ' × ' + cnt.toLocaleString() + '</span>'
-          + '<span>' + (s.runs || 0) + ' バッチ</span>'
-          + '</div>';
-      }).join('');
-      stepsHtml = '<div class="craft-steps-section">'
-        + '<div class="craft-steps-title">🔨 クラフト手順（' + craftSteps.length + ' 種）</div>'
-        + rows + '</div>';
-    }
-
-    let smeltHtml = '';
-    if (smeltSteps.length > 0) {
-      const coalCost = tree.coalCost || 0;
-      const rows = smeltSteps.map(s => {
-        const cnt = typeof s.outputCount === 'number' ? s.outputCount : 0;
-        return '<div class="craft-step-row">'
-          + '<span class="step-name">' + _name(app, s.output) + ' × ' + cnt.toLocaleString() + '</span>'
-          + '<span>' + (s.runs || 0) + ' 回</span>'
-          + '</div>';
-      }).join('');
-      const coalLine = coalCost > 0
-        ? '<div class="craft-coal-info">⛏ 石炭合計: <strong>' + coalCost + ' 個</strong> ('
-          + Math.ceil(coalCost / 64) + ' スタック)</div>'
-        : '';
-      smeltHtml = '<div class="craft-steps-section">'
-        + '<div class="craft-steps-title">🔥 精錬（' + smeltSteps.length + ' 種）</div>'
-        + rows + coalLine + '</div>';
-    }
-
-    body.innerHTML = '<table class="craft-table">'
-      + '<thead><tr><th>原材料</th><th style="text-align:right">数量</th><th style="text-align:right">スタック</th></tr></thead>'
-      + '<tbody>' + (tableRows || '<tr><td colspan="3" class="empty-hint">展開可能な素材がありません</td></tr>') + '</tbody>'
-      + '</table>'
-      + stepsHtml + smeltHtml;
-
-  } catch (err) {
-    body.innerHTML = '<p class="empty-hint" style="color:var(--red)">エラー: ' + err.message + '</p>';
-    console.error('[materials] _renderCraftingTree error:', err);
-  }
 }
 
 // ── シュルカーパッキング ────────────────────────────────────────────
