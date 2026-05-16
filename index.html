@@ -26,6 +26,7 @@
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Silkscreen&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/polish.css">
 
   <!-- JSZip / Three.js は遅延ロード可能だがここで先読みしてキャッシュさせる -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="window.__jszipFailed=true"></script>
@@ -194,6 +195,22 @@
 
           <!-- Block List -->
           <div id="block-list" class="block-list"></div>
+
+          <!-- Phase 4: クラフトツリー -->
+          <details id="crafting-tree-details" class="craft-details">
+            <summary>🪵 原材料展開（クラフトツリー）</summary>
+            <div class="craft-details-body" id="crafting-tree-body">
+              <p class="empty-hint">素材が読み込まれると展開されます</p>
+            </div>
+          </details>
+
+          <!-- Phase 4: シュルカーパッキング -->
+          <details id="shulker-pack-details" class="shulker-details">
+            <summary>📦 シュルカーボックスパッキング</summary>
+            <div class="shulker-details-body" id="shulker-pack-body">
+              <p class="empty-hint">素材が読み込まれると展開されます</p>
+            </div>
+          </details>
         </div><!-- /panel-materials -->
 
         <!-- Tab: ドット絵 -->

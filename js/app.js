@@ -15,6 +15,7 @@
 import { DotArtEditor, DOT_PALETTE } from './ui/panels/dotart.js';
 import { Viewer3D } from './render/viewer3d.js';
 import { initToolsPanel } from './ui/panels/tools.js';
+import { initMaterialsPanel } from './ui/panels/materials.js';
 import * as ResourcePack from './resourcepack.js';
 import * as Image2Dot from './image2dot.js';
 import { NBTParser, NBTWriter, decompressIfNeeded } from './io/nbt-reader.js';
@@ -97,6 +98,7 @@ class App {
         this._setupSidebarDropZone();
         this._setupLitematicConvert();
         initToolsPanel(this);
+        initMaterialsPanel(this);
         this._renderProjectList();
 
         const lastId = localStorage.getItem('mc_planner_last');
@@ -491,14 +493,14 @@ class App {
         { id: 'dark-8',  name: 'Retro Terminal',     kind: 'dark',  sample: ['#000000', '#ff00ff', '#00ffff'] },
         { id: 'dark-9',  name: 'Aurora Glass',       kind: 'dark',  sample: ['#0a0a18', '#4ade80', '#7c3aed'] },
         { id: 'dark-10', name: 'Brutalist Slate',    kind: 'dark',  sample: ['#1a1a1a', '#ffffff', '#666666'] },
-        { id: 'light-1', name: 'Default Light',      kind: 'light', sample: ['#f5f0e8', '#1a2332', '#5a6577'] },
+        { id: 'light-1', name: 'Lavender Mist',      kind: 'light', sample: ['#ede0f8', '#a878d8', '#dcc8f0'] },
         { id: 'light-2', name: 'Frosted Crystal',    kind: 'light', sample: ['#eef2f7', '#1d4ed8', '#ffffff'] },
         { id: 'light-3', name: 'Sakura Spring',      kind: 'light', sample: ['#fce7f3', '#e11d48', '#fbcfe8'] },
         { id: 'light-4', name: 'Blueprint Paper',    kind: 'light', sample: ['#fafaf5', '#dc2626', '#000000'] },
         { id: 'light-5', name: 'Paper Sage',         kind: 'light', sample: ['#f5f1e8', '#4a5d3a', '#6b8050'] },
         { id: 'light-6', name: 'Mint Lab',           kind: 'light', sample: ['#ecfdf5', '#0f766e', '#14b8a6'] },
         { id: 'light-7', name: 'Latte Cafe',         kind: 'light', sample: ['#faf3e0', '#78350f', '#b45309'] },
-        { id: 'light-8', name: 'Solar Flare',        kind: 'light', sample: ['#fff7ed', '#ea580c', '#fed7aa'] },
+        { id: 'light-8', name: 'Coral Bloom',        kind: 'light', sample: ['#fac8b8', '#ec9080', '#fdddd4'] },
         { id: 'light-9', name: 'Brutalist Mono',     kind: 'light', sample: ['#f5f5f5', '#000000', '#555555'] },
         { id: 'light-10',name: 'Aurora Bright',      kind: 'light', sample: ['#f0f4ff', '#7c3aed', '#fce7f3'] },
     ];
@@ -619,6 +621,7 @@ class App {
         this._setStatVal('stat-stacks', totalStacks.toLocaleString());
         this._setStatVal('stat-shulkers', shulkers.toLocaleString());
         this._integratedMaterials = integrated;
+        this.onMaterialsUpdated?.();
         this._renderStructureBreakdown(project);
     }
 

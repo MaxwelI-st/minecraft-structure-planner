@@ -1,0 +1,355 @@
+/* ─── UI Polish overrides ────────────────────────────────────────── */
+/* テーマプリセットを邪魔しない、純粋なレイアウトバグの修正のみ */
+
+/* ボタン・バッジが折り返さないように */
+.mc-btn, .icon-btn, .filter-pill, .tab-pill {
+  white-space: nowrap;
+}
+
+/* 構造カードの名前が長くてもバッジが折り返さない */
+.sc-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.sc-name > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.badge-3d { flex-shrink: 0; margin-left: 0; }
+
+/* プロジェクトカードの2行目を折り返さず省略 */
+.pi-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* プロジェクトヘッダー：日付/メタも折り返さず */
+.project-date {
+  white-space: nowrap;
+}
+
+/* テーマカードのタグも折り返さず */
+.theme-tag {
+  white-space: nowrap;
+}
+
+/* デバッグタブは普段は控えめに */
+[data-tab="debug"] {
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+[data-tab="debug"]:hover,
+[data-tab="debug"].active {
+  opacity: 1;
+}
+
+/* ツアー ? ボタン */
+#btn-tour {
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+}
+#btn-tour:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* welcome-icon を控えめに */
+.welcome-icon-img {
+  width: 5.5rem !important;
+  height: 5.5rem !important;
+}
+
+/* タブヘッダーをコンパクト＆スクロール可能に（横スクロールで切れない） */
+.tab-nav {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.tab-btn {
+  flex-shrink: 0;
+  padding: 0.55rem 0.85rem !important;
+  font-size: 0.8rem !important;
+}
+
+/* プロジェクトリスト選択中：左ボーダー */
+.project-item-container.active {
+  position: relative;
+}
+.project-item-container.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12%;
+  bottom: 12%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary);
+}
+
+/* ブロックカードのヒエラルキー：名前を大きく、数値はおとなしく */
+.block-name {
+  font-size: 0.86rem !important;
+  font-weight: 600 !important;
+}
+.block-count {
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+  color: var(--text) !important;
+  opacity: 0.92;
+}
+.block-stack {
+  font-size: 0.7rem !important;
+  margin-top: 2px;
+}
+
+/* 統計の数字も少しおとなしく */
+.stat-value {
+  font-size: 1.9rem !important;
+  font-weight: 800 !important;
+}
+
+/* チェックボックスを少しコンパクトに */
+.check-vis {
+  width: 20px !important;
+  height: 20px !important;
+}
+.check-vis::after {
+  font-size: 13px !important;
+  line-height: 16px !important;
+}
+
+/* 「ここにドロップ」ヒント */
+.sidebar-drop-hint {
+  font-size: 0.7rem !important;
+  opacity: 0.45;
+}
+
+/* ─── Theme Tab UX ─────────────────────────────────────── */
+.theme-filter-bar .filter-pills {
+  align-items: center;
+}
+.theme-filter-bar .filter-pill {
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+.themes-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+  gap: 0.85rem !important;
+}
+.theme-card {
+  padding: 0.85rem !important;
+  display: flex !important;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.theme-card-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ─── Crafting Tree & Shulker Pack ─────────────────────── */
+.craft-details, .shulker-details {
+  margin: 0.75rem 0;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  overflow: hidden;
+}
+.craft-details summary, .shulker-details summary {
+  cursor: pointer;
+  padding: 0.65rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted2, #aaa);
+  user-select: none;
+  list-style: none;
+  background: rgba(255,255,255,0.03);
+  transition: background 0.15s, color 0.15s;
+}
+.craft-details summary:hover, .shulker-details summary:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--text, #fff);
+}
+.craft-details summary::before, .shulker-details summary::before {
+  content: '▶ ';
+  display: inline-block;
+  margin-right: 0.3rem;
+  transition: transform 0.2s;
+}
+.craft-details[open] summary::before, .shulker-details[open] summary::before {
+  transform: rotate(90deg);
+}
+.craft-details[open] summary, .shulker-details[open] summary {
+  color: var(--text, #fff);
+}
+.craft-details-body, .shulker-details-body {
+  padding: 0.75rem 1rem;
+}
+
+/* クラフトツリー: テーブル */
+.craft-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.craft-table th {
+  text-align: left;
+  color: var(--muted2, #94a3b8);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.07));
+}
+.craft-table td {
+  padding: 0.3rem 0.5rem;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.craft-table tr:last-child td { border-bottom: none; }
+.craft-table .mat-name { color: var(--text, #e2e8f0); }
+.craft-table .mat-count {
+  font-family: var(--font-mono, monospace);
+  color: var(--primary, #4ade80);
+  text-align: right;
+  font-weight: 600;
+}
+.craft-table .mat-stacks {
+  color: var(--muted2, #94a3b8);
+  font-size: 0.72rem;
+  text-align: right;
+}
+.craft-steps-section {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.07));
+}
+.craft-steps-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #64748b);
+  margin-bottom: 0.4rem;
+}
+.craft-step-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  padding: 0.2rem 0;
+  color: var(--muted2, #94a3b8);
+}
+.craft-step-row .step-name { color: var(--text, #e2e8f0); }
+.craft-coal-info {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--muted2, #94a3b8);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.craft-coal-info strong { color: var(--text, #e2e8f0); }
+
+/* シュルカー: サマリー */
+.shulker-summary {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+}
+.shulker-summary-num {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--primary, #4ade80);
+  font-family: var(--font-mono, monospace);
+  line-height: 1;
+}
+.shulker-summary-label {
+  font-size: 0.72rem;
+  color: var(--muted2, #94a3b8);
+  line-height: 1.4;
+}
+
+/* シュルカー: ボックスグリッド */
+.shulker-boxes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shulker-box-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 8px;
+  overflow: hidden;
+}
+.shulker-box-header {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.04));
+}
+.shulker-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 3px;
+  padding: 0.5rem;
+}
+.shulker-slot {
+  aspect-ratio: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.shulker-slot.empty {
+  background: rgba(0,0,0,0.15);
+  border-color: rgba(255,255,255,0.03);
+}
+.slot-emoji {
+  font-size: 1rem;
+  line-height: 1;
+}
+.slot-name {
+  font-size: 0.42rem;
+  color: var(--muted2, #94a3b8);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  line-height: 1.1;
+  margin-top: 1px;
+}
+.slot-count {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 0.45rem;
+  font-weight: 700;
+  color: var(--primary, #4ade80);
+  font-family: var(--font-mono, monospace);
+  line-height: 1;
+}
