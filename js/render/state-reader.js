@@ -446,6 +446,9 @@ export function buildShapeSignature(blockId, shape, states) {
     case 'end_rod':
       parts.push('a=' + readAxis(states));
       break;
+    case 'item_frame':
+      parts.push('f=' + readFacing6(states));
+      break;
     case 'ladder':
     case 'hopper':
     case 'anvil':

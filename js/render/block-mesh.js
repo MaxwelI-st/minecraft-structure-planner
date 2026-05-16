@@ -66,6 +66,8 @@ export function classifyShape(blockId, states = {}) {
     if (/_pane$|^iron_bars$/.test(id)) return 'pane';
     // chain ブロックは縦長の細い柱 → 専用形状
     if (/^chain$/.test(id)) return 'chain';
+    // 額縁（アイテムフレーム）→ 壁面付き薄枠
+    if (/^item_frame$|^glow_item_frame$/.test(id)) return 'item_frame';
     // ランタン（吊り下げ or 床置き）→ 本体+チェーン
     if (/^lantern$|^soul_lantern$/.test(id)) return 'lantern';
     // たいまつ系 → 細い棒
@@ -615,18 +617,78 @@ export function buildLanternGeometry(THREE, states = {}) {
 }
 
 /* ─── 鎖（チェーンブロック）─────────────────────────────────
- * axis=x/y/z に対応した細い棒
+ * axis=x/y/z に対応した「十字メッシュ」
+ * 2px 幅の板 2 枚を直交させ、チェーンリンクのシルエットを近似する。
  * デフォルトは縦（Y軸）
  */
 export function buildChainGeometry(THREE, states = {}) {
     const axis = _getStateAny(states, 'pillar_axis', 'axis') || 'y';
+    const geos = [];
     if (axis === 'x') {
-        return cuboid(THREE, 0, 7/16, 7/16, 1, 9/16, 9/16);
+        // X 軸方向：YZ 断面が十字
+        geos.push(cuboid(THREE, 0, 7/16, 0,    1, 9/16, 1   )); // Y 薄板（Z 全幅）
+        geos.push(cuboid(THREE, 0, 0,    7/16, 1, 1,    9/16)); // Z 薄板（Y 全幅）
     } else if (axis === 'z') {
-        return cuboid(THREE, 7/16, 7/16, 0, 9/16, 9/16, 1);
+        // Z 軸方向：XY 断面が十字
+        geos.push(cuboid(THREE, 7/16, 0,    0, 9/16, 1,    1)); // X 薄板（Y 全幅）
+        geos.push(cuboid(THREE, 0,    7/16, 0, 1,    9/16, 1)); // Y 薄板（X 全幅）
+    } else {
+        // Y 軸方向（デフォルト）：XZ 断面が十字
+        geos.push(cuboid(THREE, 7/16, 0, 0,    9/16, 1, 1   )); // X 薄板（Z 全幅）
+        geos.push(cuboid(THREE, 0,    0, 7/16, 1,    1, 9/16)); // Z 薄板（X 全幅）
     }
-    // y軸（デフォルト）
-    return cuboid(THREE, 7/16, 0, 7/16, 9/16, 1, 9/16);
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 額縁（アイテムフレーム / 発光額縁）─────────────────────────
+ * facing_direction: 0=down, 1=up, 2=north, 3=south, 4=west, 5=east
+ *
+ * 南向き（face が +Z 側）をデフォルトとして構築し、
+ * applyMatrix4 で各方向へ回転させる。
+ *
+ *   south face レイアウト（Z 軸方向・奥行き 2px）
+ *   ┌──────────────────┐  ← z=1 (南面)
+ *   │ ██████████████  │  ← 上下左右 2px ボーダー
+ *   │ █  center   █  │
+ *   │ ██████████████  │
+ *   └──────────────────┘  ← z=14/16 (フレーム背面)
+ */
+export function buildItemFrameGeometry(THREE, states = {}) {
+    // facing 解決 (Bedrock facing_direction int / Java facing string)
+    const facingRaw = _getStateAny(states, 'facing_direction', 'facing') ?? 3;
+    let facing;
+    if (typeof facingRaw === 'string') {
+        const M = { down: 0, up: 1, north: 2, south: 3, west: 4, east: 5 };
+        facing = M[facingRaw.toLowerCase()] ?? 3;
+    } else {
+        facing = parseInt(facingRaw) ?? 3;
+    }
+
+    const T  = 2/16;   // ボーダー幅
+    const Z1 = 14/16;  // フレーム背面 Z 座標（南向き空間）
+
+    // 南向きでフレームを構築（face = +Z 方向）
+    const geos = [];
+    geos.push(cuboid(THREE, 0,    1-T,  Z1,    1,    1,     1  )); // 上ストリップ
+    geos.push(cuboid(THREE, 0,    0,    Z1,    1,    T,     1  )); // 下ストリップ
+    geos.push(cuboid(THREE, 0,    T,    Z1,    T,    1-T,   1  )); // 左ストリップ
+    geos.push(cuboid(THREE, 1-T,  T,    Z1,    1,    1-T,   1  )); // 右ストリップ
+    geos.push(cuboid(THREE, T,    T,    15/16, 1-T,  1-T,   1  )); // 中央バックパネル（1px）
+
+    const geo = _mergeBufferGeometries(THREE, geos);
+
+    // south(3) はそのまま。他方向は Y / X 軸回転
+    if (facing === 3) return geo;
+
+    const m = new THREE.Matrix4();
+    if      (facing === 2) m.makeRotationY(Math.PI);          // north
+    else if (facing === 5) m.makeRotationY(Math.PI / 2);      // east
+    else if (facing === 4) m.makeRotationY(-Math.PI / 2);     // west
+    else if (facing === 1) m.makeRotationX(Math.PI / 2);      // up (床置き)
+    else if (facing === 0) m.makeRotationX(-Math.PI / 2);     // down (天井)
+
+    geo.applyMatrix4(m);
+    return geo;
 }
 
 /* ─── ホッパー ───────────────────────────────────────────
@@ -718,6 +780,7 @@ export function resolveGeometry(THREE, blockId, states = {}, neighbors = {}, nei
         case 'cross':          return buildCrossGeometry(THREE);
         case 'lantern':        return buildLanternGeometry(THREE, states);
         case 'chain':          return buildChainGeometry(THREE, states);
+        case 'item_frame':     return buildItemFrameGeometry(THREE, states);
         case 'hopper':         return buildHopperGeometry(THREE, states);
         case 'cauldron':       return buildCauldronGeometry(THREE);
         case 'anvil':          return buildAnvilGeometry(THREE, states);
