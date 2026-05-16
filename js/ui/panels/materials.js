@@ -1,4 +1,10 @@
 import { expandCraftingTree, computeShulkerPacking } from '../../modules/logic/crafting-tree.js';
+import { getBlockColor } from '../../render/viewer3d.js';
+
+function _colorHex(id) {
+  const c = getBlockColor(id);
+  return '#' + c.toString(16).padStart(6, '0');
+}
 
 const $ = id => document.getElementById(id);
 
@@ -146,11 +152,11 @@ function _renderShulkerPack(app) {
         const slot = slots[j];
         if (!slot) return '<div class="shulker-slot empty"></div>';
         const label = _name(app, slot.id);
-        const shortLabel = label.length > 8 ? label.slice(0, 7) + '…' : label;
         const emoji = _blockEmoji(slot.id);
-        return '<div class="shulker-slot" title="' + label + ' × ' + slot.count + '">'
+        const color = _colorHex(slot.id);
+        return '<div class="shulker-slot" title="' + label + ' × ' + slot.count + '" style="--slot-color:' + color + '">'
+          + '<div class="slot-bg"></div>'
           + '<span class="slot-emoji">' + emoji + '</span>'
-          + '<span class="slot-name">' + shortLabel + '</span>'
           + '<span class="slot-count">' + slot.count + '</span>'
           + '</div>';
       }).join('');

@@ -72,7 +72,7 @@ function _isTransparent(blockId) {
     return true;
 }
 
-const BLOCK_COLORS = {
+export const BLOCK_COLORS = {
     grass_block: 0x79c05a, grass: 0x79c05a, dirt: 0x866043, stone: 0x7a7a7a,
     cobblestone: 0x9a9a9a, mossy_cobblestone: 0x6a7a6a,
     sand: 0xe0d070, gravel: 0x909090, white_concrete_powder: 0xe0e0e0,
@@ -88,7 +88,7 @@ const BLOCK_COLORS = {
     flower_pot: 0xa04030, bed: 0xc02020, glowstone: 0xf0c840,
 };
 
-function getBlockColor(blockId) {
+export function getBlockColor(blockId) {
     const raw = String(blockId).toLowerCase().replace('minecraft:', '');
     if (raw.includes('grass')) return 0x79c05a;
     if (raw.includes('dirt')) return 0x866043;
