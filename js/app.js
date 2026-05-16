@@ -489,10 +489,18 @@ class App {
         { id: 'dark-6',  name: 'Midnight Espresso',  kind: 'dark',  sample: ['#2a1810', '#fb923c', '#fed7aa'] },
         { id: 'dark-7',  name: 'Deep Ocean',         kind: 'dark',  sample: ['#0c1e3e', '#1e40af', '#ffffff'] },
         { id: 'dark-8',  name: 'Retro Terminal',     kind: 'dark',  sample: ['#000000', '#ff00ff', '#00ffff'] },
-        { id: 'light-1', name: 'Default Light',      kind: 'light', sample: ['#f5f7fa', '#1a2332', '#5a6577'] },
+        { id: 'dark-9',  name: 'Aurora Glass',       kind: 'dark',  sample: ['#0a0a18', '#4ade80', '#7c3aed'] },
+        { id: 'dark-10', name: 'Brutalist Slate',    kind: 'dark',  sample: ['#1a1a1a', '#ffffff', '#666666'] },
+        { id: 'light-1', name: 'Default Light',      kind: 'light', sample: ['#f5f0e8', '#1a2332', '#5a6577'] },
         { id: 'light-2', name: 'Frosted Crystal',    kind: 'light', sample: ['#eef2f7', '#1d4ed8', '#ffffff'] },
         { id: 'light-3', name: 'Sakura Spring',      kind: 'light', sample: ['#fce7f3', '#e11d48', '#fbcfe8'] },
-        { id: 'light-4', name: 'Blueprint Paper',    kind: 'light', sample: ['#ffffff', '#dc2626', '#000000'] },
+        { id: 'light-4', name: 'Blueprint Paper',    kind: 'light', sample: ['#fafaf5', '#dc2626', '#000000'] },
+        { id: 'light-5', name: 'Paper Sage',         kind: 'light', sample: ['#f5f1e8', '#4a5d3a', '#6b8050'] },
+        { id: 'light-6', name: 'Mint Lab',           kind: 'light', sample: ['#ecfdf5', '#0f766e', '#14b8a6'] },
+        { id: 'light-7', name: 'Latte Cafe',         kind: 'light', sample: ['#faf3e0', '#78350f', '#b45309'] },
+        { id: 'light-8', name: 'Solar Flare',        kind: 'light', sample: ['#fff7ed', '#ea580c', '#fed7aa'] },
+        { id: 'light-9', name: 'Brutalist Mono',     kind: 'light', sample: ['#f5f5f5', '#000000', '#555555'] },
+        { id: 'light-10',name: 'Aurora Bright',      kind: 'light', sample: ['#f0f4ff', '#7c3aed', '#fce7f3'] },
     ];
 
     _setupThemesTab() {
@@ -500,13 +508,35 @@ class App {
         if (!grid) return;
         const current = document.documentElement.getAttribute('data-theme') || 'dark-1';
         grid.innerHTML = App.THEMES.map(t => {
-            const pixels = Array.from({ length: 12 }, (_, i) => {
-                const c = t.sample[i % t.sample.length];
-                return `<div class="px" style="background:${c}"></div>`;
-            }).join('');
             return `
-                <div class="theme-card${t.id === current ? ' active' : ''}" data-theme-id="${t.id}">
-                    <div class="theme-card-preview">${pixels}</div>
+                <div class="theme-card${t.id === current ? ' active' : ''}" data-theme-id="${t.id}" data-preview-theme="${t.id}">
+                    <div class="theme-card-preview">
+                        <div class="preview-sidebar">
+                            <div class="preview-logo"></div>
+                            <div class="preview-btn-primary">+ 新規</div>
+                            <div class="preview-project active"></div>
+                            <div class="preview-project"></div>
+                            <div class="preview-project"></div>
+                        </div>
+                        <div class="preview-main">
+                            <div class="preview-tabs">
+                                <span class="preview-tab active">素材</span>
+                                <span class="preview-tab">3D</span>
+                                <span class="preview-tab">テーマ</span>
+                            </div>
+                            <div class="preview-stats">
+                                <div class="preview-stat">
+                                    <div class="preview-stat-num">759</div>
+                                    <div class="preview-stat-label">Blocks</div>
+                                </div>
+                                <div class="preview-stat">
+                                    <div class="preview-stat-num">22</div>
+                                    <div class="preview-stat-label">Types</div>
+                                </div>
+                            </div>
+                            <div class="preview-btn-sample">適用</div>
+                        </div>
+                    </div>
                     <div class="theme-card-name">${t.name}</div>
                     <div class="theme-card-kind">${t.kind === 'dark' ? '🌙 Dark' : '☀️ Light'}</div>
                 </div>`;
