@@ -503,6 +503,12 @@ class App {
         { id: 'light-8', name: 'Coral Bloom',        kind: 'light', sample: ['#fac8b8', '#ec9080', '#fdddd4'] },
         { id: 'light-9', name: 'Brutalist Mono',     kind: 'light', sample: ['#f5f5f5', '#000000', '#555555'] },
         { id: 'light-10',name: 'Aurora Bright',      kind: 'light', sample: ['#f0f4ff', '#7c3aed', '#fce7f3'] },
+        { id: 'dark-11', name: 'Cyberpunk Tokyo',    kind: 'dark',  sample: ['#050006', '#00f0ff', '#ff0080'] },
+        { id: 'dark-12', name: 'Holographic',        kind: 'dark',  sample: ['#0e0e1e', '#ff9adf', '#6ec5ff'] },
+        { id: 'dark-13', name: 'Sunset Mirage',      kind: 'dark',  sample: ['#1a0a14', '#ffc88a', '#ff9a8d'] },
+        { id: 'light-11',name: 'Vintage Newspaper',  kind: 'light', sample: ['#f5ecd9', '#c23030', '#333333'] },
+        { id: 'light-12',name: 'Bento Box',          kind: 'light', sample: ['#f8f3e5', '#c0392b', '#e8a02e'] },
+        { id: 'light-13',name: 'Hydrangea',          kind: 'light', sample: ['#e8edf8', '#7c83b8', '#f4d4e0'] },
     ];
 
     _setupThemesTab() {

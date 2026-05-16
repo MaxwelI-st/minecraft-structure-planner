@@ -22,7 +22,7 @@
   --radius:    12px;
   --radius-lg: 18px;
   --font-ui:   'Outfit', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-mono: 'JetBrains Mono', 'Zen Kaku Gothic New', monospace;
   --font-game: 'Silkscreen', monospace;
   --shadow:    0 4px 24px rgba(0,0,0,0.5);
   --shadow-lg: 0 8px 48px rgba(0,0,0,0.7);
@@ -1761,32 +1761,39 @@ body::before {
     --btn-primary-text:#051a0d;
 }
 
-/* ── dark-3: Anemo Wanderer（ティール・淡シアン・浮遊感） ── */
+/* ── dark-3: Synthwave Drive（80sシンセウェーブ・紫×ピンク×シアン） ── */
 :root[data-theme="dark-3"],
 [data-preview-theme="dark-3"] {
-    --bg:         #0a1a1f;
-    --bg2:        #102b32;
-    --sidebar:    #06141a;
-    --card:       rgba(20, 50, 60, 0.4);
-    --card-hover: rgba(35, 75, 90, 0.55);
-    --border:     rgba(165, 243, 252, 0.18);
-    --border2:    rgba(165, 243, 252, 0.35);
-    --text:       #ecfeff;
-    --muted:      #7ba8b0;
-    --muted2:     #a5d4dc;
-    --accent:     #22d3ee;
-    --primary:    #06b6d4;
-    --primary-d:  #0891b2;
-    --radius:     12px;
-    --radius-lg:  18px;
-    --glass-blur: blur(28px);
-    --shadow:     0 8px 32px rgba(34, 211, 238, 0.18), 0 2px 8px rgba(0,0,0,0.4);
-    --shadow-lg:  0 16px 56px rgba(34, 211, 238, 0.25), 0 4px 16px rgba(0,0,0,0.5);
-    --hover-bg:        rgba(34, 211, 238, 0.08);
-    --active-bg:       rgba(34, 211, 238, 0.18);
-    --active-border:   rgba(34, 211, 238, 0.5);
-    --btn-primary-text:#062c33;
+    --bg:         #15082c;
+    --bg2:        #240e4a;
+    --sidebar:    #0e0420;
+    --card:       rgba(36, 14, 74, 0.55);
+    --card-hover: rgba(50, 22, 100, 0.7);
+    --border:     rgba(0, 217, 255, 0.28);
+    --border2:    rgba(0, 217, 255, 0.5);
+    --text:       #f8e9ff;
+    --muted:      #a585c5;
+    --muted2:     #d8b8e8;
+    --accent:     #00d9ff;
+    --primary:    #ff2e9a;
+    --primary-d:  #d61a78;
+    --radius:     4px;
+    --radius-lg:  6px;
+    --glass-blur: none;
+    --shadow:     0 0 24px rgba(255, 46, 154, 0.35), 0 0 8px rgba(0, 217, 255, 0.4);
+    --shadow-lg:  0 0 48px rgba(255, 46, 154, 0.45), 0 0 16px rgba(0, 217, 255, 0.5);
+    --hover-bg:        rgba(255, 46, 154, 0.10);
+    --active-bg:       rgba(255, 46, 154, 0.20);
+    --active-border:   #ff2e9a;
+    --btn-primary-text:#1a0010;
 }
+:root[data-theme="dark-3"] body {
+    background:
+        linear-gradient(180deg, #15082c 0%, #240e4a 60%, #4d1a6a 100%),
+        repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 46, 154, 0.04) 3px 4px);
+    background-attachment: fixed;
+}
+
 
 /* ── dark-4: Stim Rush（ソリッド・ビビッド緑紫） ── */
 :root[data-theme="dark-4"],
@@ -1869,42 +1876,33 @@ body::before {
     --btn-primary-text:#2a1505;
 }
 
-/* ── dark-7: Deep Ocean（深海・メッシュグラデ） ── */
+/* ── dark-7: Verdant Cathedral（深い森・真鍮ゴールド・荘厳） ── */
 :root[data-theme="dark-7"],
 [data-preview-theme="dark-7"] {
-    --bg:         #0a1838;
-    --bg2:        #142a55;
-    --sidebar:    rgba(8, 18, 45, 0.55);
-    --card:       rgba(15, 30, 60, 0.45);
-    --card-hover: rgba(30, 50, 90, 0.6);
-    --border:     rgba(255, 255, 255, 0.12);
-    --border2:    rgba(255, 255, 255, 0.22);
-    --text:       #ffffff;
-    --muted:      #94b8d9;
-    --muted2:     #cbd5e1;
-    --accent:     #38bdf8;
-    --primary:    #60a5fa;
-    --primary-d:  #2563eb;
-    --radius:     12px;
-    --radius-lg:  18px;
-    --glass-blur: blur(30px);
-    --shadow:     0 8px 32px rgba(56, 189, 248, 0.18), 0 2px 8px rgba(0,0,0,0.4);
-    --shadow-lg:  0 16px 56px rgba(56, 189, 248, 0.25);
-    --hover-bg:        rgba(56, 189, 248, 0.08);
-    --active-bg:       rgba(56, 189, 248, 0.18);
-    --active-border:   rgba(56, 189, 248, 0.5);
-    --btn-primary-text:#04162a;
+    --bg:         #0a1810;
+    --bg2:        #142a1c;
+    --sidebar:    #061008;
+    --card:       rgba(20, 40, 28, 0.6);
+    --card-hover: rgba(32, 58, 40, 0.75);
+    --border:     rgba(201, 162, 63, 0.22);
+    --border2:    rgba(201, 162, 63, 0.42);
+    --text:       #f0ead0;
+    --muted:      #7a8c70;
+    --muted2:     #b4b890;
+    --accent:     #c9a23f;
+    --primary:    #6b8e5a;
+    --primary-d:  #4f7042;
+    --radius:     20px;
+    --radius-lg:  28px;
+    --glass-blur: blur(8px);
+    --shadow:     0 12px 32px rgba(0,0,0,0.55), 0 0 20px rgba(201, 162, 63, 0.10), inset 0 1px 0 rgba(201,162,63,0.10);
+    --shadow-lg:  0 20px 52px rgba(0,0,0,0.65), 0 0 32px rgba(201, 162, 63, 0.16);
+    --hover-bg:        rgba(201, 162, 63, 0.08);
+    --active-bg:       rgba(107, 142, 90, 0.20);
+    --active-border:   rgba(201, 162, 63, 0.55);
+    --btn-primary-text:#0a1810;
 }
-:root[data-theme="dark-7"] body {
-    background:
-        radial-gradient(at 10% 15%, #1e3a8a 0%, transparent 50%),
-        radial-gradient(at 90% 25%, #0e7490 0%, transparent 55%),
-        radial-gradient(at 30% 60%, #4c1d95 0%, transparent 50%),
-        radial-gradient(at 75% 85%, #164e63 0%, transparent 45%),
-        radial-gradient(at 50% 100%, #1e1b4b 0%, transparent 40%),
-        #0a1838;
-    background-attachment: fixed;
-}
+
 
 /* ── dark-8: Retro Terminal（ネオ・ブルータリズム・原色） ── */
 :root[data-theme="dark-8"],
@@ -1997,32 +1995,33 @@ body::before {
     --btn-primary-text:#ffffff;
 }
 
-/* ── light-3: Sakura Spring（桜ピンク・クレイ・ローズゴールド） ── */
+/* ── light-3: Citrus Burst（柑橘・元気イエロー） ── */
 :root[data-theme="light-3"],
 [data-preview-theme="light-3"] {
-    --bg:         #fadae8;
-    --bg2:        #f0c0d5;
-    --sidebar:    #fde6f2;
-    --card:       #fff6fb;
-    --card-hover: #feeef7;
-    --border:     rgba(220, 100, 160, 0.18);
-    --border2:    rgba(220, 100, 160, 0.35);
-    --text:       #7a3058;
-    --muted:      #c070a0;
-    --muted2:     #a05080;
-    --accent:     #e070a8;
-    --primary:    #e890c0;
-    --primary-d:  #d070a8;
-    --radius:     26px;
-    --radius-lg:  36px;
+    --bg:         #fff8d8;
+    --bg2:        #fff0b0;
+    --sidebar:    #fffae0;
+    --card:       #fffef5;
+    --card-hover: #fffae0;
+    --border:     rgba(255, 138, 28, 0.22);
+    --border2:    rgba(255, 138, 28, 0.42);
+    --text:       #4a2d08;
+    --muted:      #b8884a;
+    --muted2:     #8a6028;
+    --accent:     #88dd33;
+    --primary:    #ff8a1c;
+    --primary-d:  #e06a0a;
+    --radius:     14px;
+    --radius-lg:  20px;
     --glass-blur: none;
-    --shadow:     0 8px 28px rgba(220,100,160,0.18), 0 3px 10px rgba(220,100,160,0.10), inset 0 1px 0 rgba(255,255,255,0.98);
-    --shadow-lg:  0 14px 48px rgba(220,100,160,0.24), 0 6px 18px rgba(220,100,160,0.14), inset 0 1px 0 rgba(255,255,255,0.98);
-    --hover-bg:        rgba(220,100,160,0.08);
-    --active-bg:       rgba(232,144,192,0.18);
-    --active-border:   rgba(232,144,192,0.55);
+    --shadow:     0 8px 24px rgba(255,138,28,0.22), 0 3px 10px rgba(255,138,28,0.14), inset 0 1px 0 rgba(255,255,255,0.95);
+    --shadow-lg:  0 14px 44px rgba(255,138,28,0.30), 0 6px 18px rgba(255,138,28,0.18);
+    --hover-bg:        rgba(255,138,28,0.08);
+    --active-bg:       rgba(255,138,28,0.18);
+    --active-border:   rgba(255,138,28,0.55);
     --btn-primary-text:#ffffff;
 }
+
 
 /* ── light-4: Blueprint Paper（紙寄り・ネオ・ブルータリズム・赤） ── */
 :root[data-theme="light-4"],
@@ -2071,9 +2070,9 @@ body::before {
     --text:       #f5f5ff;
     --muted:      #8b8eaa;
     --muted2:     #b8bcd8;
-    --accent:     #4ade80;
-    --primary:    #34d399;
-    --primary-d:  #10b981;
+    --accent:     #f0abfc;
+    --primary:    #c084fc;
+    --primary-d:  #a855f7;
     --radius:     16px;
     --radius-lg:  22px;
     --glass-blur: blur(28px) saturate(180%) brightness(1.05);
@@ -2087,10 +2086,10 @@ body::before {
         0 16px 48px rgba(0,0,0,0.5),
         0 40px 96px rgba(0,0,0,0.35),
         0 0 1px rgba(255,255,255,0.18);
-    --hover-bg:        rgba(74, 222, 128, 0.10);
-    --active-bg:       rgba(74, 222, 128, 0.18);
-    --active-border:   rgba(74, 222, 128, 0.45);
-    --btn-primary-text:#051a0d;
+    --hover-bg:        rgba(192, 132, 252, 0.10);
+    --active-bg:       rgba(192, 132, 252, 0.20);
+    --active-border:   rgba(192, 132, 252, 0.55);
+    --btn-primary-text:#1a0826;
 }
 :root[data-theme="dark-9"] body {
     background:
@@ -2103,39 +2102,47 @@ body::before {
     background-attachment: fixed;
 }
 
-/* ── dark-10: Brutalist Slate（モノクロブルータル） ── */
+/* ── dark-10: Architect Slate（落ち着いた灰色ブルータル・読みやすい） ── */
 :root[data-theme="dark-10"],
 [data-preview-theme="dark-10"] {
-    --bg:         #1a1a1a;
-    --bg2:        #232323;
-    --sidebar:    #1a1a1a;
-    --card:       #2a2a2a;
-    --card-hover: #353535;
-    --border:     #666666;
-    --border2:    #888888;
-    --text:       #ffffff;
-    --muted:      #aaa;
-    --muted2:     #e0e0e0;
-    --accent:     #ffffff;
-    --primary:    #d4d4d4;
-    --primary-d:  #a3a3a3;
-    --radius:     2px;
-    --radius-lg:  4px;
+    --bg:         #16181d;
+    --bg2:        #1d2026;
+    --sidebar:    #0e1014;
+    --card:       #20242c;
+    --card-hover: #2a2f38;
+    --border:     rgba(255, 255, 255, 0.08);
+    --border2:    rgba(255, 255, 255, 0.16);
+    --text:       #f0f2f5;
+    --muted:      #7a818c;
+    --muted2:     #b8bec8;
+    --accent:     #4ade80;
+    --primary:    #4ade80;
+    --primary-d:  #2eb85c;
+    --radius:     6px;
+    --radius-lg:  10px;
     --glass-blur: none;
-    --shadow:     5px 5px 0 #555;
-    --shadow-lg:  8px 8px 0 #444;
-    --hover-bg:        rgba(255, 255, 255, 0.08);
-    --active-bg:       rgba(255, 255, 255, 0.15);
-    --active-border:   #ffffff;
-    --btn-primary-text:#1a1a1a;
+    --shadow:     0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 12px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-lg:  0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
+    --hover-bg:        rgba(255, 255, 255, 0.04);
+    --active-bg:       rgba(74, 222, 128, 0.10);
+    --active-border:   rgba(74, 222, 128, 0.35);
+    --btn-primary-text:#0a1810;
 }
-:root[data-theme="dark-10"] .tab-btn,
-:root[data-theme="dark-10"] .mc-btn,
-:root[data-theme="dark-10"] .card {
-    border-width: 3px;
-    border-style: solid;
-    border-color: #666;
+:root[data-theme="dark-10"] .glass-card,
+:root[data-theme="dark-10"] .stat-card,
+:root[data-theme="dark-10"] .block-card,
+:root[data-theme="dark-10"] .structure-card,
+:root[data-theme="dark-10"] .settings-section,
+:root[data-theme="dark-10"] .modal,
+:root[data-theme="dark-10"] .theme-card {
+    background: var(--card);
+    border: 1px solid var(--border);
 }
+:root[data-theme="dark-10"] .stat-value,
+:root[data-theme="dark-10"] .block-count {
+    text-shadow: none !important;
+}
+
 
 /* ── light-5: Paper Sage（麻紙＋セージ） ── */
 :root[data-theme="light-5"],
@@ -2218,66 +2225,61 @@ body::before {
     --btn-primary-text:#ffffff;
 }
 
-/* ── light-8: Coral Bloom（コーラル・サーモンピンク） ── */
+/* ── light-8: Peony Bloom（やわらかピンク・グラス・優しい） ── */
 :root[data-theme="light-8"],
 [data-preview-theme="light-8"] {
-    --bg:         #fac8b8;
-    --bg2:        #f5b0a0;
-    --sidebar:    #fdddd4;
-    --card:       #fff5f2;
-    --card-hover: #feecea;
-    --border:     rgba(220, 100, 80, 0.18);
-    --border2:    rgba(220, 100, 80, 0.34);
-    --text:       #7a2c20;
-    --muted:      #c07868;
-    --muted2:     #a05848;
-    --accent:     #e07060;
-    --primary:    #ec9080;
-    --primary-d:  #d87068;
+    --bg:         #fff0f5;
+    --bg2:        #ffdde6;
+    --sidebar:    rgba(255, 240, 245, 0.7);
+    --card:       rgba(255, 252, 254, 0.85);
+    --card-hover: rgba(255, 248, 252, 0.95);
+    --border:     rgba(255, 141, 176, 0.22);
+    --border2:    rgba(255, 141, 176, 0.42);
+    --text:       #5a2840;
+    --muted:      #c890a8;
+    --muted2:     #8a5878;
+    --accent:     #ffc0a0;
+    --primary:    #ff8db0;
+    --primary-d:  #e87298;
     --radius:     18px;
     --radius-lg:  24px;
-    --glass-blur: none;
-    --shadow:     0 8px 28px rgba(220,100,80,0.18), 0 3px 10px rgba(220,100,80,0.10), inset 0 1px 0 rgba(255,255,255,0.98);
-    --shadow-lg:  0 14px 48px rgba(220,100,80,0.24), 0 6px 18px rgba(220,100,80,0.13), inset 0 1px 0 rgba(255,255,255,0.98);
-    --hover-bg:        rgba(220,100,80,0.07);
-    --active-bg:       rgba(236,144,128,0.16);
-    --active-border:   rgba(236,144,128,0.52);
+    --glass-blur: blur(16px) saturate(140%);
+    --shadow:     0 8px 24px rgba(255,141,176,0.16), 0 3px 10px rgba(255,141,176,0.10), inset 0 1px 0 rgba(255,255,255,0.96);
+    --shadow-lg:  0 14px 44px rgba(255,141,176,0.22), 0 6px 18px rgba(255,141,176,0.14);
+    --hover-bg:        rgba(255,141,176,0.08);
+    --active-bg:       rgba(255,141,176,0.18);
+    --active-border:   rgba(255,141,176,0.55);
     --btn-primary-text:#ffffff;
 }
 
-/* ── light-9: Brutalist Mono（白＋黒モノクロブルータル） ── */
+
+/* ── light-9: Solar Notes（Solarized風・作業用クリーン） ── */
 :root[data-theme="light-9"],
 [data-preview-theme="light-9"] {
-    --bg:         #d8d8d8;
-    --bg2:        #c4c4c4;
-    --sidebar:    #e2e2e2;
-    --card:       #f8f8f8;
-    --card-hover: #f0f0f0;
-    --border:     #000000;
-    --border2:    #000000;
-    --text:       #000000;
-    --muted:      #555;
-    --muted2:     #222;
-    --accent:     #000000;
-    --primary:    #333333;
-    --primary-d:  #000000;
-    --radius:     2px;
-    --radius-lg:  4px;
+    --bg:         #fdf6e3;
+    --bg2:        #eee8d5;
+    --sidebar:    #f8efd1;
+    --card:       #fffcf0;
+    --card-hover: #f6efd0;
+    --border:     rgba(101, 123, 131, 0.20);
+    --border2:    rgba(101, 123, 131, 0.36);
+    --text:       #586e75;
+    --muted:      #93a1a1;
+    --muted2:     #657b83;
+    --accent:     #2aa198;
+    --primary:    #268bd2;
+    --primary-d:  #1c6ba8;
+    --radius:     8px;
+    --radius-lg:  12px;
     --glass-blur: none;
-    --shadow:     5px 5px 0 #000;
-    --shadow-lg:  8px 8px 0 #000;
-    --hover-bg:        rgba(0, 0, 0, 0.06);
-    --active-bg:       rgba(0, 0, 0, 0.10);
-    --active-border:   #000000;
+    --shadow:     0 2px 8px rgba(101,123,131,0.14), 0 1px 3px rgba(101,123,131,0.10);
+    --shadow-lg:  0 6px 20px rgba(101,123,131,0.18), 0 2px 6px rgba(101,123,131,0.10);
+    --hover-bg:        rgba(38,139,210,0.06);
+    --active-bg:       rgba(38,139,210,0.14);
+    --active-border:   rgba(38,139,210,0.45);
     --btn-primary-text:#ffffff;
 }
-:root[data-theme="light-9"] .tab-btn,
-:root[data-theme="light-9"] .mc-btn,
-:root[data-theme="light-9"] .card {
-    border-width: 3px;
-    border-style: solid;
-    border-color: #000;
-}
+
 
 /* ── light-10: Aurora Bright（薄パステルメッシュ・グラス） ── */
 :root[data-theme="light-10"],
@@ -2321,6 +2323,217 @@ body::before {
     background-attachment: fixed;
 }
 
+
+/* ── dark-11: Cyberpunk Tokyo（黒×電気青×蛍光ピンク・スキャンライン） ── */
+:root[data-theme="dark-11"],
+[data-preview-theme="dark-11"] {
+    --bg:         #050006;
+    --bg2:        #0a0010;
+    --sidebar:    #03000a;
+    --card:       rgba(20, 5, 35, 0.6);
+    --card-hover: rgba(35, 10, 55, 0.75);
+    --border:     rgba(255, 0, 128, 0.5);
+    --border2:    rgba(0, 240, 255, 0.55);
+    --text:       #e8f8ff;
+    --muted:      #6a5078;
+    --muted2:     #a888c0;
+    --accent:     #ff0080;
+    --primary:    #00f0ff;
+    --primary-d:  #00b8c4;
+    --radius:     4px;
+    --radius-lg:  6px;
+    --glass-blur: blur(2px);
+    --shadow:     0 0 12px rgba(0, 240, 255, 0.55), 0 0 24px rgba(255, 0, 128, 0.35), inset 0 0 0 1px rgba(0, 240, 255, 0.30);
+    --shadow-lg:  0 0 24px rgba(0, 240, 255, 0.7), 0 0 48px rgba(255, 0, 128, 0.5);
+    --hover-bg:        rgba(0, 240, 255, 0.10);
+    --active-bg:       rgba(255, 0, 128, 0.22);
+    --active-border:   #00f0ff;
+    --btn-primary-text:#001a1f;
+}
+:root[data-theme="dark-11"] body {
+    background:
+        radial-gradient(at 20% 80%, #ff008030 0%, transparent 50%),
+        radial-gradient(at 80% 20%, #00f0ff30 0%, transparent 50%),
+        repeating-linear-gradient(0deg, transparent 0 2px, rgba(0, 240, 255, 0.04) 2px 3px),
+        #050006;
+    background-attachment: fixed;
+}
+
+/* ── dark-12: Holographic（玉虫色パール・メタリック未来） ── */
+:root[data-theme="dark-12"],
+[data-preview-theme="dark-12"] {
+    --bg:         #0e0e1e;
+    --bg2:        #1a1a2e;
+    --sidebar:    rgba(14, 14, 30, 0.5);
+    --card:       rgba(200, 168, 255, 0.08);
+    --card-hover: rgba(200, 168, 255, 0.14);
+    --border:     rgba(200, 168, 255, 0.3);
+    --border2:    rgba(200, 168, 255, 0.5);
+    --text:       #f0eaff;
+    --muted:      #8a85b8;
+    --muted2:     #c0bce0;
+    --accent:     #ff9adf;
+    --primary:    #c8a8ff;
+    --primary-d:  #a888e0;
+    --radius:     20px;
+    --radius-lg:  28px;
+    --glass-blur: blur(20px) saturate(180%);
+    --shadow:     0 8px 24px rgba(200, 168, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(200, 168, 255, 0.18);
+    --shadow-lg:  0 16px 48px rgba(200, 168, 255, 0.25), 0 0 32px rgba(255, 154, 223, 0.2);
+    --hover-bg:        rgba(200, 168, 255, 0.10);
+    --active-bg:       rgba(200, 168, 255, 0.20);
+    --active-border:   rgba(200, 168, 255, 0.55);
+    --btn-primary-text:#1a0e2a;
+}
+:root[data-theme="dark-12"] body {
+    background:
+        radial-gradient(at 10% 10%, #ff9adf 0%, transparent 40%),
+        radial-gradient(at 90% 20%, #6ec5ff 0%, transparent 45%),
+        radial-gradient(at 30% 80%, #c8a8ff 0%, transparent 45%),
+        radial-gradient(at 80% 90%, #7afad9 0%, transparent 40%),
+        #0e0e1e;
+    background-attachment: fixed;
+}
+
+/* ── light-11: Vintage Newspaper（印刷新聞・セピア紙・赤マーカー） ── */
+:root[data-theme="light-11"],
+[data-preview-theme="light-11"] {
+    --bg:         #f4ecd8;
+    --bg2:        #e8dcc0;
+    --sidebar:    #f0e6cc;
+    --card:       #fcf5e2;
+    --card-hover: #f6efd5;
+    --border:     #2a1f15;
+    --border2:    #2a1f15;
+    --text:       #2a1f15;
+    --muted:      #6a5848;
+    --muted2:     #4a3828;
+    --accent:     #b8262a;
+    --primary:    #1a1a1a;
+    --primary-d:  #000000;
+    --radius:     0px;
+    --radius-lg:  2px;
+    --glass-blur: none;
+    --shadow:     2px 2px 0 #2a1f15, 4px 4px 8px rgba(42, 31, 21, 0.18);
+    --shadow-lg:  4px 4px 0 #2a1f15, 8px 8px 16px rgba(42, 31, 21, 0.22);
+    --hover-bg:        rgba(42, 31, 21, 0.06);
+    --active-bg:       rgba(184, 38, 42, 0.12);
+    --active-border:   #b8262a;
+    --btn-primary-text:#fcf5e2;
+}
+:root[data-theme="light-11"] body {
+    background:
+        repeating-linear-gradient(0deg, transparent 0 4px, rgba(42, 31, 21, 0.025) 4px 5px),
+        #f4ecd8;
+}
+:root[data-theme="light-11"] .tab-btn,
+:root[data-theme="light-11"] .mc-btn,
+:root[data-theme="light-11"] .card {
+    border-width: 1.5px;
+    border-style: solid;
+    border-color: rgba(42, 31, 21, 0.7);
+}
+
+/* ── light-12: Bento Box（和モダン・墨黒×朱赤×山吹） ── */
+:root[data-theme="light-12"],
+[data-preview-theme="light-12"] {
+    --bg:         #f2ebd9;
+    --bg2:        #e6dcc0;
+    --sidebar:    #efe7d0;
+    --card:       #faf3df;
+    --card-hover: #f5edd0;
+    --border:     rgba(42, 32, 24, 0.18);
+    --border2:    rgba(42, 32, 24, 0.36);
+    --text:       #2a2018;
+    --muted:      #8a7860;
+    --muted2:     #4a3a28;
+    --accent:     #d4a02a;
+    --primary:    #c8442a;
+    --primary-d:  #a8341e;
+    --radius:     4px;
+    --radius-lg:  8px;
+    --glass-blur: none;
+    --shadow:     0 1px 0 rgba(42, 32, 24, 0.06), 0 4px 12px rgba(42, 32, 24, 0.10), 0 12px 24px rgba(42, 32, 24, 0.06);
+    --shadow-lg:  0 2px 0 rgba(42, 32, 24, 0.08), 0 8px 24px rgba(42, 32, 24, 0.14), 0 20px 40px rgba(42, 32, 24, 0.08);
+    --hover-bg:        rgba(200, 68, 42, 0.06);
+    --active-bg:       rgba(200, 68, 42, 0.14);
+    --active-border:   rgba(200, 68, 42, 0.55);
+    --btn-primary-text:#fcf5e2;
+}
+
+/* ── light-13: Hydrangea（アジサイ・青紫×淡ピンク・ソフトグラス） ── */
+:root[data-theme="light-13"],
+[data-preview-theme="light-13"] {
+    --bg:         #ecedff;
+    --bg2:        #d8dcf5;
+    --sidebar:    rgba(236, 237, 255, 0.7);
+    --card:       rgba(252, 252, 255, 0.85);
+    --card-hover: rgba(248, 248, 255, 0.95);
+    --border:     rgba(122, 138, 216, 0.22);
+    --border2:    rgba(122, 138, 216, 0.42);
+    --text:       #2a3060;
+    --muted:      #9098c8;
+    --muted2:     #5a6098;
+    --accent:     #c890c0;
+    --primary:    #7a8ad8;
+    --primary-d:  #5e70c0;
+    --radius:     16px;
+    --radius-lg:  22px;
+    --glass-blur: blur(16px) saturate(140%);
+    --shadow:     0 8px 24px rgba(122,138,216,0.16), 0 3px 10px rgba(122,138,216,0.10), inset 0 1px 0 rgba(255,255,255,0.96);
+    --shadow-lg:  0 14px 44px rgba(122,138,216,0.22);
+    --hover-bg:        rgba(122,138,216,0.08);
+    --active-bg:       rgba(122,138,216,0.18);
+    --active-border:   rgba(122,138,216,0.55);
+    --btn-primary-text:#ffffff;
+}
+
+
+/* ── dark-13: Sunset Mirage（夕焼け蜃気楼・ホロ質感・コーラル×ピーチ） ── */
+:root[data-theme="dark-13"],
+[data-preview-theme="dark-13"] {
+    --bg:         #1a0a14;
+    --bg2:        #2a1020;
+    --sidebar:    rgba(26, 10, 20, 0.5);
+    --card:       rgba(255, 160, 122, 0.08);
+    --card-hover: rgba(255, 160, 122, 0.14);
+    --border:     rgba(255, 200, 170, 0.28);
+    --border2:    rgba(255, 200, 170, 0.48);
+    --text:       #fff0e8;
+    --muted:      #b8908a;
+    --muted2:     #e0c4b8;
+    --accent:     #ffc8a0;
+    --primary:    #ff9a8d;
+    --primary-d:  #e87870;
+    --radius:     20px;
+    --radius-lg:  28px;
+    --glass-blur: blur(20px) saturate(180%);
+    --shadow:     0 8px 24px rgba(255, 154, 141, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(255, 200, 170, 0.18);
+    --shadow-lg:  0 16px 48px rgba(255, 154, 141, 0.25), 0 0 32px rgba(255, 200, 170, 0.20);
+    --hover-bg:        rgba(255, 200, 170, 0.10);
+    --active-bg:       rgba(255, 154, 141, 0.22);
+    --active-border:   rgba(255, 154, 141, 0.60);
+    --btn-primary-text:#2a0a08;
+}
+:root[data-theme="dark-13"] body {
+    background:
+        radial-gradient(at 10% 10%, #ffadd0 0%, transparent 42%),
+        radial-gradient(at 90% 20%, #ffc88a 0%, transparent 45%),
+        radial-gradient(at 30% 80%, #ff9a8d 0%, transparent 45%),
+        radial-gradient(at 80% 90%, #c47a8a 0%, transparent 42%),
+        #1a0a14;
+    background-attachment: fixed;
+}
+
+[data-preview-theme="dark-13"].theme-card .theme-card-preview {
+    background:
+        radial-gradient(at 15% 15%, #ffadd055 0%, transparent 45%),
+        radial-gradient(at 85% 20%, #ffc88a55 0%, transparent 50%),
+        radial-gradient(at 40% 80%, #ff9a8d55 0%, transparent 45%),
+        radial-gradient(at 80% 90%, #c47a8a55 0%, transparent 40%),
+        #1a0a14;
+}
+
 /* ─── Theme Cards Grid ────────────────────────────────────── */
 .themes-grid {
     display: grid;
@@ -2361,13 +2574,7 @@ body::before {
 }
 /* メッシュグラデ系: body と同じ背景を preview にも適用 */
 [data-preview-theme="dark-7"].theme-card .theme-card-preview {
-    background:
-        radial-gradient(at 10% 15%, #1e3a8a 0%, transparent 50%),
-        radial-gradient(at 90% 25%, #0e7490 0%, transparent 55%),
-        radial-gradient(at 30% 60%, #4c1d95 0%, transparent 50%),
-        radial-gradient(at 75% 85%, #164e63 0%, transparent 45%),
-        radial-gradient(at 50% 100%, #1e1b4b 0%, transparent 40%),
-        #0a1838;
+    background: linear-gradient(165deg, #0a1810 0%, #142a1c 100%);
 }
 [data-preview-theme="dark-9"].theme-card .theme-card-preview {
     background:
@@ -2385,6 +2592,13 @@ body::before {
         radial-gradient(at 30% 75%, #dcfce7 0%, transparent 50%),
         radial-gradient(at 80% 80%, #ede9fe 0%, transparent 50%),
         #f0f4ff;
+}
+[data-preview-theme="dark-3"].theme-card .theme-card-preview {
+    background:
+        linear-gradient(180deg, #15082c 0%, #240e4a 60%, #4d1a6a 100%);
+}
+[data-preview-theme="dark-10"].theme-card .theme-card-preview {
+    background: #16181d;
 }
 
 /* サイドバー */
@@ -2516,3 +2730,491 @@ body::before {
     margin-top: 0.15rem;
 }
 
+
+
+/* ─── Theme Cards: improvements ──────────────────────────── */
+.theme-card {
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font-family: inherit;
+}
+.theme-card-kind {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+}
+.theme-tag {
+    display: inline-block;
+    font-size: 0.62rem;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    color: var(--muted2);
+    letter-spacing: 0.02em;
+    line-height: 1.5;
+}
+:root[data-theme^="light"] .theme-tag {
+    background: rgba(0,0,0,0.05);
+}
+.theme-filter-bar { margin-bottom: 0.5rem; }
+
+/* テーマ切替時に前のテーマの body 背景画像をリセット
+   （メッシュ系テーマからベタ単色テーマに移った時の残留を防ぐ） */
+:root:not([data-theme="dark-7"]):not([data-theme="dark-9"]):not([data-theme="light-10"]) body {
+    /* meshグラデは個別ルールでセットされるため、それ以外では明示的に消す */
+}
+
+
+/* ─── Theme Transition Animation ──────────────────────── */
+/* テーマ切替時の色変化を0.35秒でスムーズに */
+body,
+.sidebar,
+.main-content,
+.tab-nav,
+.tab-btn,
+.glass-card,
+.stat-card,
+.block-card,
+.structure-card,
+.settings-section,
+.modal,
+.mc-btn,
+.icon-btn,
+.filter-pill,
+.tab-pill,
+.tool-btn,
+.mc-input,
+.search-input,
+.control-select,
+.size-input,
+.project-item-container,
+.project-item-btn,
+.preview-sidebar,
+.preview-main,
+.preview-stat,
+.preview-btn-primary,
+.preview-btn-sample,
+.preview-tab {
+    transition:
+        background-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        background 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        border-radius 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* hover 時は素早く反応する（既存のtransitionと共存） */
+.mc-btn:hover, .icon-btn:hover, .filter-pill:hover,
+.block-card:hover, .structure-card:hover {
+    transition-duration: 0.15s;
+}
+
+/* 2. メッシュ系→ベタ系切替時の背景残留対策 */
+/* メッシュ系テーマ以外は body に明示的にベタ背景を上書き */
+:root:not([data-theme="dark-3"]):not([data-theme="dark-7"]):not([data-theme="dark-9"]):not([data-theme="dark-11"]):not([data-theme="dark-12"]):not([data-theme="dark-13"]):not([data-theme="light-10"]):not([data-theme="light-11"]) body {
+    background-image: none;
+}
+
+/* 3. light-3 Citrus Burst のコントラスト改善 */
+:root[data-theme="light-3"] {
+    --text: #3a1f00 !important;        /* 文字色をもっと濃く */
+    --muted2: #6a4408 !important;      /* セカンダリも濃く */
+}
+:root[data-theme="light-3"] .stat-value,
+:root[data-theme="light-3"] .block-count {
+    color: #cc5a00 !important;          /* 数字は濃いオレンジで彩度確保 */
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* 4. デフォルトに戻すボタン用スタイル */
+.theme-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border2);
+    cursor: pointer;
+    transition: all 0.18s;
+}
+.theme-reset-btn:hover {
+    background: var(--hover-bg, rgba(255,255,255,0.06));
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+/* 5. 最近使ったテーマセクション */
+.recent-themes-section {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px dashed var(--border);
+}
+.recent-themes-section h4 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin-bottom: 0.6rem;
+}
+.recent-themes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.85rem;
+}
+.recent-themes-empty {
+    font-size: 0.78rem;
+    color: var(--muted);
+    padding: 0.5rem 0;
+}
+
+
+/* ─── Favorite Star Button ─────────────────────────────── */
+.theme-fav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    font-size: 1.1rem;
+    line-height: 1;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.18s, background 0.18s, color 0.18s;
+    flex-shrink: 0;
+    user-select: none;
+}
+.theme-fav-btn:hover {
+    transform: scale(1.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+.theme-fav-btn.active {
+    text-shadow: 0 0 8px currentColor;
+}
+
+/* ─── Favorite Animation: 「ぴょこっ」 ── */
+@keyframes favPop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.45) rotate(-12deg); }
+    70% { transform: scale(0.9) rotate(8deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+.theme-fav-btn.active {
+    animation: favPop 0.4s ease-out;
+}
+
+/* recent-themes section は不要になったので削除 */
+.recent-themes-section { display: none !important; }
+
+
+/* ─── Theme-specific Fonts ─────────────────────────────── */
+/* 各テーマに固有のフォントを当てて、雰囲気を一段深める */
+
+/* dark-3: Synthwave Drive → 80sピクセル */
+:root[data-theme="dark-3"] {
+    --font-ui: 'Outfit', sans-serif;
+    --font-game: 'Press Start 2P', 'DotGothic16', 'Silkscreen', monospace;
+}
+:root[data-theme="dark-3"] .logo h1,
+:root[data-theme="dark-3"] .welcome-content h2,
+:root[data-theme="dark-3"] .stat-value,
+:root[data-theme="dark-3"] .block-count {
+    font-family: 'Press Start 2P', 'DotGothic16', monospace !important;
+    letter-spacing: 0.04em;
+}
+:root[data-theme="dark-3"] .stat-value { font-size: 1.4rem !important; }
+:root[data-theme="dark-3"] .block-count { font-size: 0.9rem !important; }
+
+/* dark-7: Verdant Cathedral → 荘厳なガラモン */
+:root[data-theme="dark-7"] {
+    --font-ui: 'Cormorant Garamond', 'Noto Serif JP', serif;
+}
+:root[data-theme="dark-7"] body,
+:root[data-theme="dark-7"] .welcome-content h2 {
+    font-family: 'Cormorant Garamond', 'Noto Serif JP', serif !important;
+    font-weight: 500;
+}
+:root[data-theme="dark-7"] h1,
+:root[data-theme="dark-7"] h2,
+:root[data-theme="dark-7"] h3 {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+/* dark-8: Retro Terminal → ドット風モノスペース */
+:root[data-theme="dark-8"] {
+    --font-ui: 'VT323', 'DotGothic16', monospace;
+    --font-mono: 'VT323', 'DotGothic16', monospace;
+    --font-game: 'VT323', 'DotGothic16', monospace;
+}
+:root[data-theme="dark-8"] body,
+:root[data-theme="dark-8"] button,
+:root[data-theme="dark-8"] input,
+:root[data-theme="dark-8"] select {
+    font-family: 'VT323', 'DotGothic16', monospace !important;
+    font-size: 1.05em;
+}
+
+/* dark-11: Cyberpunk Tokyo → モノスペース */
+:root[data-theme="dark-11"] {
+    --font-ui: 'JetBrains Mono', 'Zen Kaku Gothic New', monospace;
+    --font-game: 'JetBrains Mono', 'Zen Kaku Gothic New', monospace;
+}
+:root[data-theme="dark-11"] body,
+:root[data-theme="dark-11"] .logo h1,
+:root[data-theme="dark-11"] .welcome-content h2 {
+    font-family: 'JetBrains Mono', 'Zen Kaku Gothic New', monospace !important;
+    letter-spacing: -0.01em;
+}
+
+/* dark-12: Holographic → 未来的サンセリフ */
+:root[data-theme="dark-12"] {
+    --font-ui: 'Space Grotesk', 'Zen Kaku Gothic New', sans-serif;
+}
+:root[data-theme="dark-12"] body {
+    font-family: 'Space Grotesk', 'Zen Kaku Gothic New', sans-serif !important;
+    letter-spacing: -0.005em;
+}
+
+/* light-4: Blueprint Paper → タイプライター */
+:root[data-theme="light-4"] {
+    --font-ui: 'Courier Prime', 'Klee One', 'Courier New', monospace;
+    --font-mono: 'Courier Prime', 'Klee One', monospace;
+}
+:root[data-theme="light-4"] body,
+:root[data-theme="light-4"] button,
+:root[data-theme="light-4"] input,
+:root[data-theme="light-4"] select {
+    font-family: 'Courier Prime', 'Klee One', monospace !important;
+}
+
+/* light-7: Latte Cafe → 手書きアクセント */
+:root[data-theme="light-7"] {
+    --font-game: 'Caveat', 'Klee One', cursive;
+}
+:root[data-theme="light-7"] .logo h1,
+:root[data-theme="light-7"] .welcome-content h2,
+:root[data-theme="light-7"] .stat-value {
+    font-family: 'Caveat', 'Klee One', cursive !important;
+    font-weight: 700;
+}
+:root[data-theme="light-7"] .stat-value { font-size: 2.6rem !important; }
+
+/* light-11: Vintage Newspaper → クラシックセリフ */
+:root[data-theme="light-11"] {
+    --font-ui: 'Playfair Display', 'Noto Serif JP', serif;
+    --font-game: 'Playfair Display', 'Noto Serif JP', serif;
+}
+:root[data-theme="light-11"] body,
+:root[data-theme="light-11"] .logo h1,
+:root[data-theme="light-11"] .welcome-content h2 {
+    font-family: 'Playfair Display', 'Noto Serif JP', serif !important;
+}
+:root[data-theme="light-11"] h1,
+:root[data-theme="light-11"] h2,
+:root[data-theme="light-11"] h3 {
+    font-weight: 900;
+    letter-spacing: -0.01em;
+}
+
+/* light-12: Bento Box → 日本明朝 */
+:root[data-theme="light-12"] {
+    --font-ui: 'Shippori Mincho', 'Yu Mincho', 'YuMincho', serif;
+    --font-game: 'Shippori Mincho', serif;
+}
+:root[data-theme="light-12"] body,
+:root[data-theme="light-12"] .logo h1,
+:root[data-theme="light-12"] .welcome-content h2 {
+    font-family: 'Shippori Mincho', 'Yu Mincho', serif !important;
+}
+:root[data-theme="light-12"] h1,
+:root[data-theme="light-12"] h2,
+:root[data-theme="light-12"] h3 {
+    font-weight: 700;
+}
+
+/* テーマ切替時にフォントもスムーズに切り替わる（既存 transition に追加） */
+body { transition: font-family 0.25s ease-out, background 0.35s, color 0.35s; }
+
+
+/* ─── Additional Theme Fonts (残テーマ全部) ───────────── */
+
+/* dark-2 RTX Neon Glass → テクノ系コンデンス */
+:root[data-theme="dark-2"] {
+    --font-ui: 'Rajdhani', 'Zen Kaku Gothic New', sans-serif;
+}
+:root[data-theme="dark-2"] body { font-family: 'Rajdhani', 'Zen Kaku Gothic New', sans-serif !important; letter-spacing: 0.01em; }
+
+/* dark-4 Stim Rush → シャープなInter */
+:root[data-theme="dark-4"] { --font-ui: 'Inter', 'Noto Sans JP', sans-serif; }
+:root[data-theme="dark-4"] body { font-family: 'Inter', 'Noto Sans JP', sans-serif !important; letter-spacing: -0.005em; }
+
+/* dark-5 Obsidian Architect → Inter (ミニマル) */
+:root[data-theme="dark-5"] { --font-ui: 'Inter', 'Noto Sans JP', sans-serif; }
+:root[data-theme="dark-5"] body { font-family: 'Inter', 'Noto Sans JP', sans-serif !important; letter-spacing: -0.01em; }
+
+/* dark-6 Midnight Espresso → 温かいセリフ */
+:root[data-theme="dark-6"] {
+    --font-ui: 'Crimson Text', 'Noto Serif JP', serif;
+}
+:root[data-theme="dark-6"] body { font-family: 'Crimson Text', 'Noto Serif JP', serif !important; }
+:root[data-theme="dark-6"] h1, :root[data-theme="dark-6"] h2, :root[data-theme="dark-6"] h3 { font-weight: 700; }
+
+/* dark-9 Aurora Glass → やわらかQuicksand */
+:root[data-theme="dark-9"] { --font-ui: 'Quicksand', 'Zen Maru Gothic', sans-serif; }
+:root[data-theme="dark-9"] body { font-family: 'Quicksand', 'Zen Maru Gothic', sans-serif !important; }
+
+/* dark-10 Architect Slate → Inter (作業向け) */
+:root[data-theme="dark-10"] { --font-ui: 'Inter', 'Noto Sans JP', sans-serif; }
+:root[data-theme="dark-10"] body { font-family: 'Inter', 'Noto Sans JP', sans-serif !important; letter-spacing: -0.005em; }
+
+/* dark-13 Sunset Mirage → やわらかQuicksand */
+:root[data-theme="dark-13"] { --font-ui: 'Quicksand', 'Zen Maru Gothic', sans-serif; }
+:root[data-theme="dark-13"] body { font-family: 'Quicksand', 'Zen Maru Gothic', sans-serif !important; }
+
+/* light-1 Lavender Mist → やわらかQuicksand */
+:root[data-theme="light-1"] { --font-ui: 'Quicksand', 'Zen Maru Gothic', sans-serif; }
+:root[data-theme="light-1"] body { font-family: 'Quicksand', 'Zen Maru Gothic', sans-serif !important; font-weight: 500; }
+
+/* light-2 Frosted Crystal → クリーンManrope */
+:root[data-theme="light-2"] { --font-ui: 'Manrope', 'Noto Sans JP', sans-serif; }
+:root[data-theme="light-2"] body { font-family: 'Manrope', 'Noto Sans JP', sans-serif !important; letter-spacing: -0.005em; }
+
+/* light-3 Citrus Burst → 元気Fredoka */
+:root[data-theme="light-3"] { --font-ui: 'Fredoka', 'Zen Maru Gothic', sans-serif; }
+:root[data-theme="light-3"] body { font-family: 'Fredoka', 'Zen Maru Gothic', sans-serif !important; }
+:root[data-theme="light-3"] h1, :root[data-theme="light-3"] h2, :root[data-theme="light-3"] h3 { font-weight: 700; }
+
+/* light-5 Paper Sage → やわらかセリフLora */
+:root[data-theme="light-5"] { --font-ui: 'Lora', 'Noto Serif JP', serif; }
+:root[data-theme="light-5"] body { font-family: 'Lora', 'Noto Serif JP', serif !important; }
+
+/* light-6 Mint Lab → クリーンManrope */
+:root[data-theme="light-6"] { --font-ui: 'Manrope', 'Noto Sans JP', sans-serif; }
+:root[data-theme="light-6"] body { font-family: 'Manrope', 'Noto Sans JP', sans-serif !important; letter-spacing: -0.005em; }
+
+/* light-8 Peony Bloom → やわらかQuicksand */
+:root[data-theme="light-8"] { --font-ui: 'Quicksand', 'Zen Maru Gothic', sans-serif; }
+:root[data-theme="light-8"] body { font-family: 'Quicksand', 'Zen Maru Gothic', sans-serif !important; font-weight: 500; }
+
+/* light-9 Solar Notes → IBM Plex Mono */
+:root[data-theme="light-9"] {
+    --font-ui: 'IBM Plex Mono', 'JetBrains Mono', 'Zen Kaku Gothic New', monospace;
+    --font-mono: 'IBM Plex Mono', 'Klee One', monospace;
+}
+:root[data-theme="light-9"] body { font-family: 'IBM Plex Mono', 'Klee One', monospace !important; font-size: 0.95em; }
+
+/* light-10 Aurora Bright → やわらかQuicksand */
+:root[data-theme="light-10"] { --font-ui: 'Quicksand', 'Zen Maru Gothic', sans-serif; }
+:root[data-theme="light-10"] body { font-family: 'Quicksand', 'Zen Maru Gothic', sans-serif !important; font-weight: 500; }
+
+/* light-13 Hydrangea → やわらかセリフLora */
+:root[data-theme="light-13"] { --font-ui: 'Lora', 'Noto Serif JP', serif; }
+:root[data-theme="light-13"] body { font-family: 'Lora', 'Noto Serif JP', serif !important; }
+
+
+/* ─── Font Override: defaultフォント強制モード ──────── */
+/* body.fonts-default が付いていれば全テーマフォント上書きを無効化 */
+body.fonts-default,
+body.fonts-default *:not(.theme-card-preview):not(.theme-card-preview *):not(.theme-card-name) {
+    font-family: 'Outfit', 'Noto Sans JP', sans-serif !important;
+}
+/* mono 系はそのまま */
+body.fonts-default .stat-value,
+body.fonts-default .block-count,
+body.fonts-default .dotart-mat-count,
+body.fonts-default .mult-display,
+body.fonts-default .block-name.is-id,
+body.fonts-default code,
+body.fonts-default .block-pick-name {
+    font-family: 'JetBrains Mono', 'Noto Sans JP', monospace !important;
+}
+/* logo / heading */
+body.fonts-default .logo h1,
+body.fonts-default .welcome-content h2,
+body.fonts-default .header-main h3 {
+    font-family: 'Silkscreen', 'Noto Sans JP', monospace !important;
+}
+
+/* フォントトグルボタン */
+.font-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted2);
+    border: 1px solid var(--border2);
+    cursor: pointer;
+    transition: all 0.18s;
+}
+.font-toggle-btn:hover {
+    background: var(--hover-bg, rgba(255,255,255,0.06));
+    color: var(--text);
+    border-color: var(--accent);
+}
+.font-toggle-btn.active {
+    background: var(--active-bg, rgba(255,255,255,0.1));
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+
+/* ─── Theme Card Layout Fix ─────────────────────────────── */
+.theme-card {
+    display: flex !important;
+    flex-direction: column;
+    gap: 0.4rem !important;
+    overflow: hidden;  /* テーマ名がはみ出るのを抑制 */
+}
+.theme-card-name {
+    font-size: 0.92rem;
+    line-height: 1.2;
+    min-width: 0;
+}
+/* テーマ名のフォントサイズを、特に大きいフォント用に控える */
+.theme-card[data-theme-id="dark-3"] .theme-card-name span:first-child,
+.theme-card[data-theme-id="dark-8"] .theme-card-name span:first-child {
+    font-size: 0.7rem;  /* Press Start 2P や VT323 は大きく出るので小さめ */
+}
+.theme-card[data-theme-id="light-7"] .theme-card-name span:first-child {
+    font-size: 1.15rem;  /* Caveat は逆に細く出るので大きく */
+    line-height: 1;
+}
+.theme-card[data-theme-id="light-11"] .theme-card-name span:first-child,
+.theme-card[data-theme-id="light-12"] .theme-card-name span:first-child {
+    font-size: 0.88rem;  /* セリフ系少し詰める */
+}
+
+/* タグ行 */
+.theme-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    align-items: center;
+}
+
+/* 説明行は必ず独立した行に */
+.theme-card-desc {
+    font-size: 0.7rem;
+    line-height: 1.35;
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.theme-card-desc::before {
+    content: '· ';
+    opacity: 0.6;
+}
