@@ -66,7 +66,12 @@ a { color: inherit; text-decoration: none; }
 .sidebar {
   width: 260px;
   min-width: 260px;
-  background: var(--sidebar);
+  background: linear-gradient(
+    175deg,
+    color-mix(in srgb, var(--sidebar) 74%, var(--primary)) 0%,
+    var(--sidebar) 38%,
+    color-mix(in srgb, var(--bg) 80%, var(--sidebar)) 100%
+  );
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -1660,8 +1665,36 @@ body::before {
 }
 
 /* ─── Theme Presets ─────────────────────────────────────────
-   :root の値が dark-1 のデフォルト。data-theme="dark-1" の上書きは不要。
+   dark-1 は :root {} の値がそのままデフォルト。
+   ただしプレビューカードの分離のため [data-preview-theme="dark-1"] も明示する。
 */
+
+/* ── dark-1: Default Dark（デフォルト） ── */
+:root[data-theme="dark-1"],
+[data-preview-theme="dark-1"] {
+    --bg:         #070c14;
+    --bg2:        #0d1525;
+    --sidebar:    #0b1320;
+    --card:       rgba(16, 26, 44, 0.85);
+    --card-hover: rgba(20, 34, 56, 0.95);
+    --border:     rgba(255,255,255,0.07);
+    --border2:    rgba(255,255,255,0.12);
+    --primary:    #4ade80;
+    --primary-d:  #2eb85c;
+    --accent:     #f59e0b;
+    --text:       #e2e8f0;
+    --muted:      #64748b;
+    --muted2:     #94a3b8;
+    --radius:     12px;
+    --radius-lg:  18px;
+    --glass-blur: blur(16px);
+    --shadow:     0 4px 24px rgba(0,0,0,0.5);
+    --shadow-lg:  0 8px 48px rgba(0,0,0,0.7);
+    --hover-bg:        rgba(255,255,255,0.05);
+    --active-bg:       rgba(74,222,128,0.10);
+    --active-border:   rgba(74,222,128,0.3);
+    --btn-primary-text:#071810;
+}
 
 /* ── dark-2: RTX Neon Glass（グラス・強発光・エメラルド） ── */
 :root[data-theme="dark-2"],
@@ -2319,7 +2352,12 @@ body::before {
 /* サイドバー */
 .preview-sidebar {
     width: 34%;
-    background: linear-gradient(180deg, var(--sidebar) 0%, var(--bg) 100%);
+    background: linear-gradient(
+        175deg,
+        color-mix(in srgb, var(--sidebar) 74%, var(--primary)) 0%,
+        var(--sidebar) 38%,
+        color-mix(in srgb, var(--bg) 80%, var(--sidebar)) 100%
+    );
     padding: 6px 5px;
     display: flex;
     flex-direction: column;
