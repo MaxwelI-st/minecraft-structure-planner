@@ -55,6 +55,9 @@ class App {
         try {
             const savedTheme = localStorage.getItem('mc_planner_theme');
             if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+            if (localStorage.getItem('sp.theme.fontsDefault') === '1') {
+                document.body.classList.add('fonts-default');
+            }
         } catch (_) {}
 
         this._dragEditMode = false;
@@ -511,47 +514,213 @@ class App {
         { id: 'light-13',name: 'Hydrangea',          kind: 'light', sample: ['#e8edf8', '#7c83b8', '#f4d4e0'] },
     ];
 
-    _setupThemesTab() {
+    static THEME_FONTS = {
+        'dark-2':  "'Rajdhani', 'Zen Kaku Gothic New', sans-serif",
+        'dark-3':  "'Outfit', 'Zen Kaku Gothic New', sans-serif",
+        'dark-4':  "'Inter', 'Noto Sans JP', sans-serif",
+        'dark-5':  "'Inter', 'Noto Sans JP', sans-serif",
+        'dark-6':  "'Crimson Text', 'Noto Serif JP', serif",
+        'dark-7':  "'Cormorant Garamond', 'Noto Serif JP', serif",
+        'dark-8':  "'Press Start 2P', 'DotGothic16', monospace",
+        'dark-9':  "'Quicksand', 'Zen Maru Gothic', sans-serif",
+        'dark-10': "'Inter', 'Noto Sans JP', sans-serif",
+        'dark-11': "'JetBrains Mono', 'Zen Kaku Gothic New', monospace",
+        'dark-12': "'Space Grotesk', 'Zen Kaku Gothic New', sans-serif",
+        'dark-13': "'Quicksand', 'Zen Maru Gothic', sans-serif",
+        'light-1': "'Quicksand', 'Zen Maru Gothic', sans-serif",
+        'light-2': "'Manrope', 'Noto Sans JP', sans-serif",
+        'light-3': "'Fredoka', 'Zen Maru Gothic', sans-serif",
+        'light-5': "'Lora', 'Noto Serif JP', serif",
+        'light-6': "'Manrope', 'Noto Sans JP', sans-serif",
+        'light-8': "'Quicksand', 'Zen Maru Gothic', sans-serif",
+        'light-9': "'IBM Plex Mono', 'Klee One', monospace",
+        'light-10':"'Quicksand', 'Zen Maru Gothic', sans-serif",
+        'light-11':"'Playfair Display', 'Noto Serif JP', serif",
+        'light-12':"'Shippori Mincho', 'Yu Mincho', serif",
+        'light-13':"'Lora', 'Noto Serif JP', serif",
+    };
+
+    static MESH_PREVIEW_BG = {
+        'dark-9':  'radial-gradient(at 15% 20%, #1e3a8a 0%, transparent 50%), radial-gradient(at 80% 30%, #581c87 0%, transparent 55%), radial-gradient(at 30% 70%, #065f46 0%, transparent 45%), #0a0a18',
+        'light-10':'radial-gradient(at 15% 20%, #fce7f3 0%, transparent 50%), radial-gradient(at 80% 25%, #dbeafe 0%, transparent 55%), radial-gradient(at 30% 75%, #dcfce7 0%, transparent 50%), #f0f4ff',
+        'dark-12': 'radial-gradient(at 15% 15%, #ff9adf55 0%, transparent 45%), radial-gradient(at 85% 20%, #6ec5ff55 0%, transparent 50%), radial-gradient(at 40% 80%, #c8a8ff55 0%, transparent 45%), #0e0e1e',
+        'dark-13': 'radial-gradient(at 15% 15%, #ffadd055 0%, transparent 45%), radial-gradient(at 85% 20%, #ffc88a55 0%, transparent 50%), radial-gradient(at 40% 80%, #ff9a8d55 0%, transparent 45%), #1a0a14',
+        'dark-11': 'radial-gradient(at 20% 80%, #ff008030 0%, transparent 50%), radial-gradient(at 80% 20%, #00f0ff30 0%, transparent 50%), #050006',
+        'dark-3':  'linear-gradient(180deg, #15082c 0%, #240e4a 60%, #4d1a6a 100%)',
+    };
+
+    static FAV_KEY = 'sp.theme.favorites';
+    static FONT_KEY = 'sp.theme.fontsDefault';
+
+    _getFavorites() {
+        try { return JSON.parse(localStorage.getItem(App.FAV_KEY) || '[]'); }
+        catch { return []; }
+    }
+    _toggleFavorite(id) {
+        let favs = this._getFavorites();
+        if (favs.includes(id)) favs = favs.filter(x => x !== id);
+        else favs.unshift(id);
+        localStorage.setItem(App.FAV_KEY, JSON.stringify(favs));
+        return favs.includes(id);
+    }
+
+    _getThemeVars(id) {
+        const el = document.createElement('div');
+        el.setAttribute('data-preview-theme', id);
+        el.style.cssText = 'position:fixed;pointer-events:none;opacity:0;top:-999px;';
+        document.body.appendChild(el);
+        const s = getComputedStyle(el);
+        const get = (p) => s.getPropertyValue(p).trim();
+        const vars = {
+            bg: get('--bg'), bg2: get('--bg2'), sidebar: get('--sidebar'),
+            card: get('--card'), border: get('--border'), border2: get('--border2'),
+            text: get('--text'), muted: get('--muted'), muted2: get('--muted2'),
+            primary: get('--primary'), accent: get('--accent'),
+            radius: get('--radius'), shadow: get('--shadow'),
+            btnText: get('--btn-primary-text'),
+            activeBar: get('--active-border') || get('--primary'),
+        };
+        document.body.removeChild(el);
+        return vars;
+    }
+
+    _makeInlineVars(v) {
+        return [
+            `--bg:${v.bg}`, `--bg2:${v.bg2}`, `--sidebar:${v.sidebar}`,
+            `--card:${v.card}`, `--border:${v.border}`, `--border2:${v.border2}`,
+            `--text:${v.text}`, `--muted:${v.muted}`, `--muted2:${v.muted2}`,
+            `--primary:${v.primary}`, `--accent:${v.accent}`,
+            `--radius:${v.radius}`, `--shadow:${v.shadow}`,
+            `--btn-primary-text:${v.btnText}`,
+            `--active-border:${v.activeBar}`, `--active-bg:${v.activeBar}1a`,
+            `--hover-bg:${v.primary}18`,
+        ].join(';');
+    }
+
+    _buildThemeCardHTML(t, currentId, favs) {
+        const v = this._getThemeVars(t.id);
+        const isFav = favs.includes(t.id);
+        const themeFont = App.THEME_FONTS[t.id] || "'Outfit', sans-serif";
+        const inlineVars = this._makeInlineVars(v);
+        const previewBg = App.MESH_PREVIEW_BG[t.id] || v.bg;
+        const rNum = parseFloat(v.radius) || 8;
+        const previewRadius = Math.round(rNum * 0.65) + 'px';
+        const isActive = t.id === currentId;
+        const kindLabel = t.kind === 'dark' ? '🌙 Dark' : '☀️ Light';
+        return `
+            <div class="theme-card${isActive ? ' active' : ''}" data-theme-id="${t.id}" style="${inlineVars}">
+                <div class="theme-card-preview" style="background:${previewBg};border-radius:${previewRadius};font-family:${themeFont};">
+                    <div class="preview-sidebar" style="background:${v.sidebar};border-right:1px solid ${v.border};">
+                        <div class="preview-logo" style="background:${v.accent};box-shadow:0 0 6px ${v.accent}66;"></div>
+                        <div class="preview-btn-primary" style="background:${v.primary};color:${v.btnText};border-radius:calc(${v.radius} * 0.45);">＋ NEW</div>
+                        <div class="preview-project active" style="background:${v.primary}22;border:1px solid ${v.activeBar || v.primary}55;border-radius:3px;height:9px;"></div>
+                        <div class="preview-project" style="background:${v.card};border:1px solid ${v.border};border-radius:3px;height:9px;"></div>
+                        <div class="preview-project" style="background:${v.card};border:1px solid ${v.border};border-radius:3px;height:9px;"></div>
+                    </div>
+                    <div class="preview-main" style="background:${v.bg2};">
+                        <div class="preview-tabs" style="border-bottom:1px solid ${v.border};">
+                            <div class="preview-tab active" style="color:${v.primary};background:${v.card};font-weight:800;">素材</div>
+                            <div class="preview-tab" style="color:${v.muted2};">3D</div>
+                            <div class="preview-tab" style="color:${v.muted2};">ドット</div>
+                        </div>
+                        <div class="preview-stats">
+                            <div class="preview-stat" style="background:${v.card};border:1px solid ${v.border};border-radius:calc(${v.radius} * 0.5);">
+                                <div class="preview-stat-num" style="color:${v.accent};">2.4k</div>
+                                <div class="preview-stat-label" style="color:${v.muted};">TOTAL</div>
+                            </div>
+                            <div class="preview-stat" style="background:${v.card};border:1px solid ${v.border};border-radius:calc(${v.radius} * 0.5);">
+                                <div class="preview-stat-num" style="color:${v.accent};">18</div>
+                                <div class="preview-stat-label" style="color:${v.muted};">TYPES</div>
+                            </div>
+                        </div>
+                        <div class="preview-btn-sample" style="background:${v.primary};color:${v.btnText};border-radius:calc(${v.radius} * 0.45);">適用</div>
+                    </div>
+                </div>
+                <div class="theme-card-name" style="color:${v.text};font-family:${themeFont};display:flex;align-items:center;gap:6px;justify-content:space-between;min-width:0;">
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;">${t.name}</span>
+                    <span class="theme-fav-btn${isFav ? ' active' : ''}" data-fav-id="${t.id}" title="${isFav ? 'お気に入り解除' : 'お気に入り'}" style="color:${isFav ? v.accent : v.muted};cursor:pointer;">${isFav ? '★' : '☆'}</span>
+                </div>
+                <div class="theme-card-kind" style="color:${v.muted2};">${kindLabel}</div>
+            </div>`;
+    }
+
+    _setupThemesTab(filter) {
+        // Ensure filter bar exists
+        this._setupThemeFilter();
+        const f = filter || document.querySelector('.theme-filter-bar .filter-pill.active')?.dataset.themeFilter || 'all';
         const grid = document.getElementById('themes-grid');
         if (!grid) return;
         const current = document.documentElement.getAttribute('data-theme') || 'dark-1';
-        grid.innerHTML = App.THEMES.map(t => {
-            return `
-                <div class="theme-card${t.id === current ? ' active' : ''}" data-theme-id="${t.id}" data-preview-theme="${t.id}">
-                    <div class="theme-card-preview">
-                        <div class="preview-sidebar">
-                            <div class="preview-logo"></div>
-                            <div class="preview-btn-primary">+ 新規</div>
-                            <div class="preview-project active"></div>
-                            <div class="preview-project"></div>
-                            <div class="preview-project"></div>
-                        </div>
-                        <div class="preview-main">
-                            <div class="preview-tabs">
-                                <span class="preview-tab active">素材</span>
-                                <span class="preview-tab">3D</span>
-                                <span class="preview-tab">テーマ</span>
-                            </div>
-                            <div class="preview-stats">
-                                <div class="preview-stat">
-                                    <div class="preview-stat-num">759</div>
-                                    <div class="preview-stat-label">Blocks</div>
-                                </div>
-                                <div class="preview-stat">
-                                    <div class="preview-stat-num">22</div>
-                                    <div class="preview-stat-label">Types</div>
-                                </div>
-                            </div>
-                            <div class="preview-btn-sample">適用</div>
-                        </div>
-                    </div>
-                    <div class="theme-card-name">${t.name}</div>
-                    <div class="theme-card-kind">${t.kind === 'dark' ? '🌙 Dark' : '☀️ Light'}</div>
-                </div>`;
-        }).join('');
-        grid.querySelectorAll('.theme-card').forEach(card => {
-            card.addEventListener('click', () => this._applyTheme(card.dataset.themeId));
+        const list = f === 'all' ? App.THEMES : App.THEMES.filter(t => t.kind === f);
+        const favs = this._getFavorites();
+        const sorted = [...list].sort((a, b) => {
+            const ai = favs.indexOf(a.id), bi = favs.indexOf(b.id);
+            if (ai === -1 && bi === -1) return 0;
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
         });
+        grid.innerHTML = sorted.map(t => this._buildThemeCardHTML(t, current, favs)).join('');
+        grid.querySelectorAll('.theme-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.classList.contains('theme-fav-btn')) {
+                    e.stopPropagation();
+                    this._toggleFavorite(card.dataset.themeId);
+                    this._setupThemesTab(f);
+                    return;
+                }
+                this._applyTheme(card.dataset.themeId);
+            });
+        });
+    }
+
+    _setupThemeFilter() {
+        const panel = document.getElementById('panel-themes');
+        if (!panel || panel.querySelector('.theme-filter-bar')) return;
+        const grid = panel.querySelector('#themes-grid');
+        if (!grid) return;
+        const bar = document.createElement('div');
+        bar.className = 'theme-filter-bar';
+        const totalAll = App.THEMES.length;
+        const totalDark = App.THEMES.filter(t => t.kind === 'dark').length;
+        const totalLight = App.THEMES.filter(t => t.kind === 'light').length;
+        bar.innerHTML = `
+            <div class="filter-pills" style="margin-bottom:1rem">
+              <button class="filter-pill active" data-theme-filter="all">すべて (${totalAll})</button>
+              <button class="filter-pill" data-theme-filter="dark">🌙 Dark (${totalDark})</button>
+              <button class="filter-pill" data-theme-filter="light">☀️ Light (${totalLight})</button>
+              <button class="filter-pill" data-theme-action="random" style="margin-left:auto">🎲 ランダム</button>
+              <button class="filter-pill" data-theme-action="reset">↺ デフォルトに戻す</button>
+              <button class="filter-pill" data-theme-action="font-toggle" title="テーマ固有フォントを無効化">🔤 デフォルトフォント</button>
+            </div>`;
+        grid.parentNode.insertBefore(bar, grid);
+
+        bar.querySelectorAll('[data-theme-filter]').forEach(b => {
+            b.addEventListener('click', () => {
+                bar.querySelectorAll('[data-theme-filter]').forEach(x => x.classList.toggle('active', x === b));
+                this._setupThemesTab(b.dataset.themeFilter);
+            });
+        });
+        bar.querySelector('[data-theme-action="random"]')?.addEventListener('click', () => {
+            const pick = App.THEMES[Math.floor(Math.random() * App.THEMES.length)];
+            this._applyTheme(pick.id);
+        });
+        bar.querySelector('[data-theme-action="reset"]')?.addEventListener('click', () => {
+            this._applyTheme('dark-1');
+        });
+        const fontBtn = bar.querySelector('[data-theme-action="font-toggle"]');
+        if (fontBtn) {
+            const setFontMode = (isDefault) => {
+                document.body.classList.toggle('fonts-default', isDefault);
+                fontBtn.classList.toggle('active', isDefault);
+                fontBtn.textContent = isDefault ? '✨ テーマ固有に戻す' : '🔤 デフォルトフォント';
+                localStorage.setItem(App.FONT_KEY, isDefault ? '1' : '0');
+            };
+            setFontMode(localStorage.getItem(App.FONT_KEY) === '1');
+            fontBtn.addEventListener('click', () => {
+                setFontMode(!document.body.classList.contains('fonts-default'));
+            });
+        }
     }
 
     _applyTheme(id) {
