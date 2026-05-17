@@ -48,14 +48,20 @@ export class BlockInstancingManager {
     const newCapacity = Math.max(requiredInstances, currentCapacity * 2, 100);
 
     const mesh = new this.THREE.InstancedMesh(geometry, material, newCapacity);
-    mesh.instanceMatrix.setUsage(this.THREE.DynamicDrawUsage); 
-    if (mesh.instanceColor) {
-      mesh.instanceColor.setUsage(this.THREE.DynamicDrawUsage);
-    }
-    
+    mesh.instanceMatrix.setUsage(this.THREE.DynamicDrawUsage);
+
+    // three.js の `setColorAt` は `mesh.count * 3` でバッファを生成するため、
+    // 先に `mesh.count = 0` してしまうと長さ 0 のバッファが作られて以降の
+    // 色設定がすべて無効になる。容量分の Float32Array を初期化色 (白) で
+    // 事前確保しておくことで、ハイライト/アニメーション色設定を有効にする。
+    const colorArr = new Float32Array(newCapacity * 3);
+    colorArr.fill(1);  // default normalColor = white
+    mesh.instanceColor = new this.THREE.InstancedBufferAttribute(colorArr, 3);
+    mesh.instanceColor.setUsage(this.THREE.DynamicDrawUsage);
+
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.count = 0; 
+    mesh.count = 0;
     
     // userDataにblockIdとシグネチャを保持（ハイライト処理等で使用）
     mesh.userData = { blockId, sig, instanceCoords: [] };
@@ -99,10 +105,11 @@ export class BlockInstancingManager {
     this.dummy.updateMatrix();
     data.mesh.setMatrixAt(data.count, this.dummy.matrix);
     
-    // 色をセット
-    if (data.mesh.instanceColor) {
-      data.mesh.setColorAt(data.count, isHighlighted ? hlColor : normalColor);
-    }
+    // 色をセット — three.js は初回 setColorAt 呼び出しで instanceColor
+    // バッファを遅延生成するので、未初期化チェックでスキップしてはいけない
+    // (スキップすると instanceColor が永久に null のままになり、後段の
+    // ハイライト処理 (setHighlightBlocks / _animate) が無効化される)
+    data.mesh.setColorAt(data.count, isHighlighted ? hlColor : normalColor);
 
     // userData に座標を追加（クリック判定・マルチハイライト用）
     data.mesh.userData.instanceCoords.push(coord);

@@ -460,7 +460,7 @@ export class Viewer3D {
         if (this._highlightedBlockIds.size > 0 && this.meshes.length > 0) {
             const pulse = 0.65 + 0.35 * Math.sin(Date.now() / 400);
             const THREE = window.THREE;
-            const hlColor = new THREE.Color(pulse, pulse * 0.85, 0.1);
+            const hlColor = new THREE.Color(0.1, pulse, pulse);
             for (const mesh of this.meshes) {
                 if (!mesh.instanceColor || !mesh.userData.blockId) continue;
                 if (this._highlightedBlockIds.has(mesh.userData.blockId.toLowerCase())) {

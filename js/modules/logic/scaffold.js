@@ -78,6 +78,12 @@ export function computeStandingPositions(targetBlocks, groundY = 0) {
   const R = Math.ceil(PLAYER_REACH);
   const REACH_SQ = PLAYER_REACH * PLAYER_REACH;
 
+  // Build a Set of target block positions so we can exclude them from candidate
+  // standing positions: a player can't stand inside a solid block (e.g. a wall
+  // of the structure being built). Also exclude positions where the player's
+  // head/body would intersect a target block (sy+1, sy+2).
+  const targetSet = new Set(targetBlocks.map(([x, y, z]) => key3(x, y, z)));
+
   for (const [bx, by, bz] of targetBlocks) {
     const bKey = key3(bx, by, bz);
     const validStanding = new Set();
@@ -91,6 +97,15 @@ export function computeStandingPositions(targetBlocks, groundY = 0) {
     for (let dz = -R; dz <= R; dz++) {
       const sx = bx + dx, sy = by + dy, sz = bz + dz;
       if (sy < groundY) continue; // can't stand underground
+
+      // The standing position itself must not be a target block (you stand
+      // on top of (sx,sy,sz), so it acts as the floor — but if it's already
+      // a wall of the structure, you can't replace it with scaffolding).
+      // Player body occupies (sx, sy+1, sz) and (sx, sy+2, sz) — these must
+      // be free of target blocks too.
+      if (targetSet.has(key3(sx,     sy,     sz))) continue;
+      if (targetSet.has(key3(sx, sy + 1, sz))) continue;
+      if (targetSet.has(key3(sx, sy + 2, sz))) continue;
 
       // Eye position (centre of standing block + eye height)
       const ex = sx + 0.5, ey = sy + EYE_HEIGHT, ez = sz + 0.5;
@@ -327,8 +342,9 @@ function _extendBranches(px, py, pz, uncovered, standingMap, existing) {
             .filter(bk => uncovered.has(bk))
         : [];
 
-      // Add this scaffold block regardless — it enables further extension
-      if (!existing.has(nKey)) {
+      // Only place scaffold when it actually covers an uncovered target.
+      // BFS continues regardless so we can reach further targets via empty air.
+      if (covers.length > 0 && !existing.has(nKey)) {
         existing.add(nKey);
         added.push(nKey);
       }
@@ -372,15 +388,32 @@ export function planScaffolding(targetBlocks, groundY = 0) {
   const standingMap = computeStandingPositions(targetBlocks, groundY);
   const result      = generateScaffold(standingMap, groundY);
 
-  // Convert Set<string> to Array<[x,y,z]> for serialisation
+  // Scaffold positions that overlap with the structure itself are physically
+  // impossible (the player can't place scaffolding into a wall). The structure
+  // wall already acts as scaffolding in those slots, so we just drop them.
+  const targetSet = new Set(targetBlocks.map(([x, y, z]) => key3(x, y, z)));
+  const isTarget  = (k) => targetSet.has(k);
+
+  // Convert Set<string> to Array<[x,y,z]> for serialisation, filtering out
+  // any scaffold positions that overlap with the original target structure.
   const toCoordArray = (set) =>
-    [...set].map(k => /** @type {[number,number,number]} */ (decode3(k)));
+    [...set]
+      .filter(k => !isTarget(k))
+      .map(k => /** @type {[number,number,number]} */ (decode3(k)));
+
+  const filteredBlocks   = toCoordArray(result.scaffoldBlocks);
+  const filteredSequence = result.buildSequence
+    .filter(k => !isTarget(k))
+    .map(k => decode3(k));
 
   return {
-    scaffoldBlocks: toCoordArray(result.scaffoldBlocks),
-    buildSequence:  result.buildSequence.map(k => decode3(k)),
+    scaffoldBlocks: filteredBlocks,
+    buildSequence:  filteredSequence,
     pillars:        result.pillars,
     uncoveredCount: result.uncoveredCount,
-    stats:          result.stats,
+    stats: {
+      ...result.stats,
+      totalBlocks: filteredBlocks.length,
+    },
   };
 }

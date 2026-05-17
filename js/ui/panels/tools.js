@@ -18,7 +18,10 @@ const LIGHT_BLOCK_IDS = [
 ];
 
 // scaffold プレビュー用ブロック ID
-const SCAFFOLD_BLOCK_ID = 'minecraft:scaffolding';
+// 注: minecraft:scaffolding は半透明テクスチャでビューワに見えにくいため、
+// 確実に水色で表示される light_blue_concrete を視覚マーカーとして使用する。
+// 実際の .litematic 保存時は scaffold データから minecraft:scaffolding に書き戻される。
+const SCAFFOLD_BLOCK_ID = 'minecraft:light_blue_concrete';
 
 export function initToolsPanel(app) {
   // ── 構造セレクターの同期 ────────────────────────────────────────────────
@@ -161,7 +164,17 @@ async function _previewScaffoldInViewer(app, dataBuf, originalCoords, structId) 
     return;
   }
 
-  document.querySelector('[data-tab="viewer3d"]')?.click();
+  // Switch to the 3D viewer tab only if not already there. Triggering the tab
+  // button click on the active tab re-runs _initViewer3DTab() → _load3DView()
+  // asynchronously, which races our loadStructure() call below and overwrites
+  // the preview with the original (un-scaffolded / un-inverted) structure.
+  if (app.currentTab !== 'viewer3d') {
+    document.querySelector('[data-tab="viewer3d"]')?.click();
+    // Wait one microtask so the async _load3DView() chain (if any) starts
+    // before our preview render — but since our render is sync after this
+    // and _load3DView is async, the preview will end up as the FINAL state.
+    await new Promise(r => setTimeout(r, 0));
+  }
   const viewer = app.viewer3d;
   if (!viewer) { app._toast?.('3Dビューが未初期化です', 'error'); return; }
 
@@ -170,9 +183,39 @@ async function _previewScaffoldInViewer(app, dataBuf, originalCoords, structId) 
     const size = structure?.size ?? { x: 64, y: 64, z: 64 };
     viewer.loadStructure(combined, size, { autoFocus: true });
     viewer.setHighlightBlocks([SCAFFOLD_BLOCK_ID]);
+
+    // Make scaffold pillars visible THROUGH walls: many of them stand at
+    // standing positions adjacent to the structure (sometimes in interior
+    // air pockets) and would be hidden by exterior walls. Disabling depth
+    // testing on scaffold meshes lets the user see where every scaffold
+    // needs to go regardless of camera angle.
+    _makeMeshesXrayed(viewer, SCAFFOLD_BLOCK_ID);
+
     app._toast?.(`👁 足場 ${json.scaffoldBlocks?.length ?? 0} ブロックを水色でプレビュー`);
   } catch (err) {
     app._toast?.('プレビュー表示エラー: ' + err.message, 'error');
+  }
+}
+
+/**
+ * Override material flags on every InstancedMesh whose blockId matches so
+ * that the cubes render on top of opaque walls (x-ray effect). Used for
+ * scaffold/light/marker preview blocks.
+ */
+function _makeMeshesXrayed(viewer, blockId) {
+  if (!viewer?.meshes) return;
+  const target = blockId.toLowerCase();
+  for (const mesh of viewer.meshes) {
+    if (mesh.userData?.blockId?.toLowerCase() !== target) continue;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      if (!m) continue;
+      m.depthTest  = false;
+      m.depthWrite = false;
+      m.transparent = true;
+      m.needsUpdate = true;
+    }
+    mesh.renderOrder = 999; // draw after everything else
   }
 }
 
@@ -269,7 +312,17 @@ async function _previewInViewer(app, dataBuf, mode) {
     return;
   }
 
-  document.querySelector('[data-tab="viewer3d"]')?.click();
+  // Switch to the 3D viewer tab only if not already there. Triggering the tab
+  // button click on the active tab re-runs _initViewer3DTab() → _load3DView()
+  // asynchronously, which races our loadStructure() call below and overwrites
+  // the preview with the original (un-scaffolded / un-inverted) structure.
+  if (app.currentTab !== 'viewer3d') {
+    document.querySelector('[data-tab="viewer3d"]')?.click();
+    // Wait one microtask so the async _load3DView() chain (if any) starts
+    // before our preview render — but since our render is sync after this
+    // and _load3DView is async, the preview will end up as the FINAL state.
+    await new Promise(r => setTimeout(r, 0));
+  }
   const viewer = app.viewer3d;
   if (!viewer) { app._toast?.('3Dビューが未初期化です', 'error'); return; }
 
@@ -282,7 +335,11 @@ async function _previewInViewer(app, dataBuf, mode) {
                 : mode === 'invert'     ? ['minecraft:glowstone']
                 : [];
 
-    if (hlIds.length > 0) viewer.setHighlightBlocks(hlIds);
+    if (hlIds.length > 0) {
+      viewer.setHighlightBlocks(hlIds);
+      // x-ray highlighted markers so they're visible through the structure walls
+      for (const id of hlIds) _makeMeshesXrayed(viewer, id);
+    }
 
     const hlCount = hlIds.length > 0
       ? coords.filter(c => hlIds.some(id => c.blockId === id)).length
