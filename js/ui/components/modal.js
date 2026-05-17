@@ -1,1 +1,0 @@
-// TODO: Modal dialog component

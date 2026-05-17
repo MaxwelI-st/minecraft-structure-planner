@@ -180,13 +180,6 @@ export function detectEndian(buffer, fileName = '') {
     return 'le';
 }
 
-function parseAuto(buffer, fileName = '') {
-    const endian = detectEndian(buffer, fileName);
-    const parser = new NBTParser(buffer, endian);
-    const result = parser.parse();
-    return { endian, result };
-}
-
 /* ─── NBT Writer (Bedrock LE / Java BE 両対応) ─────────────────────────
  * 簡易: Bedrock の .mcstructure 出力を主目的とする。
  *

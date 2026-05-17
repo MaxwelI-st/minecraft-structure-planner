@@ -184,6 +184,14 @@ export class Viewer3D {
             }
         }
         
+        if (this._compassCanvas) {
+            this._compassCanvas.remove();
+            this._compassCanvas = null;
+        }
+        if (this.floor) {
+            this.floor = null;
+        }
+
         this.scene = null;
         this.camera = null;
         this.renderer = null;
