@@ -4,3 +4,7 @@ dist
 dev-dist
 .env
 *.log
+
+# ユーザー個人の参考用ファイル（コミットしない）
+test/*.litematic
+test/*.schem

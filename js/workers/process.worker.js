@@ -715,15 +715,15 @@ async function handleMergeStructures(taskId, payload) {
 
 async function handleScaffoldGen(taskId, payload) {
   const { config } = payload;
-  const { targetBlocks, groundY = 0 } = config ?? {};
+  const { targetBlocks, groundY = 0, fullBlockCoords = [] } = config ?? {};
 
   if (!targetBlocks || targetBlocks.length === 0) {
-    sendComplete(taskId, null, { scaffoldBlocks: [], buildSequence: [], stats: {} });
+    sendComplete(taskId, null, { scaffoldBlocks: [], supportBlocks: [], buildSequence: [], stats: {} });
     return;
   }
 
   sendProgress(taskId, 0.1, `Computing standing positions for ${targetBlocks.length} blocks…`);
-  const result = planScaffolding(targetBlocks, groundY);
+  const result = planScaffolding(targetBlocks, groundY, { fullBlockCoords });
 
   sendProgress(taskId, 0.99, 'Scaffold plan complete.');
 
@@ -736,6 +736,7 @@ async function handleScaffoldGen(taskId, payload) {
     totalScaffoldBlocks: result.scaffoldBlocks.length,
     pillarCount:         result.pillars.length,
     uncoveredCount:      result.uncoveredCount,
+    supportCount:        result.supportBlocks?.length ?? 0,
     ...result.stats,
   }, result.uncoveredCount > 0
     ? [`${result.uncoveredCount} blocks could not be reached — manual scaffold needed`]
@@ -823,20 +824,20 @@ async function handleInvertGen(taskId, payload) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handleResultToLitematic(taskId, payload) {
-  const { dimensions, palette, indices, name, scaffoldBlocks } = payload;
+  const { dimensions, palette, indices, name, scaffoldBlocks, supportBlocks = [] } = payload;
 
   let bedrockPalette, layer0Indices, dims;
 
   if (scaffoldBlocks) {
-    // SCAFFOLD result: build palette { scaffolding, air } and indices from positions
-    const positions = scaffoldBlocks;
-    if (positions.length === 0) {
+    // SCAFFOLD result: palette = { air, scaffolding, dirt }
+    // 境界ボックスは scaffold + support の和集合で計算する
+    const allPositions = [...scaffoldBlocks, ...supportBlocks];
+    if (allPositions.length === 0) {
       throw new Error('RESULT_TO_LITEMATIC: 足場ブロックが空です');
     }
-    // Bounding box
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (const [x, y, z] of positions) {
+    for (const [x, y, z] of allPositions) {
       if (x < minX) minX = x; if (x > maxX) maxX = x;
       if (y < minY) minY = y; if (y > maxY) maxY = y;
       if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
@@ -846,11 +847,16 @@ async function handleResultToLitematic(taskId, payload) {
     bedrockPalette = [
       { name: 'minecraft:air',         states: {}, version: 18158593 },
       { name: 'minecraft:scaffolding', states: {}, version: 18158593 },
+      { name: 'minecraft:dirt',        states: {}, version: 18158593 },
     ];
     layer0Indices = new Int16Array(SX * SY * SZ); // 0 = air
-    for (const [x, y, z] of positions) {
+    for (const [x, y, z] of scaffoldBlocks) {
       const i = ((x - minX) * SY + (y - minY)) * SZ + (z - minZ);
       layer0Indices[i] = 1;
+    }
+    for (const [x, y, z] of supportBlocks) {
+      const i = ((x - minX) * SY + (y - minY)) * SZ + (z - minZ);
+      layer0Indices[i] = 2;
     }
   } else {
     // INVERT/HOLLOW/LIGHTPATCH result: already has palette + indices + dimensions

@@ -457,21 +457,24 @@ function _extendBranches(px, py, pz, uncovered, standingMap, existing) {
  *   stats: object
  * }}
  */
-export function planScaffolding(targetBlocks, groundY = 0) {
+export function planScaffolding(targetBlocks, groundY = 0, opts = {}) {
   if (!targetBlocks || targetBlocks.length === 0) {
     return {
       scaffoldBlocks: [],
+      supportBlocks:  [],
       buildSequence:  [],
       pillars:        [],
       uncoveredCount: 0,
-      stats: { pillarCount: 0, branchCount: 0, totalBlocks: 0 },
+      stats: { pillarCount: 0, branchCount: 0, totalBlocks: 0, supportCount: 0 },
     };
   }
 
-  const targetSet   = new Set(targetBlocks.map(([x, y, z]) => key3(x, y, z)));
-  const standingMap = computeStandingPositions(targetBlocks, groundY);
-  const result      = generateScaffold(standingMap, groundY, {}, targetSet);
-  const isTarget  = (k) => targetSet.has(k);
+  const { fullBlockCoords = [] } = opts;
+  const targetSet    = new Set(targetBlocks.map(([x, y, z]) => key3(x, y, z)));
+  const fullBlockSet = new Set(fullBlockCoords.map(([x, y, z]) => key3(x, y, z)));
+  const standingMap  = computeStandingPositions(targetBlocks, groundY);
+  const result       = generateScaffold(standingMap, groundY, {}, targetSet);
+  const isTarget     = (k) => targetSet.has(k);
 
   // Convert Set<string> to Array<[x,y,z]> for serialisation, filtering out
   // any scaffold positions that overlap with the original target structure.
@@ -485,14 +488,33 @@ export function planScaffolding(targetBlocks, groundY = 0) {
     .filter(k => !isTarget(k))
     .map(k => decode3(k));
 
+  // ── Support block detection ───────────────────────────────────────────────
+  // 各柱のユニーク (x, z) ペアを抽出し、根元位置 (px, groundY-1, pz) が
+  // 「構造物の一部だが非フルブロック (階段・スラブ等)」なら dirt で補強。
+  // 構造物の外 (targetSet に無い) は自然地面と仮定して何もしない。
+  const supportSet = new Set();
+  const seenCol    = new Set();
+  for (const p of result.pillars) {
+    const colKey = `${p.x},${p.z}`;
+    if (seenCol.has(colKey)) continue;
+    seenCol.add(colKey);
+    const baseKey = key3(p.x, groundY - 1, p.z);
+    if (targetSet.has(baseKey) && !fullBlockSet.has(baseKey)) {
+      supportSet.add(baseKey);
+    }
+  }
+  const supportBlocks = [...supportSet].map(k => decode3(k));
+
   return {
     scaffoldBlocks: filteredBlocks,
+    supportBlocks,
     buildSequence:  filteredSequence,
     pillars:        result.pillars,
     uncoveredCount: result.uncoveredCount,
     stats: {
       ...result.stats,
-      totalBlocks: filteredBlocks.length,
+      totalBlocks:  filteredBlocks.length,
+      supportCount: supportBlocks.length,
     },
   };
 }

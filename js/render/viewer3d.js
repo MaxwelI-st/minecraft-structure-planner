@@ -136,6 +136,7 @@ export class Viewer3D {
         this._lastCoords = null; this._lastSize = null; this._lastOptions = null;
         this._highlightedBlockId = null;
         this._highlightedBlockIds = new Set(); // マルチハイライト用
+        this.pulseHighlight = false; // パルス点滅をデフォルト無効（チカチカ防止）
         // 置換を再適用して再描画が必要な場合に呼び出すコールバック（app.js がセット）
         this.onNeedsReload = null;
         // 範囲選択用の始点マーカーとボックス
@@ -456,8 +457,8 @@ export class Viewer3D {
 
     _animate() {
         requestAnimationFrame(() => this._animate());
-        // マルチハイライトのパルスアニメーション
-        if (this._highlightedBlockIds.size > 0 && this.meshes.length > 0) {
+        // マルチハイライトのパルスアニメーション (デフォルト無効 — pulseHighlight=true で有効化)
+        if (this.pulseHighlight && this._highlightedBlockIds.size > 0 && this.meshes.length > 0) {
             const pulse = 0.65 + 0.35 * Math.sin(Date.now() / 400);
             const THREE = window.THREE;
             const hlColor = new THREE.Color(0.1, pulse, pulse);
@@ -687,21 +688,33 @@ export class Viewer3D {
     }
 
     /**
-     * 複数ブロックIDをハイライト（パルスアニメーション対応）
+     * 複数ブロックIDをハイライト
      * @param {string[]} ids - minecraft:xxx 形式のブロックID配列（空で解除）
+     * @param {object} [opts]
+     * @param {boolean} [opts.pulse] - 指定された場合 this.pulseHighlight を上書き
      */
-    setHighlightBlocks(ids) {
+    setHighlightBlocks(ids, opts = {}) {
         this._highlightedBlockIds = new Set(ids.map(id => id.toLowerCase()));
+        if (opts.pulse !== undefined) this.pulseHighlight = opts.pulse;
         if (!this.isInitialized) return;
         const THREE = window.THREE;
         const normalColor = new THREE.Color(1, 1, 1);
-        // ハイライト解除されたブロックを白に戻す
+        // 静的水色（pulse OFF のときの仕上げ色）
+        const staticHlColor = new THREE.Color(0.1, 0.85, 1.0);
+
         for (const mesh of this.meshes) {
             if (!mesh.instanceColor || !mesh.userData.blockId) continue;
-            if (!this._highlightedBlockIds.has(mesh.userData.blockId.toLowerCase())) {
+            const isHl = this._highlightedBlockIds.has(mesh.userData.blockId.toLowerCase());
+            if (isHl && !this.pulseHighlight) {
+                // パルスOFF: 一度だけ静的な水色で塗る
+                for (let i = 0; i < mesh.count; i++) mesh.setColorAt(i, staticHlColor);
+                mesh.instanceColor.needsUpdate = true;
+            } else if (!isHl) {
+                // ハイライト解除されたブロックは白に戻す
                 for (let i = 0; i < mesh.count; i++) mesh.setColorAt(i, normalColor);
                 mesh.instanceColor.needsUpdate = true;
             }
+            // isHl && pulseHighlight の場合は _animate() がフレーム毎に上書き
         }
     }
 

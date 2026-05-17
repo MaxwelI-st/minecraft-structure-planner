@@ -6,6 +6,7 @@
  */
 
 import { generateScaffolding, generateInversion, convertResultToLitematic, downloadBuffer } from '../../main.js';
+import { classifyShape } from '../../blockshapes.js';
 
 const $ = id => document.getElementById(id);
 
@@ -49,6 +50,16 @@ export function initToolsPanel(app) {
   // ── プレビュー「元に戻す」ボタン（動的に生成されるため委譲で捕捉）────
   document.addEventListener('click', (e) => {
     if (e.target?.id === 'btn-undo-preview') _restoreOriginalInViewer(app);
+  });
+
+  // ── パルスハイライト切替（デフォルト OFF）────────────────────────────
+  $('opt-pulse-highlight')?.addEventListener('change', (e) => {
+    const v = app.viewer3d;
+    if (!v) return;
+    v.pulseHighlight = !!e.target.checked;
+    // 現在ハイライト中のブロックを即時反映（パルス OFF なら静的色に塗り直す）
+    const ids = [...v._highlightedBlockIds];
+    if (ids.length > 0) v.setHighlightBlocks(ids, { pulse: v.pulseHighlight });
   });
 
   // 錆止めプリセット
@@ -117,17 +128,26 @@ async function _runScaffold(app) {
     .filter(c => c.blockId !== 'minecraft:air' && c.blockId !== 'air')
     .map(c => [c.x, c.y, c.z]);
 
+  // フルブロック (= cube シェイプ) のみ「足場が乗れる土台」と判定。
+  // 階段・スラブ・フェンス等の上には足場が置けないので、後段で dirt 補強される。
+  const fullBlockCoords = coords
+    .filter(c => c.blockId && c.blockId !== 'minecraft:air' && c.blockId !== 'air'
+              && classifyShape(c.blockId, c.states ?? null) === 'cube')
+    .map(c => [c.x, c.y, c.z]);
+
   const resultEl = $('tool-scaffold-result');
 
   try {
-    const { data, metadata } = await generateScaffolding({ targetBlocks, groundY });
+    const { data, metadata } = await generateScaffolding({ targetBlocks, groundY, fullBlockCoords });
 
     if (resultEl) {
       const uncovered = metadata.uncoveredCount ?? 0;
+      const support   = metadata.supportCount   ?? 0;
       resultEl.classList.remove('hidden');
       resultEl.innerHTML = `
         <div class="result-stat">足場ブロック: ${(metadata.totalScaffoldBlocks ?? 0).toLocaleString()} 個</div>
         <div class="result-stat">支柱数: ${metadata.pillarCount ?? 0}</div>
+        ${support > 0 ? `<div class="result-stat">土サポート: ${support.toLocaleString()} 個</div>` : ''}
         ${uncovered > 0 ? `<div style="color:var(--accent)">⚠️ 未到達: ${uncovered} ブロック（手動補完が必要）</div>` : ''}
         <div style="display:flex;gap:0.4rem;margin-top:0.4rem;flex-wrap:wrap">
           <button class="mc-btn secondary small" id="btn-preview-scaffold">👁 3Dプレビュー</button>
@@ -162,13 +182,21 @@ async function _previewScaffoldInViewer(app, dataBuf, originalCoords, structId) 
   const project   = app._currentProject?.();
   const structure = project?.structures.find(s => s.id === structId);
 
-  // 元構造の座標 + 足場ブロックをマージ
+  // 元構造の座標 + 足場ブロック + 土サポートをマージ
   const combined = [...originalCoords];
   for (const [x, y, z] of (json.scaffoldBlocks ?? [])) {
     const key = `${x},${y},${z}`;
     if (!combined.some(c => `${c.x},${c.y},${c.z}` === key)) {
       combined.push({ x, y, z, blockId: SCAFFOLD_BLOCK_ID });
     }
+  }
+  // 土サポートのプレビューは brown_concrete で区別（dirt を使うと元構造の dirt が全透過になるバグを避ける）
+  const SUPPORT_PREVIEW_ID = 'minecraft:brown_concrete';
+  for (const [x, y, z] of (json.supportBlocks ?? [])) {
+    const key = `${x},${y},${z}`;
+    const idx = combined.findIndex(c => `${c.x},${c.y},${c.z}` === key);
+    if (idx >= 0) combined.splice(idx, 1);
+    combined.push({ x, y, z, blockId: SUPPORT_PREVIEW_ID });
   }
 
   if (combined.length === 0) {
@@ -195,15 +223,19 @@ async function _previewScaffoldInViewer(app, dataBuf, originalCoords, structId) 
     _saveOriginalState(app, structId);
     const size = structure?.size ?? { x: 64, y: 64, z: 64 };
     viewer.loadStructure(combined, size, { autoFocus: true });
+    // 足場本体だけハイライト (静的水色)。土サポートは通常色のまま表示
     viewer.setHighlightBlocks([SCAFFOLD_BLOCK_ID]);
     _makeMeshesXrayed(viewer, SCAFFOLD_BLOCK_ID);
+    _makeMeshesXrayed(viewer, SUPPORT_PREVIEW_ID);
 
     // Show undo button inside the scaffold result section
     const resultEl = $('tool-scaffold-result');
     if (resultEl && !resultEl.querySelector('#btn-undo-preview')) {
       resultEl.insertAdjacentHTML('beforeend', _undoButtonHtml());
     }
-    app._toast?.(`👁 足場 ${json.scaffoldBlocks?.length ?? 0} ブロックを水色でプレビュー`);
+    const supportN = json.supportBlocks?.length ?? 0;
+    const supportMsg = supportN > 0 ? `, 土サポート ${supportN} 個` : '';
+    app._toast?.(`👁 足場 ${json.scaffoldBlocks?.length ?? 0} ブロック${supportMsg}をプレビュー`);
   } catch (err) {
     app._toast?.('プレビュー表示エラー: ' + err.message, 'error');
   }
@@ -385,7 +417,11 @@ async function _saveResultAsLitematic(app, dataBuf, mode, structId) {
   const filename = `${baseName}_${mode}.litematic`;
 
   const payload = mode === 'scaffold'
-    ? { scaffoldBlocks: json.scaffoldBlocks ?? [], name: `${baseName}_scaffold` }
+    ? {
+        scaffoldBlocks: json.scaffoldBlocks ?? [],
+        supportBlocks:  json.supportBlocks  ?? [],
+        name: `${baseName}_scaffold`,
+      }
     : { dimensions: json.dimensions, palette: json.palette, indices: json.indices, name: `${baseName}_${mode}` };
 
   try {
