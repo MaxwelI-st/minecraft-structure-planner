@@ -180,7 +180,7 @@ export function detectEndian(buffer, fileName = '') {
     return 'le';
 }
 
-export function parseAuto(buffer, fileName = '') {
+function parseAuto(buffer, fileName = '') {
     const endian = detectEndian(buffer, fileName);
     const parser = new NBTParser(buffer, endian);
     const result = parser.parse();

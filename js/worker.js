@@ -3,15 +3,13 @@
  *
  * Bedrock .mcstructure:
  *   root.size = [sx, sy, sz]
- *   root.structure.block_indices[0] = [palette_idx...]    （x*sy*sz + y*sz + z）
  *   root.structure.palette.default.block_palette = [{name, states, version}]
  */
 import { NBTParser, decompressIfNeeded, detectEndian } from './nbt.js';
-import { normalizeBedrockBlock } from './bedrock_normalize.js';
+import { normalizeBedrockBlock, normalizeId } from './bedrock_normalize.js';
 
 self.onmessage = async (e) => {
-    const { buffer, fileName } = e.data;
-    console.log('--- Worker v2.5.12: Starting Parse ---', fileName);
+    const { taskId, buffer, fileName } = e.data;
     try {
         const data = await decompressIfNeeded(buffer);
         const endian = detectEndian(data, fileName || '');
@@ -36,6 +34,7 @@ self.onmessage = async (e) => {
         }).sort((a, b) => b.count - a.count);
 
         self.postMessage({
+            taskId,
             success: true, results, coords, edition,
             size: { x: sx, y: sy, z: sz },
             totalCount, uniqueCount: counts.size,
@@ -43,6 +42,7 @@ self.onmessage = async (e) => {
         });
     } catch (err) {
         self.postMessage({
+            taskId,
             success: false,
             error: err.message,
             stack: err.stack ? String(err.stack).split('\n').slice(0, 4).join('\n') : null
@@ -76,12 +76,13 @@ function parseBedrock(root) {
             const x = Math.floor(i / (sy * sz));
             const posKey = `${x},${y},${z}`;
 
-            const rawId = blockData.name;
+            const rawId = normalizeId(blockData.name);
             const rawStates = blockData.states || {};
             const norm = normalizeBedrockBlock(rawId, rawStates);
             if (norm.skip) continue;
 
             let blockId = norm.id;
+            if (!blockId.includes(':')) blockId = 'minecraft:' + blockId;
             
             // 既にこの座標にブロックがある場合のマージ処理（ダブルスラブ対応 / 浸水対応）
             const existing = totalMap.get(posKey);
@@ -119,11 +120,11 @@ function parseBedrock(root) {
 
     const coords = Array.from(totalMap.values());
     const totalCount = Array.from(counts.values()).reduce((a, b) => a + b, 0);
-    // ─── Face Culling（隠面消去）─────────────────────────────────────
-    // 6 面すべて不透過ブロックに囲まれていて、かつ自身も不透過なら描画から除外
-    // counts には影響しない（素材計算は引き続き全ブロック対象）
-    const visible = _faceCull(coords, sx, sy, sz);
-    return { coords: visible, counts, totalCount, sx, sy, sz, edition: 'bedrock' };
+    
+    // NOTE: 以前はここで完全に囲まれたブロックを除去していましたが、
+    // Y軸フィルターなどで断面を表示した際に中身が空洞になってしまう問題を避けるため、
+    // 物理的な除去はやめて全データを返します。面ごとのカリングは Viewer3D 側で動的に行います。
+    return { coords, counts, totalCount, sx, sy, sz, edition: 'bedrock' };
 }
 
 /** 透過判定が必要なブロック ID パターン */
@@ -131,44 +132,9 @@ function _isTransparent(blockId) {
     return /glass|leaves|fence|trapdoor|door|stairs|slab|carpet|wall|pane|bars|water|lava|ice|cobweb|chain|ladder|sapling|grass$|fern|vine|kelp|seagrass|torch|button|pressure_plate|sign|banner|rail|hopper|piston/.test(blockId);
 }
 
-/** 全方位の neighbor が存在する非透過ブロックをスキップ */
-function _faceCull(coords, sx, sy, sz) {
-    // 高速ルックアップ用 Set（座標を 1 整数にエンコード）
-    const occupiedOpaque = new Set();
-    for (const c of coords) {
-        if (!_isTransparent(c.blockId)) {
-            occupiedOpaque.add(c.x * sy * sz + c.y * sz + c.z);
-        }
-    }
-    const has = (x, y, z) => {
-        if (x < 0 || x >= sx || y < 0 || y >= sy || z < 0 || z >= sz) return false;
-        return occupiedOpaque.has(x * sy * sz + y * sz + z);
-    };
-
-    const out = [];
-    for (const c of coords) {
-        if (_isTransparent(c.blockId)) {
-            out.push(c);
-            continue;
-        }
-        if (has(c.x + 1, c.y, c.z)
-         && has(c.x - 1, c.y, c.z)
-         && has(c.x, c.y + 1, c.z)
-         && has(c.x, c.y - 1, c.z)
-         && has(c.x, c.y, c.z + 1)
-         && has(c.x, c.y, c.z - 1)) {
-            // 完全に囲まれている → スキップ
-            continue;
-        }
-        out.push(c);
-    }
-    return out;
-}
-
-
 /* ─── カテゴリ分類 ────────────────────────────────────────────── */
 function getCategory(id) {
-    const b = id.replace('minecraft:', '');
+    const b = normalizeId(id).replace('minecraft:', '');
     if (/planks|stone|brick|concrete|terracotta|wool|wood|log|deepslate|cobblestone|quartz|sandstone|basalt|blackstone/.test(b)) return 'building';
     if (/stairs|slab|fence|door|trapdoor|glass|lantern|chest|sign|bed|banner|candle|pot|carpet|wall/.test(b)) return 'decoration';
     if (/redstone|piston|observer|hopper|repeater|comparator|rail|button|pressure_plate|dispenser|dropper|lever|tripwire|daylight/.test(b)) return 'redstone';

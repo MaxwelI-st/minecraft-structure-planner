@@ -18,9 +18,15 @@
  *   direction (door/trapdoor):   0=south, 1=west, 2=north, 3=east
  */
 
+/** ID の正規化（小文字化、トリム、空白をアンダースコアへ変換） */
+function normalizeId(id) {
+    if (!id) return '';
+    return String(id).toLowerCase().trim().replace(/\s+/g, '_');
+}
+
 /** ブロックID から形状種別を判定 */
 export function classifyShape(blockId, states = {}) {
-    const id = String(blockId).toLowerCase().replace(/^minecraft:/, '');
+    const id = normalizeId(blockId).replace(/^minecraft:/, '');
     
     // ダブルスラブ判定：ID名または states の bit 値
     if (id.includes('double')) return 'cube';
@@ -53,8 +59,22 @@ export function classifyShape(blockId, states = {}) {
     if (/_carpet$|moss_carpet/.test(id)) return 'carpet';
     if (/pressure_plate$/.test(id)) return 'pressure_plate';
     if (/_button$/.test(id)) return 'button';
-    if (/_pane$|^iron_bars$|^chain$/.test(id)) return 'pane';
-    if (/torch$|^lantern$|^soul_lantern$/.test(id)) return 'small';
+    if (/_pane$|^iron_bars$/.test(id)) return 'pane';
+    // chain ブロックは縦長の細い柱 → 専用形状
+    if (/^chain$/.test(id)) return 'chain';
+    // ランタン（吊り下げ or 床置き）→ 本体+チェーン
+    if (/^lantern$|^soul_lantern$/.test(id)) return 'lantern';
+    // たいまつ系 → 細い棒
+    if (/torch$/.test(id)) return 'torch';
+    // ホッパー → 上部ボックス + 下スパウト
+    if (/^hopper$/.test(id)) return 'hopper';
+    // 大釜 → 外枠 + 内部空洞（近似）
+    if (/^cauldron$|^lava_cauldron$|^powder_snow_cauldron$|^water_cauldron$/.test(id)) return 'cauldron';
+    // 金床 → 2ボックス（刃+台座）
+    if (/^anvil$|^chipped_anvil$|^damaged_anvil$/.test(id)) return 'anvil';
+    // 植物・花・サボテン・キノコ等 → クロス平面
+    if (/flower|sapling|^dandelion$|^poppy$|^allium$|^azure_bluet$|^oxeye_daisy$|^cornflower$|^lily_of_the_valley$|^wither_rose$|^torchflower$|tulip|orchid|^dead_bush$|^fern$|short_grass|^kelp_plant$|^seagrass$|^nether_sprouts$|^warped_roots$|^crimson_roots$|^bamboo_sapling$|^pitcher_plant$|^spore_blossom$/.test(id)) return 'cross';
+    if (/^brown_mushroom$|^red_mushroom$|^mushroom_stem$/.test(id)) return 'cross';
     return 'cube';
 }
 
@@ -69,7 +89,7 @@ export function _getState(states, key) {
 }
 
 /** _getState の拡張版: キー候補を複数受け取り最初に見つかった値を返す */
-export function _getStateAny(states, ...keys) {
+function _getStateAny(states, ...keys) {
     for (const key of keys) {
         const v = _getState(states, key);
         if (v !== undefined) return v;
@@ -87,7 +107,7 @@ export function _isTrue(val) {
  * ※ 'direction'(0-3直接)・'cardinal_direction'(文字列)・'facing_direction'(2=N,3=S,4=W,5=E)
  *    をキーごとに正しくマッピング。混合すると direction=3(east) が south に化けるバグを防ぐ。
  */
-export function _getDirection(states) {
+function _getDirection(states) {
     if (!states) return 0;
     const STR_MAP = { south: 0, west: 1, north: 2, east: 3, down: 4, up: 5 };
 
@@ -520,6 +540,125 @@ export function buildSmallGeometry(THREE) {
     return cuboid(THREE, 7/16, 0, 7/16, 9/16, 10/16, 9/16);
 }
 
+/* ─── たいまつ ──────────────────────────────────────────────
+ * 2/16 × 10/16 × 2/16 の細い棒（中央配置）
+ */
+export function buildTorchGeometry(THREE) {
+    return cuboid(THREE, 7/16, 0, 7/16, 9/16, 10/16, 9/16);
+}
+
+/* ─── クロス平面（花・植物等）──────────────────────────────
+ * 2つの薄い板を中央でクロスさせた X 型
+ * Minecraft の花・木の若木に相当
+ */
+export function buildCrossGeometry(THREE) {
+    const geos = [
+        cuboid(THREE, 0,     0, 7/16, 1,     13/16, 9/16),  // N-S 板
+        cuboid(THREE, 7/16,  0, 0,    9/16,  13/16, 1),      // E-W 板
+    ];
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── ランタン ───────────────────────────────────────────────
+ * 本体 (6×9×6) + 上部チェーン (2×7×2)
+ * hanging_bit=1 なら天井吊り下げ、0 なら床置き
+ */
+export function buildLanternGeometry(THREE, states = {}) {
+    const hanging = _isTrue(_getStateAny(states, 'hanging_bit', 'hanging'));
+    const geos = [];
+    if (hanging) {
+        // 吊り下げ: 本体は上寄り、チェーンは上に延びる
+        geos.push(cuboid(THREE, 5/16, 1/16,  5/16, 11/16, 8/16,  11/16)); // 本体
+        geos.push(cuboid(THREE, 7/16, 8/16,  7/16, 9/16,  1,     9/16));  // チェーン
+    } else {
+        // 床置き: 本体は下寄り、小さな脚
+        geos.push(cuboid(THREE, 5/16, 1/16,  5/16, 11/16, 9/16,  11/16)); // 本体
+        geos.push(cuboid(THREE, 6/16, 0,     6/16, 10/16, 1/16,  10/16)); // 底脚
+    }
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 鎖（チェーンブロック）─────────────────────────────────
+ * axis=x/y/z に対応した細い棒
+ * デフォルトは縦（Y軸）
+ */
+export function buildChainGeometry(THREE, states = {}) {
+    const axis = _getStateAny(states, 'pillar_axis', 'axis') || 'y';
+    if (axis === 'x') {
+        return cuboid(THREE, 0, 7/16, 7/16, 1, 9/16, 9/16);
+    } else if (axis === 'z') {
+        return cuboid(THREE, 7/16, 7/16, 0, 9/16, 9/16, 1);
+    }
+    // y軸（デフォルト）
+    return cuboid(THREE, 7/16, 0, 7/16, 9/16, 1, 9/16);
+}
+
+/* ─── ホッパー ───────────────────────────────────────────
+ * 上部リム（全幅）+ 斜め胴体（内側に向かって絞られる台形近似）+ 出口スパウト（方向依存）
+ * facing_direction: 0=下, 2=north, 3=south, 4=west, 5=east
+ */
+export function buildHopperGeometry(THREE, states = {}) {
+    const facing = _getStateAny(states, 'facing_direction', 'facing') ?? 0;
+    const geos = [];
+
+    // リム（上面外周）: 全幅 16px, 高さ 10px〜16px
+    geos.push(cuboid(THREE, 0,     10/16, 0,     1,      1,      1     ));  // 上リム full
+
+    // 斜め胴体（台形を3段で近似）: 10/16 y → 4/16 y, 幅 12/16 → 8/16
+    geos.push(cuboid(THREE, 2/16,  4/16,  2/16,  14/16, 10/16, 14/16 ));   // 中胴 12/16 幅
+
+    // 出口スパウト（4/16 高さ、方向によって側面に飛び出す）
+    if (facing === 2 || facing === 'north') {
+        geos.push(cuboid(THREE, 4/16, 0, 0,     12/16, 4/16, 6/16 ));
+    } else if (facing === 3 || facing === 'south') {
+        geos.push(cuboid(THREE, 4/16, 0, 10/16, 12/16, 4/16, 1    ));
+    } else if (facing === 4 || facing === 'west') {
+        geos.push(cuboid(THREE, 0,     0, 4/16, 6/16,  4/16, 12/16));
+    } else if (facing === 5 || facing === 'east') {
+        geos.push(cuboid(THREE, 10/16, 0, 4/16, 1,     4/16, 12/16));
+    } else {
+        // facing=0 下向き: 中央下スパウト
+        geos.push(cuboid(THREE, 4/16, 0, 4/16, 12/16, 4/16, 12/16));
+    }
+
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 大釜（カルドロン）───────────────────────────────────
+ * 4枚の壁 + 底 （上面は開口）
+ */
+export function buildCauldronGeometry(THREE) {
+    const T = 2/16;  // 壁厚
+    const geos = [];
+    geos.push(cuboid(THREE, 0,   0,   0,   T,   1,   1   ));  // 西壁
+    geos.push(cuboid(THREE, 1-T, 0,   0,   1,   1,   1   ));  // 東壁
+    geos.push(cuboid(THREE, T,   0,   0,   1-T, T,   1   ));  // 底
+    geos.push(cuboid(THREE, T,   0,   0,   1-T, 1,   T   ));  // 北壁（内側）
+    geos.push(cuboid(THREE, T,   0,   1-T, 1-T, 1,   1   ));  // 南壁（内側）
+    return _mergeBufferGeometries(THREE, geos);
+}
+
+/* ─── 金床（アンビル）─────────────────────────────────────
+ * 刃（上部大ブロック）+ 首（細い中間）+ 底座（下部大ブロック）
+ * direction: 0=z軸平行, 1=x軸平行
+ */
+export function buildAnvilGeometry(THREE, states = {}) {
+    const dir = _getStateAny(states, 'direction', 'facing_direction') ?? 0;
+    const geos = [];
+    if (dir === 0 || dir === 'north' || dir === 'south') {
+        // Z軸平行（デフォルト）
+        geos.push(cuboid(THREE, 2/16,  10/16, 0,     14/16, 1,     1    ));  // 刃
+        geos.push(cuboid(THREE, 4/16,  5/16,  3/16,  12/16, 10/16, 13/16));  // 首
+        geos.push(cuboid(THREE, 0,     0,     2/16,  1,     5/16,  14/16));  // 底座
+    } else {
+        // X軸平行
+        geos.push(cuboid(THREE, 0,     10/16, 2/16,  1,     1,     14/16));  // 刃
+        geos.push(cuboid(THREE, 3/16,  5/16,  4/16,  13/16, 10/16, 12/16));  // 首
+        geos.push(cuboid(THREE, 2/16,  0,     0,     14/16, 5/16,  1    ));  // 底座
+    }
+    return _mergeBufferGeometries(THREE, geos);
+}
+
 /* ─── 公開：形状取得 ─────────────────────────────────────── */
 /**
  * @param {object} neighbors - フェンス/壁/ペイン用の接続フラグ { n, s, w, e }
@@ -539,6 +678,13 @@ export function resolveGeometry(THREE, blockId, states = {}, neighbors = {}, nei
         case 'pressure_plate': return buildPressurePlateGeometry(THREE);
         case 'button':         return buildButtonGeometry(THREE);
         case 'pane':           return buildPaneGeometry(THREE, states, neighbors);
+        case 'torch':          return buildTorchGeometry(THREE);
+        case 'cross':          return buildCrossGeometry(THREE);
+        case 'lantern':        return buildLanternGeometry(THREE, states);
+        case 'chain':          return buildChainGeometry(THREE, states);
+        case 'hopper':         return buildHopperGeometry(THREE, states);
+        case 'cauldron':       return buildCauldronGeometry(THREE);
+        case 'anvil':          return buildAnvilGeometry(THREE, states);
         case 'small':          return buildSmallGeometry(THREE);
         case 'cube':
         default:               return cuboid(THREE, 0, 0, 0, 1, 1, 1);

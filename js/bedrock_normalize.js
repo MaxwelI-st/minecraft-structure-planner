@@ -190,11 +190,20 @@ function colorVar(prefix, color) {
 /* ─── 公開 API ─────────────────────────────────────────────────────────── */
 
 /**
+ * ID の正規化（小文字化、トリム、空白をアンダースコアへ変換）
+ * 統合版の "minecraft:oak stairs" のような空白入りIDを "minecraft:oak_stairs" に統一する。
+ */
+export function normalizeId(id) {
+    if (!id) return '';
+    return String(id).toLowerCase().trim().replace(/\s+/g, '_');
+}
+
+/**
  * 汎用 ID + states → 正規化された flat ID
  * 戻り値: { id, increment, skip }
  */
 export function normalizeBedrockBlock(rawId, states) {
-    const id = String(rawId).toLowerCase();
+    const id = normalizeId(rawId);
     const s = states || {};
     let result = { id, increment: 1, skip: false };
 

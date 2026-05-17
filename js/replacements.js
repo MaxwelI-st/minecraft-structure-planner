@@ -12,6 +12,8 @@
  * ────────────────────────────────────────────────────────────────────────────
  */
 
+import { normalizeId } from './bedrock_normalize.js';
+
 /* ─── プリセット定義 ───────────────────────────────────────────────────── */
 
 /** 黒/暗色系の高級素材 → 黒コンクリ・石炭ブロック */
@@ -140,16 +142,20 @@ export const DOWNGRADE_PRESETS = {
 /** coords[] に置換マップを適用（新しい配列を返す） */
 export function applyToCoords(coords, replacementMap) {
     if (!replacementMap || replacementMap.size === 0) return coords;
-    return coords.map(c => {
-        const to = replacementMap.get(c.blockId);
-        if (!to) return c;
-        // rawId のみ新しいブロックIDに合わせて更新する。
-        // rawId が古いままだと resourcepack.js の _expandBedrockTextures() が
-        // rawId を優先して古いブロックのテクスチャを引いてしまう。
-        // states は保持する（階段の向きなどを引き継ぐため）。
-        const newRawId = to.replace(/^minecraft:/, '');
-        return { ...c, blockId: to, rawId: newRawId };
-    });
+    const out = [];
+    for (const c of coords) {
+        const normId = normalizeId(c.blockId);
+        const to = replacementMap.get(normId) || replacementMap.get('minecraft:' + normId.replace('minecraft:', '')) || replacementMap.get(normId.replace('minecraft:', ''));
+        if (to) {
+            const lowTo = to.toLowerCase();
+            if (lowTo === 'minecraft:air' || lowTo === 'air') continue;
+            const newRawId = to.replace(/^minecraft:/, '');
+            out.push({ ...c, blockId: to, rawId: newRawId });
+        } else {
+            out.push(c);
+        }
+    }
+    return out;
 }
 
 /** results[] (id/count などの配列) に置換マップを適用して再集計 */
@@ -157,7 +163,11 @@ export function applyToResults(results, replacementMap, getCategory) {
     if (!replacementMap || replacementMap.size === 0) return results;
     const counts = new Map();
     for (const r of results) {
-        const id = replacementMap.get(r.id) || r.id;
+        const normRId = normalizeId(r.id);
+        const to = replacementMap.get(normRId) || replacementMap.get('minecraft:' + normRId.replace('minecraft:', '')) || replacementMap.get(normRId.replace('minecraft:', ''));
+        const id = to || normRId;
+        const lowId = id.toLowerCase();
+        if (lowId === 'minecraft:air' || lowId === 'air') continue; // 削除されたものは集計から除外
         const prev = counts.get(id);
         if (prev) {
             prev.count += r.count;

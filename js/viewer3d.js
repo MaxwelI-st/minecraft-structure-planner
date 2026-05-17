@@ -1,16 +1,12 @@
 /**
  * viewer3d.js - Three.js based 3D structure viewer
- * Version: v2.5.12 (Fix: door open/close, glass transparency, grass biome color, corner stairs)
+ * Version: v2.6.0 (Fix: door open/close, glass transparency, grass biome color, corner stairs)
  */
 
 import { getFaceUrls, isLoaded as packIsLoaded, getName as packName } from './resourcepack.js';
 import { resolveGeometry, classifyShape } from './blockshapes.js';
 import { normalizeBedrockBlock } from './bedrock_normalize.js';
 import { _getState, _isTrue } from './blockshapes.js';
-
-console.log('##########################################');
-console.log('###  Viewer v2.5.12: NEW VERSION LOADED  ###');
-console.log('##########################################');
 
 // ─── バイオームカラー定数 ──────────────────────────────────────────────────
 // 平原バイオーム準拠（Minecraft 標準）
@@ -63,6 +59,11 @@ function _isGrassBlock(blockId) {
     return local === 'grass_block' || local === 'grass';
 }
 
+/** 透過判定が必要なブロック ID パターン */
+function _isTransparent(blockId) {
+    return /glass|leaves|fence|trapdoor|door|stairs|slab|carpet|wall|pane|bars|water|lava|ice|cobweb|chain|ladder|sapling|grass$|fern|vine|kelp|seagrass|torch|button|pressure_plate|sign|banner|rail|hopper|piston/.test(blockId);
+}
+
 const BLOCK_COLORS = {
     grass_block: 0x79c05a, grass: 0x79c05a, dirt: 0x866043, stone: 0x7a7a7a,
     cobblestone: 0x9a9a9a, mossy_cobblestone: 0x6a7a6a,
@@ -98,6 +99,10 @@ function _shapeSignature(blockId, states) {
     else if (shape === 'trapdoor') keys.push('open_bit', 'upside_down_bit', 'direction');
     else if (shape === 'door') keys.push('open_bit', 'direction', 'hinge_bit', 'upper_block_bit');
     else if (shape === 'fence_gate') keys.push('open_bit', 'direction');
+    else if (shape === 'lantern') keys.push('hanging_bit', 'hanging');
+    else if (shape === 'chain')   keys.push('pillar_axis', 'axis');
+    else if (shape === 'hopper')  keys.push('facing_direction', 'facing');
+    else if (shape === 'anvil')   keys.push('direction', 'facing_direction');
     const sigParts = keys.map(k => k + '=' + (states[k] ?? ''));
     return blockId + '|' + sigParts.join(',');
 }
@@ -112,6 +117,7 @@ export class Viewer3D {
         this.colorMode = 'material';
         this._matCache = new Map();
         this._lastCoords = null; this._lastSize = null; this._lastOptions = null;
+        this._highlightedBlockId = null;
         // 置換を再適用して再描画が必要な場合に呼び出すコールバック（app.js がセット）
         this.onNeedsReload = null;
     }
@@ -122,6 +128,42 @@ export class Viewer3D {
         this._setupScene();
         this._setupControls();
         this.isInitialized = true;
+    }
+
+    /** WebGL リソースとイベントの解放 */
+    destroy() {
+        if (!this.isInitialized) return;
+        
+        // シーン全体の走査による完全解放 (P2改善)
+        if (this.scene) {
+            this.scene.traverse((object) => {
+                if (object.isMesh) {
+                    if (object.geometry) object.geometry.dispose();
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(m => m.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
+                    }
+                }
+            });
+        }
+        
+        this.meshes = [];
+        this._matCache.clear();
+
+        if (this.renderer) {
+            this.renderer.dispose();
+            if (this.renderer.domElement && this.renderer.domElement.parentNode) {
+                this.renderer.domElement.remove();
+            }
+        }
+        
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.isInitialized = false;
     }
 
     _loadThree() {
@@ -163,48 +205,75 @@ export class Viewer3D {
 
         // ─── 回転（左ドラッグ）─────────────────────────────────────────────
         const orbitBy = (dx, dy) => {
-            this.spherical.theta -= dx * 0.01;
-            this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi + dy * 0.01));
+            // 右ドラッグ → カメラが右へ周回（直感的なターンテーブル回転）
+            this.spherical.theta += dx * 0.006;
+            this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi + dy * 0.006));
             this._updateCamera();
         };
 
         // ─── パン（右ドラッグ / 中ボタンドラッグ）────────────────────────────
-        // 球面座標からカメラのローカル右ベクトルと上ベクトルを計算してターゲットを移動
+        // カメラのローカル右・上ベクトルでターゲットを移動（掴んで動かす感覚）
         const panBy = (dx, dy) => {
-            const speed = this.spherical.radius * 0.0012;
+            // キャンバスの高さ基準で1pxあたりの移動量を決める（距離に比例）
+            const speed = this.spherical.radius * 0.006;
             const { theta, phi } = this.spherical;
-            // カメラから見た右方向（世界座標）
+            // カメラ右方向（水平）
             const rx =  Math.cos(theta);
-            const ry =  0;
             const rz = -Math.sin(theta);
-            // カメラから見た上方向（世界座標、ティルトを考慮）
-            const ux = Math.sin(theta) * Math.cos(phi);
+            // カメラ上方向（ティルト考慮）
+            const ux =  Math.sin(theta) * Math.cos(phi);
             const uy = -Math.sin(phi);
-            const uz = Math.cos(theta) * Math.cos(phi);
-            this.target.x += (-dx * rx + dy * ux) * speed;
-            this.target.y +=  dy * uy * speed;
-            this.target.z += (-dx * rz + dy * uz) * speed;
+            const uz =  Math.cos(theta) * Math.cos(phi);
+            // drag right → scene right → target left (-dx)
+            // drag down  → scene down  → target up   (-dy、uyが負なので打ち消し合いに注意)
+            this.target.x += (-dx * rx - dy * ux) * speed;
+            this.target.y += (-dy * uy) * speed;  // uy<0 なので -dy*uy = dy*sin(phi) > 0 when dy>0 ✓
+            this.target.z += (-dx * rz - dy * uz) * speed;
             this._updateCamera();
         };
 
-        let dragMode = null; // 'orbit' | 'pan' | null
+        // dragMode: 'orbit' | 'pan' | 'click' | null
+        let dragMode = null;
         let prevMouse = { x: 0, y: 0 };
+        let _mouseDownAt = { x: 0, y: 0 };
+        let _dragMoved = false;
 
         el.addEventListener('mousedown', (e) => {
-            // 左ボタン=回転、右/中ボタン=パン
-            dragMode = (e.button === 0) ? 'orbit' : 'pan';
             prevMouse = { x: e.clientX, y: e.clientY };
+            _mouseDownAt = { x: e.clientX, y: e.clientY };
+            _dragMoved = false;
+            if (e.button === 0) {
+                // 左: Shift押しならパン、それ以外は選択待ち
+                dragMode = e.shiftKey ? 'pan' : 'click';
+            } else if (e.button === 2) {
+                // 右ドラッグ → 回転
+                dragMode = 'orbit';
+            } else if (e.button === 1) {
+                // 中ドラッグ → パン（補助）
+                dragMode = 'pan';
+            }
             e.preventDefault();
         });
         window.addEventListener('mousemove', (e) => {
             if (!dragMode) return;
             const dx = e.clientX - prevMouse.x;
             const dy = e.clientY - prevMouse.y;
+            if (Math.abs(e.clientX - _mouseDownAt.x) > 4 || Math.abs(e.clientY - _mouseDownAt.y) > 4) {
+                _dragMoved = true;
+                // 左ドラッグ中にShiftを押したらパンに切り替え
+                if (dragMode === 'click' && e.shiftKey) dragMode = 'pan';
+            }
             if (dragMode === 'orbit') orbitBy(dx, dy);
-            else                      panBy(dx, dy);
+            else if (dragMode === 'pan') panBy(dx, dy);
             prevMouse = { x: e.clientX, y: e.clientY };
         });
-        window.addEventListener('mouseup', () => { dragMode = null; });
+        window.addEventListener('mouseup', (e) => {
+            // 左クリック（ほぼ動かしていない）→ ブロック選択
+            if (!_dragMoved && dragMode === 'click' && e.button === 0) {
+                this._handleClick(e);
+            }
+            dragMode = null;
+        });
         // 右クリックメニューを抑制
         el.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -267,9 +336,9 @@ export class Viewer3D {
     loadStructure(coords, size, options = {}) {
         if (!this.isInitialized) return;
         const THREE = window.THREE;
-        const { yMin = 0, yMax = 999, colorMode } = options;
+        const { yMin = 0, yMax = 999, xMin = 0, xMax = 9999, zMin = 0, zMax = 9999, colorMode } = options;
         if (colorMode) this.colorMode = colorMode;
-        this._lastCoords = coords; this._lastSize = size; this._lastOptions = { yMin, yMax };
+        this._lastCoords = coords; this._lastSize = size; this._lastOptions = { yMin, yMax, xMin, xMax, zMin, zMax };
 
         // キャッシュをクリア（置換後ブロックIDでテクスチャを正しく引き直すため）
         this._matCache.clear();
@@ -279,31 +348,61 @@ export class Viewer3D {
             if (mesh.geometry?.dispose) mesh.geometry.dispose();
         }
         this.meshes = [];
-        const filtered = coords.filter(c => c.y >= yMin && c.y <= yMax);
+
+        // Yフィルタおよび Air 除去を適用
+        const filtered = coords.filter(c => {
+            if (c.y < yMin || c.y > yMax) return false;
+            if (c.x < xMin || c.x > xMax) return false;
+            if (c.z < zMin || c.z > zMax) return false;
+            const bid = c.blockId.toLowerCase();
+            if (bid === 'minecraft:air' || bid === 'air') return false;
+            return true;
+        });
         if (filtered.length === 0) return;
 
         // ─── 隣接ブロック検索用マップ ─────────────────────────────────────
         // キー: "x,y,z" → ブロック情報 { blockId, states }
         const blockMap = new Map();
-        for (const c of filtered) blockMap.set(`${c.x},${c.y},${c.z}`, c);
+        for (const c of coords) blockMap.set(`${c.x},${c.y},${c.z}`, c);
 
         /** 座標 (x,y,z) のブロックを取得する関数 */
         const getBlock = (x, y, z) => blockMap.get(`${x},${y},${z}`) || null;
 
-        // ─── 接続フラグ用 Set（フェンス・壁・ペイン用）─────────────────────
-        const posMap = new Set();
-        for (const c of filtered) posMap.add(`${c.x},${c.y},${c.z}`);
+        // ─── 断面表示（スライス）でも中身が詰まって見えるようにするための動的カリング ───
+        // 1. 現在のフィルタ（Y軸など）を通過したブロックのみを Set に入れる
+        const visiblePosSet = new Set();
+        const opaquePosSet = new Set();
+        for (const c of filtered) {
+            visiblePosSet.add(`${c.x},${c.y},${c.z}`);
+            if (!_isTransparent(c.blockId)) {
+                opaquePosSet.add(`${c.x},${c.y},${c.z}`);
+            }
+        }
+
+        /** 周囲が不透過ブロックで囲まれているか判定（カリング用） */
+        const isOccluded = (x, y, z) => opaquePosSet.has(`${x},${y},${z}`);
 
         // ─── 形状シグネチャでグループ化（同一形状をまとめて InstancedMesh へ）
         // 階段はコーナー形状が隣接依存なので、シグネチャに隣接情報も含める
         const groups = new Map();
         for (const c of filtered) {
-            // フェンス/壁/ペイン用の接続フラグ（boolean）
+            // 全方位が「現在表示されている不透過ブロック」に囲まれているなら、そのブロック自体を描画しない
+            // （ただし透過ブロックは常に描画）
+            const trans = _isTransparent(c.blockId);
+            if (!trans &&
+                isOccluded(c.x + 1, c.y, c.z) && isOccluded(c.x - 1, c.y, c.z) &&
+                isOccluded(c.x, c.y + 1, c.z) && isOccluded(c.x, c.y - 1, c.z) &&
+                isOccluded(c.x, c.y, c.z + 1) && isOccluded(c.x, c.y, c.z - 1)
+            ) {
+                continue; // 完全に隠れているので描画スキップ
+            }
+
+            // フェンス/壁/ペイン用の接続フラグ（これは「現在表示されているか」で判定）
             const neighbors = {
-                n: posMap.has(`${c.x},${c.y},${c.z - 1}`),
-                s: posMap.has(`${c.x},${c.y},${c.z + 1}`),
-                w: posMap.has(`${c.x - 1},${c.y},${c.z}`),
-                e: posMap.has(`${c.x + 1},${c.y},${c.z}`)
+                n: visiblePosSet.has(`${c.x},${c.y},${c.z - 1}`),
+                s: visiblePosSet.has(`${c.x},${c.y},${c.z + 1}`),
+                w: visiblePosSet.has(`${c.x - 1},${c.y},${c.z}`),
+                e: visiblePosSet.has(`${c.x + 1},${c.y},${c.z}`)
             };
 
             // 階段コーナー判定用の隣接ブロック情報（blockId + states 付き）
@@ -336,9 +435,25 @@ export class Viewer3D {
         const boxGeo = new THREE.BoxGeometry(1, 1, 1);
         const mat4 = new THREE.Matrix4();
 
+        // テクスチャ統計の初期化
+        this.textureStats = { success: 0, missing: 0, missingIds: new Set() };
+
         for (const grp of groups.values()) {
             const { blockId, rawId, states, neighbors, neighborBlocks, list } = grp;
             const mat = this._buildMaterial(THREE, blockId, rawId, states);
+            
+            // 統計の更新
+            const isReal = (this.colorMode === 'realtexture');
+            if (isReal) {
+                const urls = getFaceUrls(blockId, { rawId, states });
+                if (urls && urls.found) {
+                    this.textureStats.success += list.length;
+                } else {
+                    this.textureStats.missing += list.length;
+                    this.textureStats.missingIds.add(blockId);
+                }
+            }
+
             let geo = boxGeo;
             try {
                 // resolveGeometry に neighborBlocks を渡してコーナー階段を有効化
@@ -351,12 +466,20 @@ export class Viewer3D {
             }
 
             const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+            mesh.userData = { blockId };
             // ガラス系: alphaTestで透明ピクセルを抜くのでrenderOrderの特別扱い不要
+            const isHighlighted = (this._highlightedBlockId === blockId);
+            const hlColor = new THREE.Color(0xffff00); // 黄色でハイライト
+            const normalColor = new THREE.Color(0xffffff);
+
+            mesh.userData.instanceCoords = list; // クリック検出用に座標を保持
             for (let i = 0; i < list.length; i++) {
                 mat4.setPosition(list[i].x, list[i].y, list[i].z);
                 mesh.setMatrixAt(i, mat4);
+                mesh.setColorAt(i, isHighlighted ? hlColor : normalColor);
             }
             mesh.instanceMatrix.needsUpdate = true;
+            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
             this.scene.add(mesh);
             this.meshes.push(mesh);
         }
@@ -508,8 +631,162 @@ export class Viewer3D {
             this.loadStructure(this._lastCoords, this._lastSize, this._lastOptions || {});
         }
     }
+    _handleClick(e) {
+        if (!this.onBlockClick) return;
+        const THREE = window.THREE;
+        if (!THREE) return;
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+           -((e.clientY - rect.top)  / rect.height) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, this.camera);
+        const hits = raycaster.intersectObjects(this.meshes);
+        if (hits.length === 0) {
+            this.onBlockClick(null); // 空白クリック → ポップアップを閉じる
+            return;
+        }
+        const hit = hits[0];
+        const mesh = hit.object;
+        const coord = mesh.userData.instanceCoords?.[hit.instanceId] ?? null;
+        this.onBlockClick({
+            blockId: mesh.userData.blockId,
+            coord,
+            screenX: e.clientX,
+            screenY: e.clientY
+        });
+    }
+
     resetCamera() {
         this.spherical = { theta: 0.5, phi: 0.8, radius: 50 };
         this._updateCamera();
     }
+
+    /** 床タイプの設定 */
+    setFloorType(type) {
+        if (!this.scene) return;
+        if (this.floor) {
+            this.scene.remove(this.floor);
+            this.floor = null;
+        }
+
+        const THREE = window.THREE;
+        if (type === 'none') return;
+
+        let color = 0x222222;
+        let gridColor = 0x444444;
+        let opacity = 1.0;
+        let showPlane = true;
+
+        switch (type) {
+            case 'grid': // 透明グリッド
+                gridColor = 0x000000;
+                showPlane = false;
+                break;
+            case 'grass': 
+                color = 0x5e8a4d; // Minecraft grass
+                gridColor = 0xffffff; 
+                break;
+            case 'snow':  
+                color = 0xffffff; 
+                gridColor = 0x888888; 
+                break;
+            case 'stone': 
+                color = 0x5a5a5a; 
+                gridColor = 0xffffff; 
+                break;
+            case 'nether':
+                color = 0x4a1010; // Crimson/Netherrack
+                gridColor = 0xffffff; 
+                break;
+            case 'end':   
+                color = 0xd8d6a3; // End stone
+                gridColor = 0x444444; 
+                break;
+            case 'water': 
+                color = 0x1a4a8a; 
+                gridColor = 0xffffff; 
+                opacity = 0.5;
+                break;
+            case 'sand':
+                color = 0xd2b48c; // Sandy beige
+                gridColor = 0x8b7e66;
+                break;
+            default:      
+                color = 0x111111; 
+                gridColor = 0x333333; 
+                break;
+        }
+
+        this.floor = new THREE.Group();
+
+        // 1. 板ポリゴン（表示する場合のみ）
+        if (showPlane) {
+            const geo = new THREE.PlaneGeometry(200, 200);
+            const mat = new THREE.MeshLambertMaterial({ 
+                color: color, 
+                side: THREE.DoubleSide,
+                transparent: (opacity < 1.0),
+                opacity: opacity
+            });
+            const plane = new THREE.Mesh(geo, mat);
+            plane.rotation.x = Math.PI / 2;
+            plane.position.y = -0.02; // 重なり防止
+            this.floor.add(plane);
+        }
+
+        // 2. グリッド（位置把握用）
+        const grid = new THREE.GridHelper(200, 40, gridColor, gridColor);
+        if (grid.material) {
+            grid.material.transparent = true;
+            grid.material.opacity = (type === 'grid' ? 0.4 : 0.15); // 透明グリッドモードでは少し濃くする
+        }
+        grid.position.y = 0;
+        this.floor.add(grid);
+
+        this.scene.add(this.floor);
+    }
+
+    // ─── ハイライト（素材一覧との連動） ────────────────────────────────────
+    // ─── 選択インジケーター（クリックした1ブロックに縁を表示）────────────────
+    setSelectionIndicator(coord) {
+        this.clearSelectionIndicator();
+        if (!coord || !this.scene) return;
+        const THREE = window.THREE;
+        if (!THREE) return;
+        // EdgesGeometry で12辺だけ描画 → 面を塗らずに縁だけ光る
+        const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.08, 1.08, 1.08));
+        const mat   = new THREE.LineBasicMaterial({ color: 0x00e5ff, linewidth: 1 });
+        this._selectionMesh = new THREE.LineSegments(edges, mat);
+        this._selectionMesh.position.set(coord.x, coord.y, coord.z);
+        this.scene.add(this._selectionMesh);
+        // ゆっくり点滅アニメーション
+        this._selectionMesh.userData.birthTime = performance.now();
+        this._animateSelection();
+    }
+
+    _animateSelection() {
+        if (!this._selectionMesh || !this.scene?.children.includes(this._selectionMesh)) return;
+        const t = (performance.now() - this._selectionMesh.userData.birthTime) / 1000;
+        // 0.6〜1.0 の間で sin 点滅
+        const op = 0.7 + 0.3 * Math.sin(t * Math.PI * 2);
+        this._selectionMesh.material.opacity = op;
+        this._selectionMesh.material.transparent = true;
+        this._selAnimRaf = requestAnimationFrame(() => this._animateSelection());
+    }
+
+    clearSelectionIndicator() {
+        if (this._selAnimRaf) { cancelAnimationFrame(this._selAnimRaf); this._selAnimRaf = null; }
+        if (this._selectionMesh) {
+            this.scene?.remove(this._selectionMesh);
+            this._selectionMesh.geometry?.dispose();
+            this._selectionMesh.material?.dispose();
+            this._selectionMesh = null;
+        }
+    }
+
+    // 旧APIとの互換ラッパー
+    highlightBlock(blockId) {}
+    clearHighlight() { this.clearSelectionIndicator(); }
 }

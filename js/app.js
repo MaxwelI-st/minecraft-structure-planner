@@ -2,8 +2,10 @@ import { DotArtEditor, DOT_PALETTE } from './dotart.js';
 import { Viewer3D } from './viewer3d.js';
 import * as ResourcePack from './resourcepack.js';
 import * as Image2Dot from './image2dot.js';
-import { NBTParser, NBTWriter } from './nbt.js';
+import { NBTParser, NBTWriter, decompressIfNeeded } from './nbt.js';
 import { DOWNGRADE_PRESETS, applyToCoords, applyToResults, applicablePairsForStructure } from './replacements.js';
+import { BLOCK_CATALOG as BC_DATA } from './block_catalog.js';
+import { normalizeId } from './bedrock_normalize.js';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -28,184 +30,7 @@ const MC_COLORS = [
     { key: 'black',      hex: '#1D1D21', name: '黒' },
 ];
 
-// ─── ブロックカタログ（置換先ピッカー用）────────────────────────────────────
-const BLOCK_CATALOG = {
-    full: [
-        { type: 'color', base: 'wool',          name: 'ウール' },
-        { type: 'color', base: 'concrete',       name: 'コンクリート' },
-        { type: 'color', base: 'terracotta',     name: 'テラコッタ' },
-        { type: 'color', base: 'stained_glass',  name: 'ステンドグラス' },
-        { type: 'color', base: 'carpet',         name: 'カーペット' },
-        { type: 'single', id: 'minecraft:stone',                    name: '石' },
-        { type: 'single', id: 'minecraft:cobblestone',              name: '丸石' },
-        { type: 'single', id: 'minecraft:smooth_stone',             name: '滑らかな石' },
-        { type: 'single', id: 'minecraft:stone_bricks',             name: '石レンガ' },
-        { type: 'single', id: 'minecraft:mossy_stone_bricks',       name: '苔むした石レンガ' },
-        { type: 'single', id: 'minecraft:cracked_stone_bricks',     name: 'ひびの入った石レンガ' },
-        { type: 'single', id: 'minecraft:chiseled_stone_bricks',    name: '彫刻石レンガ' },
-        { type: 'single', id: 'minecraft:deepslate',                name: '深層岩' },
-        { type: 'single', id: 'minecraft:cobbled_deepslate',        name: '深層岩の丸石' },
-        { type: 'single', id: 'minecraft:polished_deepslate',       name: '磨かれた深層岩' },
-        { type: 'single', id: 'minecraft:deepslate_bricks',         name: '深層岩レンガ' },
-        { type: 'single', id: 'minecraft:deepslate_tiles',          name: '深層岩タイル' },
-        { type: 'single', id: 'minecraft:bricks',                   name: 'レンガ' },
-        { type: 'single', id: 'minecraft:nether_bricks',            name: 'ネザーレンガ' },
-        { type: 'single', id: 'minecraft:red_nether_bricks',        name: '赤いネザーレンガ' },
-        { type: 'single', id: 'minecraft:quartz_block',             name: 'クォーツブロック' },
-        { type: 'single', id: 'minecraft:smooth_quartz',            name: '滑らかなクォーツ' },
-        { type: 'single', id: 'minecraft:chiseled_quartz_block',    name: '彫刻クォーツ' },
-        { type: 'single', id: 'minecraft:sandstone',                name: '砂岩' },
-        { type: 'single', id: 'minecraft:smooth_sandstone',         name: '滑らかな砂岩' },
-        { type: 'single', id: 'minecraft:cut_sandstone',            name: '切り砂岩' },
-        { type: 'single', id: 'minecraft:red_sandstone',            name: '赤い砂岩' },
-        { type: 'single', id: 'minecraft:smooth_red_sandstone',     name: '滑らかな赤い砂岩' },
-        { type: 'single', id: 'minecraft:oak_planks',               name: 'オークの板材' },
-        { type: 'single', id: 'minecraft:spruce_planks',            name: 'トウヒの板材' },
-        { type: 'single', id: 'minecraft:birch_planks',             name: 'シラカバの板材' },
-        { type: 'single', id: 'minecraft:jungle_planks',            name: 'ジャングルの板材' },
-        { type: 'single', id: 'minecraft:acacia_planks',            name: 'アカシアの板材' },
-        { type: 'single', id: 'minecraft:dark_oak_planks',          name: 'ダークオークの板材' },
-        { type: 'single', id: 'minecraft:cherry_planks',            name: 'チェリーの板材' },
-        { type: 'single', id: 'minecraft:pale_oak_planks',          name: 'ペールオークの板材' },
-        { type: 'single', id: 'minecraft:mangrove_planks',          name: 'マングローブの板材' },
-        { type: 'single', id: 'minecraft:crimson_planks',           name: 'クリムゾンの板材' },
-        { type: 'single', id: 'minecraft:warped_planks',            name: 'ワープした板材' },
-        { type: 'single', id: 'minecraft:bamboo_planks',            name: '竹の板材' },
-        { type: 'single', id: 'minecraft:glass',                    name: 'ガラス' },
-        { type: 'single', id: 'minecraft:tinted_glass',             name: '色付きガラス' },
-        { type: 'single', id: 'minecraft:obsidian',                 name: '黒曜石' },
-        { type: 'single', id: 'minecraft:crying_obsidian',          name: '泣く黒曜石' },
-        { type: 'single', id: 'minecraft:purpur_block',             name: 'プルプァブロック' },
-        { type: 'single', id: 'minecraft:end_stone',                name: 'エンドストーン' },
-        { type: 'single', id: 'minecraft:end_stone_bricks',         name: 'エンドストーンレンガ' },
-        { type: 'single', id: 'minecraft:blackstone',               name: '黒石' },
-        { type: 'single', id: 'minecraft:polished_blackstone',      name: '磨かれた黒石' },
-        { type: 'single', id: 'minecraft:polished_blackstone_bricks', name: '磨かれた黒石レンガ' },
-        { type: 'single', id: 'minecraft:basalt',                   name: '玄武岩' },
-        { type: 'single', id: 'minecraft:polished_basalt',          name: '磨かれた玄武岩' },
-        { type: 'single', id: 'minecraft:mud_bricks',               name: '泥レンガ' },
-        { type: 'single', id: 'minecraft:diamond_block',            name: 'ダイヤモンドブロック' },
-        { type: 'single', id: 'minecraft:gold_block',               name: '金ブロック' },
-        { type: 'single', id: 'minecraft:iron_block',               name: '鉄ブロック' },
-        { type: 'single', id: 'minecraft:emerald_block',            name: 'エメラルドブロック' },
-        { type: 'single', id: 'minecraft:netherite_block',          name: 'ネザライトブロック' },
-        { type: 'single', id: 'minecraft:copper_block',             name: '銅ブロック' },
-    ],
-    stairs: [
-        { type: 'single', id: 'minecraft:oak_stairs',               name: 'オークの階段' },
-        { type: 'single', id: 'minecraft:spruce_stairs',            name: 'トウヒの階段' },
-        { type: 'single', id: 'minecraft:birch_stairs',             name: 'シラカバの階段' },
-        { type: 'single', id: 'minecraft:jungle_stairs',            name: 'ジャングルの階段' },
-        { type: 'single', id: 'minecraft:acacia_stairs',            name: 'アカシアの階段' },
-        { type: 'single', id: 'minecraft:dark_oak_stairs',          name: 'ダークオークの階段' },
-        { type: 'single', id: 'minecraft:cherry_stairs',            name: 'チェリーの階段' },
-        { type: 'single', id: 'minecraft:pale_oak_stairs',          name: 'ペールオークの階段' },
-        { type: 'single', id: 'minecraft:mangrove_stairs',          name: 'マングローブの階段' },
-        { type: 'single', id: 'minecraft:crimson_stairs',           name: 'クリムゾンの階段' },
-        { type: 'single', id: 'minecraft:warped_stairs',            name: 'ワープした階段' },
-        { type: 'single', id: 'minecraft:bamboo_stairs',            name: '竹の階段' },
-        { type: 'single', id: 'minecraft:stone_stairs',             name: '石の階段' },
-        { type: 'single', id: 'minecraft:cobblestone_stairs',       name: '丸石の階段' },
-        { type: 'single', id: 'minecraft:smooth_stone_stairs',      name: '滑らかな石の階段' },
-        { type: 'single', id: 'minecraft:stone_brick_stairs',       name: '石レンガの階段' },
-        { type: 'single', id: 'minecraft:mossy_stone_brick_stairs', name: '苔石レンガの階段' },
-        { type: 'single', id: 'minecraft:deepslate_brick_stairs',   name: '深層岩レンガの階段' },
-        { type: 'single', id: 'minecraft:deepslate_tile_stairs',    name: '深層岩タイルの階段' },
-        { type: 'single', id: 'minecraft:cobbled_deepslate_stairs', name: '深層岩丸石の階段' },
-        { type: 'single', id: 'minecraft:brick_stairs',             name: 'レンガの階段' },
-        { type: 'single', id: 'minecraft:nether_brick_stairs',      name: 'ネザーレンガの階段' },
-        { type: 'single', id: 'minecraft:red_nether_brick_stairs',  name: '赤ネザーレンガの階段' },
-        { type: 'single', id: 'minecraft:quartz_stairs',            name: 'クォーツの階段' },
-        { type: 'single', id: 'minecraft:smooth_quartz_stairs',     name: '滑らかなクォーツの階段' },
-        { type: 'single', id: 'minecraft:sandstone_stairs',         name: '砂岩の階段' },
-        { type: 'single', id: 'minecraft:smooth_sandstone_stairs',  name: '滑らかな砂岩の階段' },
-        { type: 'single', id: 'minecraft:red_sandstone_stairs',     name: '赤い砂岩の階段' },
-        { type: 'single', id: 'minecraft:purpur_stairs',            name: 'プルプァの階段' },
-        { type: 'single', id: 'minecraft:blackstone_stairs',        name: '黒石の階段' },
-        { type: 'single', id: 'minecraft:polished_blackstone_stairs', name: '磨かれた黒石の階段' },
-        { type: 'single', id: 'minecraft:polished_blackstone_brick_stairs', name: '磨かれた黒石レンガの階段' },
-        { type: 'single', id: 'minecraft:mud_brick_stairs',         name: '泥レンガの階段' },
-        { type: 'single', id: 'minecraft:end_stone_brick_stairs',   name: 'エンドストーンレンガの階段' },
-    ],
-    slabs: [
-        { type: 'single', id: 'minecraft:oak_slab',                 name: 'オークのハーフ' },
-        { type: 'single', id: 'minecraft:spruce_slab',              name: 'トウヒのハーフ' },
-        { type: 'single', id: 'minecraft:birch_slab',               name: 'シラカバのハーフ' },
-        { type: 'single', id: 'minecraft:jungle_slab',              name: 'ジャングルのハーフ' },
-        { type: 'single', id: 'minecraft:acacia_slab',              name: 'アカシアのハーフ' },
-        { type: 'single', id: 'minecraft:dark_oak_slab',            name: 'ダークオークのハーフ' },
-        { type: 'single', id: 'minecraft:cherry_slab',              name: 'チェリーのハーフ' },
-        { type: 'single', id: 'minecraft:pale_oak_slab',            name: 'ペールオークのハーフ' },
-        { type: 'single', id: 'minecraft:mangrove_slab',            name: 'マングローブのハーフ' },
-        { type: 'single', id: 'minecraft:crimson_slab',             name: 'クリムゾンのハーフ' },
-        { type: 'single', id: 'minecraft:warped_slab',              name: 'ワープしたハーフ' },
-        { type: 'single', id: 'minecraft:bamboo_slab',              name: '竹のハーフ' },
-        { type: 'single', id: 'minecraft:stone_slab',               name: '石のハーフ' },
-        { type: 'single', id: 'minecraft:smooth_stone_slab',        name: '滑らかな石のハーフ' },
-        { type: 'single', id: 'minecraft:stone_brick_slab',         name: '石レンガのハーフ' },
-        { type: 'single', id: 'minecraft:cobblestone_slab',         name: '丸石のハーフ' },
-        { type: 'single', id: 'minecraft:deepslate_brick_slab',     name: '深層岩レンガのハーフ' },
-        { type: 'single', id: 'minecraft:deepslate_tile_slab',      name: '深層岩タイルのハーフ' },
-        { type: 'single', id: 'minecraft:brick_slab',               name: 'レンガのハーフ' },
-        { type: 'single', id: 'minecraft:nether_brick_slab',        name: 'ネザーレンガのハーフ' },
-        { type: 'single', id: 'minecraft:quartz_slab',              name: 'クォーツのハーフ' },
-        { type: 'single', id: 'minecraft:smooth_quartz_slab',       name: '滑らかなクォーツのハーフ' },
-        { type: 'single', id: 'minecraft:sandstone_slab',           name: '砂岩のハーフ' },
-        { type: 'single', id: 'minecraft:red_sandstone_slab',       name: '赤い砂岩のハーフ' },
-        { type: 'single', id: 'minecraft:blackstone_slab',          name: '黒石のハーフ' },
-        { type: 'single', id: 'minecraft:mud_brick_slab',           name: '泥レンガのハーフ' },
-        { type: 'single', id: 'minecraft:end_stone_brick_slab',     name: 'エンドストーンレンガのハーフ' },
-    ],
-    fences: [
-        { type: 'single', id: 'minecraft:oak_fence',                name: 'オークのフェンス' },
-        { type: 'single', id: 'minecraft:spruce_fence',             name: 'トウヒのフェンス' },
-        { type: 'single', id: 'minecraft:birch_fence',              name: 'シラカバのフェンス' },
-        { type: 'single', id: 'minecraft:jungle_fence',             name: 'ジャングルのフェンス' },
-        { type: 'single', id: 'minecraft:acacia_fence',             name: 'アカシアのフェンス' },
-        { type: 'single', id: 'minecraft:dark_oak_fence',           name: 'ダークオークのフェンス' },
-        { type: 'single', id: 'minecraft:cherry_fence',             name: 'チェリーのフェンス' },
-        { type: 'single', id: 'minecraft:pale_oak_fence',           name: 'ペールオークのフェンス' },
-        { type: 'single', id: 'minecraft:mangrove_fence',           name: 'マングローブのフェンス' },
-        { type: 'single', id: 'minecraft:crimson_fence',            name: 'クリムゾンのフェンス' },
-        { type: 'single', id: 'minecraft:warped_fence',             name: 'ワープしたフェンス' },
-        { type: 'single', id: 'minecraft:nether_brick_fence',       name: 'ネザーレンガのフェンス' },
-        { type: 'single', id: 'minecraft:cobblestone_wall',         name: '丸石の壁' },
-        { type: 'single', id: 'minecraft:mossy_cobblestone_wall',   name: '苔石の壁' },
-        { type: 'single', id: 'minecraft:stone_brick_wall',         name: '石レンガの壁' },
-        { type: 'single', id: 'minecraft:mossy_stone_brick_wall',   name: '苔石レンガの壁' },
-        { type: 'single', id: 'minecraft:deepslate_brick_wall',     name: '深層岩レンガの壁' },
-        { type: 'single', id: 'minecraft:deepslate_tile_wall',      name: '深層岩タイルの壁' },
-        { type: 'single', id: 'minecraft:blackstone_wall',          name: '黒石の壁' },
-        { type: 'single', id: 'minecraft:nether_brick_wall',        name: 'ネザーレンガの壁' },
-        { type: 'single', id: 'minecraft:end_stone_brick_wall',     name: 'エンドストーンレンガの壁' },
-        { type: 'single', id: 'minecraft:sandstone_wall',           name: '砂岩の壁' },
-        { type: 'single', id: 'minecraft:mud_brick_wall',           name: '泥レンガの壁' },
-    ],
-    misc: [
-        { type: 'single', id: 'minecraft:torch',                    name: 'たいまつ' },
-        { type: 'single', id: 'minecraft:lantern',                  name: 'ランタン' },
-        { type: 'single', id: 'minecraft:soul_lantern',             name: 'ソウルランタン' },
-        { type: 'single', id: 'minecraft:sea_lantern',              name: 'シーランタン' },
-        { type: 'single', id: 'minecraft:glowstone',                name: 'グロウストーン' },
-        { type: 'single', id: 'minecraft:shroomlight',              name: 'キノコ光' },
-        { type: 'single', id: 'minecraft:amethyst_block',           name: 'アメジストブロック' },
-        { type: 'single', id: 'minecraft:chest',                    name: 'チェスト' },
-        { type: 'single', id: 'minecraft:iron_bars',                name: '鉄格子' },
-        { type: 'single', id: 'minecraft:glass_pane',               name: 'ガラス板' },
-        { type: 'color',  base: 'stained_glass_pane',               name: 'ステンドグラス板' },
-        { type: 'single', id: 'minecraft:ladder',                   name: 'はしご' },
-        { type: 'single', id: 'minecraft:oak_trapdoor',             name: 'オークのトラップドア' },
-        { type: 'single', id: 'minecraft:spruce_trapdoor',          name: 'トウヒのトラップドア' },
-        { type: 'single', id: 'minecraft:iron_trapdoor',            name: '鉄のトラップドア' },
-        { type: 'single', id: 'minecraft:oak_door',                 name: 'オークのドア' },
-        { type: 'single', id: 'minecraft:spruce_door',              name: 'トウヒのドア' },
-        { type: 'single', id: 'minecraft:iron_door',                name: '鉄のドア' },
-        { type: 'single', id: 'minecraft:campfire',                 name: 'たき火' },
-        { type: 'single', id: 'minecraft:flower_pot',               name: 'フラワーポット' },
-        { type: 'single', id: 'minecraft:cauldron',                 name: '大釜' },
-        { type: 'single', id: 'minecraft:oak_sign',                 name: '看板（オーク）' },
-    ],
-};
+// ─── ブロックカタログは ./block_catalog.js から import (BC_DATA) ─────────────
 
 // ─── ProjectManager ───────────────────────────────────────────────────────────
 class ProjectManager {
@@ -218,23 +43,22 @@ class ProjectManager {
 
     static save(projects) {
         try {
-            // Limit: 20 projects, strip coords + bufferCache before saving
-            const toSave = projects.slice(0, 20).map(p => ({
+            // Limit: use constant
+            const toSave = projects.slice(0, App.MAX_PROJECTS).map(p => ({
                 ...p,
                 structures: p.structures.map(s => {
-                    const { coords, rawBuffer, ...rest } = s;  // don't persist coords/buffer
+                    const { coords, rawBuffer, ...rest } = s;
                     return rest;
                 })
             }));
             const json = JSON.stringify(toSave);
-            // ~5MB が一般的な localStorage 上限。事前に検知して警告
-            if (json.length > 4 * 1024 * 1024) {
+            // ~5MB limit check
+            if (json.length > App.STORAGE_WARNING_SIZE) {
                 console.warn('プロジェクトJSON が 4MB 超：localStorage 上限に近づいています', json.length);
             }
             localStorage.setItem(this.KEY, json);
         } catch (e) {
             console.error('Save failed', e);
-            // QuotaExceededError 対策：古いプロジェクトから削る
             if (e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
                 const reduced = projects.slice(0, Math.max(1, Math.floor(projects.length / 2)));
                 try {
@@ -278,7 +102,12 @@ class ProjectManager {
             const mult = s.multiplier || 1;
             const repMap = replacementsByStructure?.get(s.id);
             for (const r of s.results) {
-                const id = repMap?.get(r.id) || r.id;
+                // normalizeId を通して検索の不一致を防ぐ
+                const normRId = normalizeId(r.id);
+                const to = repMap ? (repMap.get(normRId) || repMap.get('minecraft:' + normRId.replace('minecraft:', '')) || repMap.get(normRId.replace('minecraft:', ''))) : null;
+                const id = to || normRId;
+                const lowId = id.toLowerCase();
+                if (lowId === 'minecraft:air' || lowId === 'air') continue; 
                 const existing = totals.get(id) || 0;
                 totals.set(id, existing + r.count * mult);
             }
@@ -287,6 +116,7 @@ class ProjectManager {
             const stacks = Math.floor(count / 64);
             const remainder = count % 64;
             const slots = stacks + (remainder > 0 ? 1 : 0);
+            // サンプルを検索する際、置換先のカテゴリを考慮
             const sample = project.structures.flatMap(s => s.results).find(r => r.id === id);
             return { id, count, stacks, remainder, slots, category: sample?.category || 'other' };
         }).sort((a, b) => b.count - a.count);
@@ -295,6 +125,10 @@ class ProjectManager {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 class App {
+    static MAX_PROJECTS = 20;
+    static STORAGE_WARNING_SIZE = 4 * 1024 * 1024; // 4MB
+    static LARGE_FILE_WARNING = 50 * 1024 * 1024; // 50MB
+
     constructor() {
         this.projects = ProjectManager.load();
         this.currentProjectId = null;
@@ -305,11 +139,16 @@ class App {
         this.replacements = new Map(); // structureId → Map<fromId, toId>
         this.preparedItems = new Map(); // structureId → Set<blockId>
         this.currentFilter = 'all';
+        this.lastSearchQuery = '';      // 素材検索の文字保持
         this.viewer3d = null;
         this.dotArtEditor = null;
         this.worker = new Worker(new URL('./worker.js?v=2.5.6', import.meta.url), { type: 'module' });
-        this.pendingParseResolve = null;
+        this.pendingParses = new Map(); // taskId => resolve
         this.settingsData = JSON.parse(localStorage.getItem('mc_planner_settings') || '{}');
+        // カスタムフォルダシステム: [{id, name, blockIds:[]}]
+        this._customFolders = JSON.parse(localStorage.getItem('mc_planner_block_folders') || '[]');
+        this._dragEditMode = false;
+        this._deletedPositions = new Set(); // 3Dビューで1つだけ削除したブロック位置
 
         this._setupWorker();
         this._init();
@@ -332,6 +171,7 @@ class App {
 
         this._setupDOM();
         this._setupDragDrop();
+        this._setupTour();
         this._setupSidebarDropZone();
         this._renderProjectList();
 
@@ -359,24 +199,25 @@ class App {
 
     _setupWorker() {
         this.worker.onmessage = (e) => {
-            const { success, error, results, coords, size, totalCount, uniqueCount, totalSlots } = e.data;
+            const { taskId, success, error, results, coords, size, totalCount, uniqueCount, totalSlots } = e.data;
             this._hideLoading();
-            if (this.pendingParseResolve) {
-                this.pendingParseResolve({ success, error, results, coords, size, totalCount, uniqueCount, totalSlots });
-                this.pendingParseResolve = null;
+            const resolve = this.pendingParses.get(taskId);
+            if (resolve) {
+                resolve({ success, error, results, coords, size, totalCount, uniqueCount, totalSlots });
+                this.pendingParses.delete(taskId);
             }
         };
     }
 
     _parseFile(file) {
         return new Promise((resolve) => {
-            this.pendingParseResolve = resolve;
+            const taskId = uid();
+            this.pendingParses.set(taskId, resolve);
             this._showLoading(`解析中: ${file.name}`);
             const reader = new FileReader();
             reader.onload = (e) => {
-                // 後で再パースできるように buffer をキャッシュへ渡す
                 this._lastParsedBuffer = e.target.result;
-                this.worker.postMessage({ buffer: e.target.result, fileName: file.name });
+                this.worker.postMessage({ taskId, buffer: e.target.result, fileName: file.name });
             };
             reader.readAsArrayBuffer(file);
         });
@@ -385,9 +226,10 @@ class App {
     /** 既にメモリ上にある ArrayBuffer から再パースする（ファイル選択ダイアログを開かない） */
     _parseBuffer(buffer) {
         return new Promise((resolve) => {
-            this.pendingParseResolve = resolve;
+            const taskId = uid();
+            this.pendingParses.set(taskId, resolve);
             this._showLoading('再解析中...');
-            this.worker.postMessage({ buffer });
+            this.worker.postMessage({ taskId, buffer });
         });
     }
 
@@ -398,7 +240,7 @@ class App {
         // Sidebar buttons
         $('btn-new-project').onclick = () => this._showModal('modal-new-project');
         $('btn-go-home').onclick = () => this._goHome();
-        $('btn-import-file').onclick = () => $('file-input').click();
+        // btn-import-file は削除済み
         $('btn-confirm-new-project').onclick = () => {
             const name = $('new-project-name').value.trim();
             if (!name) { $('new-project-name').focus(); return; }
@@ -437,8 +279,15 @@ class App {
             btn.addEventListener('click', () => this._switchTab(btn.dataset.tab));
         });
 
-        // Search & filter
-        $('search-input').addEventListener('input', () => this._renderBlockList());
+        // Search & filter (P1デバウンス改善 & 文字保持)
+        let searchTimeout;
+        const searchInput = $('search-input');
+        searchInput.value = this.lastSearchQuery;
+        searchInput.addEventListener('input', () => {
+            this.lastSearchQuery = searchInput.value;
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => this._renderBlockList(), 200);
+        });
         document.querySelectorAll('.filter-pill').forEach(pill => {
             pill.addEventListener('click', () => {
                 document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
@@ -484,7 +333,7 @@ class App {
         // Settings tab - update stats when shown
         document.querySelector('[data-tab="settings"]').addEventListener('click', () => {
             const count = this.projects.length;
-            $('setting-project-count').textContent = `${count} / 20`;
+            $('setting-project-count').textContent = `${count} / ${App.MAX_PROJECTS}`;
             try {
                 const bytes = new Blob([localStorage.getItem('mc_planner_v2') || '']).size;
                 $('setting-storage-size').textContent = bytes > 1024
@@ -602,15 +451,44 @@ class App {
     _setup3DViewTab() {
         const $ = id => document.getElementById(id);
 
-        const layerMin = $('layer-min');
-        const layerMax = $('layer-max');
-        const minVal = $('layer-min-val');
-        const maxVal = $('layer-max-val');
+        // ─── 断面スライダー（Y/X/Z）デバウンス付きリアルタイム反映 ───
+        let sliceTimer = null;
+        const sliders = [
+            { id: 'layer-min',  val: 'layer-min-val'  },
+            { id: 'layer-max',  val: 'layer-max-val'  },
+            { id: 'layer-xmin', val: 'layer-xmin-val' },
+            { id: 'layer-xmax', val: 'layer-xmax-val' },
+            { id: 'layer-zmin', val: 'layer-zmin-val' },
+            { id: 'layer-zmax', val: 'layer-zmax-val' },
+        ];
+        for (const { id, val } of sliders) {
+            const el = $(id), valEl = $(val);
+            if (!el) continue;
+            el.addEventListener('input', () => {
+                if (valEl) valEl.textContent = el.value;
+                clearTimeout(sliceTimer);
+                sliceTimer = setTimeout(() => this._applySlice(), 80);
+            });
+        }
 
-        layerMin.addEventListener('input', () => { minVal.textContent = layerMin.value; });
-        layerMax.addEventListener('input', () => { maxVal.textContent = layerMax.value; });
+        // リセットボタン
+        $('btn-slice-reset')?.addEventListener('click', () => {
+            const size = this.viewer3d?._lastSize;
+            const setSlider = (id, valId, v) => {
+                const el = $(id); const ve = $(valId);
+                if (el) el.value = v; if (ve) ve.textContent = v;
+            };
+            setSlider('layer-min',  'layer-min-val',  0);
+            setSlider('layer-max',  'layer-max-val',  size ? size.y - 1 : 255);
+            setSlider('layer-xmin', 'layer-xmin-val', 0);
+            setSlider('layer-xmax', 'layer-xmax-val', size ? size.x - 1 : 255);
+            setSlider('layer-zmin', 'layer-zmin-val', 0);
+            setSlider('layer-zmax', 'layer-zmax-val', size ? size.z - 1 : 255);
+            this._applySlice();
+        });
 
         $('btn-load-3d').onclick = () => this._load3DView();
+        $('btn-reload-3d').onclick = () => this._load3DView();
         $('btn-reset-camera').onclick = () => this.viewer3d?.resetCamera();
 
         // 床タイプ切替
@@ -622,19 +500,45 @@ class App {
         $('btn-replace-add').onclick = () => {
             const sel = $('viewer3d-structure-select').value;
             if (!sel) return;
-            const from = $('replace-from').value;
-            const to = $('replace-to').value;
-            if (!from || !to || from === to) {
-                this._toast('置換元と置換先が同じ、または未選択です', 'error');
+            const fromRaw = $('replace-from').value;  // カンマ区切りで複数ID可
+            const rawTo = $('replace-to').value;
+            if (!fromRaw || !rawTo) {
+                this._toast('置換元と置換先を選択してください', 'error');
+                return;
+            }
+            const fromIds = fromRaw.split(',').map(s => normalizeId(s.trim())).filter(Boolean);
+            const to = normalizeId(rawTo);
+            // to が air の場合は「削除」
+            const toLabel = (to === 'minecraft:air' || to === 'air') ? '削除（air）' : to.replace('minecraft:', '');
+            // 同じIDを自分自身に置換しようとしていないかチェック
+            const nonSelf = fromIds.filter(id => id !== to);
+            if (!nonSelf.length) {
+                this._toast('置換元と置換先が同じです', 'error');
                 return;
             }
             let map = this.replacements.get(sel);
             if (!map) { map = new Map(); this.replacements.set(sel, map); }
-            map.set(from, to);
+            nonSelf.forEach(id => map.set(id, to));
             this._renderReplaceList(sel);
-            this._renderProjectView(); // 素材リスト・breakdownにも反映
-            this._toast(`置換追加: ${from.replace('minecraft:','')} → ${to.replace('minecraft:','')}`);
-            // 3D 表示中なら即時反映
+            this._renderProjectView();
+            if (nonSelf.length === 1) {
+                this._toast(`置換追加: ${nonSelf[0].replace('minecraft:','')} → ${toLabel}`);
+            } else {
+                this._toast(`置換追加: ${nonSelf.length}件 → ${toLabel}`);
+            }
+            // リセット
+            // 置換先が air (削除) の場合は、対象が消えるためFromもリセットする。
+            // それ以外（別のブロックに置換）の場合は、同じ対象に別の置換を試せるよう From を保持する。
+            const isDelete = (to === 'minecraft:air');
+            
+            if (isDelete) {
+                this._resetReplacePickers();
+            } else {
+                // 置換の場合は置換先（To）だけリセット
+                $('replace-to').value = '';
+                $('replace-to-name').textContent = '置換先を選択...';
+                $('replace-to-icon-wrap').textContent = '📦';
+            }
             if (this.viewer3d?.isInitialized) this._load3DView();
         };
         $('btn-replace-reset').onclick = () => {
@@ -715,7 +619,6 @@ class App {
         // 表示色モード切替
         document.querySelectorAll('input[name="viewer3d-colormode"]').forEach(r => {
             r.addEventListener('change', () => {
-                console.log(`--- App: colormode change detected: ${r.value} (checked: ${r.checked}) ---`);
                 if (!r.checked || !this.viewer3d) return;
                 this.viewer3d.setColorMode(r.value);
             });
@@ -759,6 +662,8 @@ class App {
         $('replace-to-name').textContent = '置換先を選択...';
         $('replace-from-icon-wrap').textContent = '📦';
         $('replace-to-icon-wrap').textContent = '📦';
+        this._fromSelections?.clear();
+        document.getElementById('multi-select-bar')?.remove();
     }
 
     /** ブロック選択モーダルのセットアップ */
@@ -766,6 +671,7 @@ class App {
         try {
             const $ = id => document.getElementById(id);
             this._blockSelectorMode = 'to';
+            this._fromSelections = new Set(); // 複数選択対応
 
             const fromBtn = $('replace-from-btn');
             const toBtn   = $('replace-to-btn');
@@ -794,12 +700,16 @@ class App {
                 });
             });
 
-            // 検索
+            // 検索 (P1デバウンス改善)
             const searchEl = $('block-selector-search');
             if (searchEl) {
+                let selSearchTimeout;
                 searchEl.addEventListener('input', () => {
-                    const active = document.querySelector('#modal-block-selector .tab-pill.active');
-                    this._renderBlockSelectorGrid(active?.dataset.cat || 'current');
+                    clearTimeout(selSearchTimeout);
+                    selSearchTimeout = setTimeout(() => {
+                        const active = document.querySelector('#modal-block-selector .tab-pill.active');
+                        this._renderBlockSelectorGrid(active?.dataset.cat || 'current');
+                    }, 200);
                 });
             }
         } catch (err) {
@@ -817,21 +727,48 @@ class App {
             if (this._blockSelectorMode === 'from') {
                 const title = $('block-selector-title');
                 const sub   = $('block-selector-sub');
-                if (title) title.textContent = '置換元のブロック選択';
-                if (sub)   sub.textContent   = '現在の構造に含まれるブロックを選択してください';
-                tabs.forEach(t => { t.style.display = t.dataset.cat === 'current' ? '' : 'none'; });
+                if (title) title.textContent = '置換元のブロック選択（複数選択可）';
+                if (sub)   sub.textContent   = '現在の構造のブロックをクリックして選択（複数OK）';
+                // 置換元モード: "現在のブロック"タブのみ表示
+                tabs.forEach(t => { t.style.display = (t.dataset.cat === 'current') ? '' : 'none'; });
                 tabs.forEach(t => t.classList.toggle('active', t.dataset.cat === 'current'));
-            } else {
+                this._fromSelections.clear();
+                this._showModal('modal-block-selector');
+                this._renderBlockSelectorGrid('current');
+            } else if (this._blockSelectorMode === 'to') {
                 const title = $('block-selector-title');
                 const sub   = $('block-selector-sub');
                 if (title) title.textContent = '置換先のブロック選択';
-                if (sub)   sub.textContent   = 'ブロックを選んでください';
-                tabs.forEach(t => { t.style.display = ''; });
-                tabs.forEach(t => t.classList.toggle('active', t.dataset.cat === 'current'));
+                if (sub)   sub.textContent   = 'ブロックを選んでください（削除 = air に置換）';
+                // 置換先モード: カタログタブを表示（dotartタブは非表示）
+                tabs.forEach(t => {
+                    t.style.display = (t.dataset.cat === 'current' || t.dataset.cat === 'dotart') ? 'none' : '';
+                });
+                const firstCatTab = [...tabs].find(t => t.dataset.cat !== 'current' && t.dataset.cat !== 'dotart');
+                tabs.forEach(t => t.classList.remove('active'));
+                if (firstCatTab) firstCatTab.classList.add('active');
+                this._showModal('modal-block-selector');
+                this._renderBlockSelectorGrid(firstCatTab?.dataset.cat || 'stone');
+            } else if (this._blockSelectorMode === 'dotart' || this._blockSelectorMode === 'palette') {
+                const title = $('block-selector-title');
+                const sub   = $('block-selector-sub');
+                if (this._blockSelectorMode === 'dotart') {
+                    if (title) title.textContent = 'ドット絵ブロックの一括置換';
+                    if (sub)   sub.textContent   = '新しいブロックをカタログから選んでください';
+                } else {
+                    if (title) title.textContent = 'パレットに追加するブロックを選択';
+                    if (sub)   sub.textContent   = '描画に使用したいブロックを選んでください';
+                }
+                // ドット絵/パレットモード: 全てのカタログタブを表示
+                tabs.forEach(t => {
+                    t.style.display = (t.dataset.cat === 'current') ? 'none' : '';
+                });
+                const firstCatTab = [...tabs].find(t => t.dataset.cat === 'wool' || t.dataset.cat === 'dotart' || t.dataset.cat === 'stone');
+                tabs.forEach(t => t.classList.remove('active'));
+                if (firstCatTab) firstCatTab.classList.add('active');
+                this._showModal('modal-block-selector');
+                this._renderBlockSelectorGrid(firstCatTab?.dataset.cat || 'stone');
             }
-
-            this._showModal('modal-block-selector');
-            this._renderBlockSelectorGrid('current');
         } catch (err) {
             console.error('[BlockSelector] _openBlockSelector エラー:', err);
         }
@@ -846,126 +783,442 @@ class App {
         const currentResults = structure?.results || [];
 
         grid.innerHTML = '';
+        document.getElementById('multi-select-bar')?.remove();
 
         if (category === 'current') {
-            // アイコングリッド（現在のブロック：アイテムテクスチャ優先）
+            const isFromMode = this._blockSelectorMode === 'from';
             grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.5rem;overflow-y:auto;';
-            let blocks = search
-                ? currentResults.filter(r => {
+            const repMap = this.replacements.get(sel);
+            let blocks = currentResults.filter(r => {
+                if (repMap) {
+                    const normRId = normalizeId(r.id);
+                    const to = repMap.get(normRId) || repMap.get('minecraft:' + normRId.replace('minecraft:', '')) || repMap.get(normRId.replace('minecraft:', ''));
+                    if (to && (to.toLowerCase() === 'minecraft:air' || to.toLowerCase() === 'air')) return false;
+                }
+                if (search) {
                     const n = this.langData?.[r.id] || r.id.replace('minecraft:', '');
                     return n.toLowerCase().includes(search) || r.id.includes(search);
-                })
-                : currentResults;
+                }
+                return true;
+            });
 
             if (!blocks.length) {
                 grid.innerHTML = '<p style="color:var(--muted2);text-align:center;padding:2rem;grid-column:1/-1">ブロックが見つかりません</p>';
                 return;
             }
 
+            if (isFromMode) {
+                const bar = document.createElement('div');
+                bar.id = 'multi-select-bar';
+                bar.style.cssText = 'display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;background:var(--surface2);border-top:1px solid var(--border);border-radius:0 0 8px 8px;';
+                bar.innerHTML = `
+                    <span id="multi-select-count" style="flex:1;font-size:0.8rem;color:var(--muted2);">${this._fromSelections.size}件選択中</span>
+                    <button id="multi-select-clear" class="mc-btn small">クリア</button>
+                    <button id="multi-select-confirm" class="mc-btn small" style="background:var(--accent);">確定 →</button>
+                `;
+                grid.parentElement.appendChild(bar);
+                bar.querySelector('#multi-select-clear').onclick = () => { this._fromSelections.clear(); this._renderBlockSelectorGrid('current'); };
+                bar.querySelector('#multi-select-confirm').onclick = () => {
+                    if (!this._fromSelections.size) return this._toast('ブロックを選択してください', 'error');
+                    const ids = [...this._fromSelections];
+                    document.getElementById('replace-from').value = ids.join(',');
+                    document.getElementById('replace-from-name').textContent = ids.length === 1 ? (this.langData?.[ids[0]] || ids[0].replace('minecraft:','')) : `${ids.length}件選択`;
+                    this._hideModal('modal-block-selector');
+                };
+            }
+
             for (const r of blocks) {
                 const name = this.langData?.[r.id] || r.id.replace('minecraft:', '');
-                const rawId = r.id.replace('minecraft:', '');
-                const imgId = this._bedrockToJava(rawId);
-                const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
-
-                // 1) リソースパック item_texture.json
-                const packUrl = ResourcePack.isLoaded() ? ResourcePack.getItemTextureUrl(r.id) : null;
-                // 2) リソースパック ブロック上面テクスチャ
-                const faceUrl = ResourcePack.isLoaded() ? (() => {
-                    const f = ResourcePack.getFaceUrls(r.id, {})?.top;
-                    return f ? (typeof f === 'string' ? f : f?.url) : null;
-                })() : null;
-                // 選ばれた最優先 URL（カード選択時に picker に渡す）
-                const chosenUrl = packUrl || faceUrl || null;
-
-                // フォールバックチェーン（img の onerror で順に試みる）
-                // 優先度: packUrl > wiki Invicon（3D形状あり） > mcasset item > faceUrl（平面）> mcasset block
-                const allSrcs = [
-                    ...(packUrl ? [packUrl] : []),
-                    `https://minecraft.wiki/images/Invicon_${wikiName}.png`,
-                    `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item/${imgId}.png`,
-                    ...(faceUrl ? [faceUrl] : []),
-                    `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}.png`,
-                ];
-                const firstSrc = allSrcs.shift() || '';
-                const fallbacks = allSrcs;
-
-                // onerror で残りの fallbacks を順に試す（JSON埋め込み）
-                const fbJson = JSON.stringify(fallbacks).replace(/"/g, '&quot;');
-                const imgHtml = firstSrc
-                    ? `<img class="block-pick-icon" src="${this._escape(firstSrc)}" alt="${this._escape(name)}"
-                          data-fb="${fbJson}"
-                          onerror="var fb=JSON.parse(this.dataset.fb||'[]');if(fb.length){this.src=fb.shift();this.dataset.fb=JSON.stringify(fb)}else{this.parentNode.innerHTML='📦'}">`
-                    : `<span style="font-size:1.5rem">📦</span>`;
-
                 const card = document.createElement('button');
-                card.type = 'button';
                 card.className = 'block-pick-card';
-                card.dataset.id = r.id;
-                card.innerHTML = `
-                    <div class="block-pick-icon-wrap">${imgHtml}</div>
-                    <span class="block-pick-name">${this._escape(name)}</span>
-                `;
-                card.addEventListener('click', () => {
-                    // picker アイコンには表示中の src を渡す
-                    const imgEl = card.querySelector('img');
-                    this._selectBlockFromModal(r.id, name, imgEl?.src || chosenUrl);
-                });
+                if (isFromMode && this._fromSelections.has(r.id)) { card.style.outline = '2px solid var(--accent)'; card.style.background = 'rgba(99,179,237,0.15)'; }
+                const check = isFromMode ? `<span class="pick-check" style="position:absolute;top:3px;right:3px;font-size:0.7rem;color:var(--accent);">${this._fromSelections.has(r.id) ? '✔' : ''}</span>` : '';
+                card.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(r.id)}</div><span class="block-pick-name">${this._escape(name)}</span>${check}`;
+                card.onclick = () => {
+                    if (isFromMode) {
+                        if (this._fromSelections.has(r.id)) { this._fromSelections.delete(r.id); card.style.outline = ''; card.style.background = ''; card.querySelector('.pick-check').textContent = ''; }
+                        else { this._fromSelections.add(r.id); card.style.outline = '2px solid var(--accent)'; card.style.background = 'rgba(99,179,237,0.15)'; card.querySelector('.pick-check').textContent = '✔'; }
+                        document.getElementById('multi-select-count').textContent = `${this._fromSelections.size}件選択中`;
+                    } else {
+                        this._selectBlockFromModal(r.id, name, card.querySelector('img')?.src);
+                    }
+                };
+                grid.appendChild(card);
+            }
+        } else if (category === 'dotart') {
+            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.5rem;overflow-y:auto;';
+            const blocks = DOT_PALETTE.filter(p => {
+                if (search) {
+                    const n = p.name.toLowerCase();
+                    return n.includes(search) || p.id.includes(search);
+                }
+                return true;
+            });
+            for (const p of blocks) {
+                const name = p.name;
+                const card = document.createElement('button');
+                card.className = 'block-pick-card';
+                card.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(p.id)}</div><span class="block-pick-name">${this._escape(name)}</span>`;
+                card.onclick = () => this._selectBlockFromModal(p.id, name, card.querySelector('img')?.src);
                 grid.appendChild(card);
             }
         } else {
-            // テキスト＋16色スウォッチ（現在のブロック以外）
-            grid.style.cssText = 'display:block;overflow-y:auto;';
-            const entries = this._getBlockCatalogEntries(category, search);
+            // カタログ
+            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));grid-auto-rows:min-content;gap:0.5rem;overflow-y:auto;align-items:start;align-content:start;';
 
-            if (!entries.length) {
-                grid.innerHTML = '<p style="color:var(--muted2);text-align:center;padding:2rem;">ブロックが見つかりません</p>';
+            // 1) 削除ボタン (specialタブのみ表示)
+            if (category === 'special') {
+                const delCard = document.createElement('button');
+                delCard.className = 'block-pick-card';
+                delCard.style.border = '1.5px dashed var(--danger,#e55)';
+                delCard.innerHTML = `<div class="block-pick-icon-wrap" style="font-size:1.6rem">🗑️</div><span class="block-pick-name" style="color:var(--danger,#e55)">削除 (air)</span>`;
+                delCard.onclick = () => this._selectBlockFromModal('minecraft:air', '削除（air）', null);
+                grid.appendChild(delCard);
+            }
+
+            // 2) 錆止め変換ボタン (specialタブのみ)
+            if (category === 'special') {
+                const waxCard = document.createElement('button');
+                waxCard.className = 'block-pick-card';
+                waxCard.style.border = '1.5px solid var(--accent)';
+                waxCard.innerHTML = `<div class="block-pick-icon-wrap" style="font-size:1.6rem">🛡️</div><span class="block-pick-name" style="color:var(--accent)">置換元を錆止め版にする</span>`;
+                waxCard.onclick = () => this._onWaxButtonClicked();
+                grid.appendChild(waxCard);
+            }
+
+            // "すべて" タブはカスタムフォルダシステムを使用（検索なし時）
+            if (category === 'all' && !search) {
+                this._renderAllTabWithFolders(grid);
                 return;
             }
 
-            for (const entry of entries) {
-                if (entry.type === 'color') {
-                    const row = document.createElement('div');
-                    row.style.cssText = 'display:flex;align-items:center;padding:0.4rem 0.6rem;gap:0.75rem;border-bottom:1px solid var(--border);';
+            const allIds = this._getBlockCatalogEntries(category, search);
+            
+            // 特殊タブ用のグルーピングロジック (P2改善: サバイバル不可をまとめる)
+            let standalone = allIds;
+            const groups = {};
 
-                    const label = document.createElement('span');
-                    label.textContent = entry.name;
-                    label.style.cssText = 'width:120px;font-size:0.78rem;color:var(--text);flex-shrink:0;';
-
-                    const swatchGrid = document.createElement('div');
-                    swatchGrid.className = 'variant-grid';
-
-                    for (const color of MC_COLORS) {
-                        const blockId = `minecraft:${color.key}_${entry.base}`;
-                        const blockName = this.langData?.[blockId] || `${color.name}の${entry.name}`;
-                        const chip = document.createElement('button');
-                        chip.type = 'button';
-                        chip.className = 'variant-chip';
-                        chip.dataset.id = blockId;
-                        chip.dataset.tooltip = blockName;
-                        chip.style.cssText = `background:${color.hex};${color.key === 'white' ? 'border:1px solid #666;' : ''}`;
-                        chip.addEventListener('click', () => this._selectBlockFromModal(blockId, blockName, null));
-                        swatchGrid.appendChild(chip);
-                    }
-
-                    row.appendChild(label);
-                    row.appendChild(swatchGrid);
-                    grid.appendChild(row);
-                } else {
-                    const btn = document.createElement('button');
-                    btn.style.cssText = 'display:block;width:100%;text-align:left;padding:0.35rem 0.75rem;font-size:0.8rem;background:transparent;border:none;border-bottom:1px solid var(--border);cursor:pointer;color:var(--text);transition:background 0.12s;';
-                    btn.textContent = entry.name;
-                    btn.dataset.id = entry.id;
-                    btn.onmouseover = () => btn.style.background = 'rgba(255,255,255,0.06)';
-                    btn.onmouseout = () => btn.style.background = 'transparent';
-                    btn.onclick = () => this._selectBlockFromModal(entry.id, entry.name, null);
-                    grid.appendChild(btn);
+            if (category === 'special' && !search) {
+                const sysIds = allIds.filter(id => /command_block|structure_block|structure_void|jigsaw|barrier|light_block/.test(id));
+                if (sysIds.length > 0) {
+                    groups['システム・サバイバル不可'] = sysIds;
+                    standalone = allIds.filter(id => !sysIds.includes(id));
                 }
+            }
+
+            for (const [gName, gIds] of Object.entries(groups)) {
+                const folder = document.createElement('button');
+                folder.className = 'block-pick-card folder-card';
+                folder.style.background = 'rgba(255,255,255,0.05)';
+                folder.innerHTML = `<div class="block-pick-icon-wrap" style="font-size:1.6rem">📁</div><span class="block-pick-name" style="font-weight:bold">${gName}</span><small style="font-size:0.6rem;color:var(--muted2)">${gIds.length}個</small>`;
+                folder.onclick = () => {
+                    grid.innerHTML = '';
+                    const backBtn = document.createElement('button');
+                    backBtn.className = 'block-pick-card';
+                    backBtn.style.cssText = 'grid-column:1/-1;background:var(--surface3);height:30px;padding:0;font-size:0.8rem;';
+                    backBtn.textContent = `← 戻る (${gName})`;
+                    backBtn.onclick = () => this._renderBlockSelectorGrid(category);
+                    grid.appendChild(backBtn);
+                    for (const bid of gIds) this._renderBlockCard(grid, bid);
+                };
+                grid.appendChild(folder);
+            }
+            for (const bid of standalone) this._renderBlockCard(grid, bid);
+        }
+    }
+
+    _renderBlockCard(grid, blockId) {
+        const name = this.langData?.[blockId] || blockId.replace('minecraft:', '');
+        const card = document.createElement('button');
+        card.className = 'block-pick-card';
+        card.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(blockId)}</div><span class="block-pick-name">${this._escape(name)}</span>`;
+        card.onclick = () => this._selectBlockFromModal(blockId, name, card.querySelector('img')?.src);
+        grid.appendChild(card);
+    }
+
+    _onWaxButtonClicked() {
+        const fromVal = document.getElementById('replace-from').value;
+        if (!fromVal) return this._toast('置換元を先に選んでください', 'error');
+        const ids = fromVal.split(',');
+        const waxedIds = ids.map(id => {
+            if (id.startsWith('minecraft:waxed_')) return id;
+            return 'minecraft:waxed_' + id.replace('minecraft:', '');
+        });
+        const toId = waxedIds.join(',');
+        const toName = waxedIds.length === 1 ? (this.langData?.[waxedIds[0]] || waxedIds[0].replace('minecraft:','')) : `${waxedIds.length}件を錆止め`;
+        document.getElementById('replace-to').value = toId;
+        document.getElementById('replace-to-name').textContent = toName;
+        this._hideModal('modal-block-selector');
+        this._toast('🛡️ 錆止め状態にセットしました');
+    }
+
+    // ─── カスタムフォルダ保存 ───────────────────────────────────────────────
+    _saveCustomFolders() {
+        localStorage.setItem('mc_planner_block_folders', JSON.stringify(this._customFolders));
+    }
+
+    // ─── "すべて" タブ用カスタムフォルダ描画 ─────────────────────────────
+    _renderAllTabWithFolders(grid) {
+        const allIds = this._getBlockCatalogEntries('all');
+        const inFolderSet = new Set(this._customFolders.flatMap(f => f.blockIds));
+        const unassigned = allIds.filter(id => !inFolderSet.has(id));
+
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));grid-auto-rows:min-content;gap:0.5rem;overflow-y:auto;align-items:start;align-content:start;';
+
+        // ── ツールバー ──
+        const toolbar = document.createElement('div');
+        toolbar.id = 'folder-toolbar';
+        toolbar.style.cssText = 'grid-column:1/-1;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;padding:0.25rem 0;';
+
+        // 新規フォルダボタン
+        const btnAdd = document.createElement('button');
+        btnAdd.className = 'mc-btn small';
+        btnAdd.style.cssText = 'background:var(--surface3);font-size:0.78rem;';
+        btnAdd.textContent = '📁+ フォルダを作成';
+        btnAdd.onclick = () => {
+            const name = prompt('フォルダ名を入力してください:');
+            if (!name?.trim()) return;
+            this._customFolders.push({ id: Math.random().toString(36).slice(2, 10), name: name.trim(), blockIds: [] });
+            this._saveCustomFolders();
+            this._renderBlockSelectorGrid('all');
+        };
+        toolbar.appendChild(btnAdd);
+
+        // ドラッグ編集モード toggle
+        const btnDrag = document.createElement('button');
+        btnDrag.className = 'mc-btn small' + (this._dragEditMode ? ' primary' : '');
+        btnDrag.style.cssText = 'font-size:0.78rem;' + (this._dragEditMode ? 'background:var(--accent);' : 'background:var(--surface3);');
+        btnDrag.textContent = this._dragEditMode ? '✏️ 編集中（クリックで終了）' : '✏️ ドラッグ編集';
+        btnDrag.onclick = () => {
+            this._dragEditMode = !this._dragEditMode;
+            this._renderBlockSelectorGrid('all');
+        };
+        toolbar.appendChild(btnDrag);
+
+        // 全体に反映ボタン（フォルダが存在する場合のみ）
+        if (this._customFolders.length > 0) {
+            const btnApply = document.createElement('button');
+            btnApply.className = 'mc-btn small';
+            btnApply.style.cssText = 'background:var(--surface3);font-size:0.78rem;margin-left:auto;';
+            btnApply.textContent = '💾 整理を保存';
+            btnApply.title = 'カスタムフォルダをlocalStorageに保存（既に自動保存されています）';
+            btnApply.onclick = () => {
+                this._saveCustomFolders();
+                this._toast('✅ フォルダ構成を保存しました');
+            };
+            toolbar.appendChild(btnApply);
+        }
+
+        grid.appendChild(toolbar);
+
+        // ── カスタムフォルダカード ──
+        for (const folder of this._customFolders) {
+            const card = document.createElement('div');
+            card.className = 'block-pick-card folder-card';
+            card.style.cssText = 'background:rgba(255,255,255,0.06);cursor:pointer;position:relative;user-select:none;';
+
+            if (this._dragEditMode) {
+                card.style.outline = '2px dashed var(--accent)';
+                card.ondragover = (e) => { e.preventDefault(); card.style.background = 'rgba(99,179,237,0.2)'; };
+                card.ondragleave = () => { card.style.background = 'rgba(255,255,255,0.06)'; };
+                card.ondrop = (e) => {
+                    e.preventDefault();
+                    card.style.background = 'rgba(255,255,255,0.06)';
+                    const blockId = e.dataTransfer.getData('text/plain');
+                    if (!blockId) return;
+                    // 他フォルダから削除
+                    for (const f of this._customFolders) {
+                        f.blockIds = f.blockIds.filter(id => id !== blockId);
+                    }
+                    // このフォルダに追加（重複なし）
+                    if (!folder.blockIds.includes(blockId)) folder.blockIds.push(blockId);
+                    this._saveCustomFolders();
+                    this._renderBlockSelectorGrid('all');
+                };
+            }
+
+            // フォルダ本体クリック → 中身を見る
+            card.onclick = (e) => {
+                if (e.target.closest('.folder-action-btn')) return;
+                this._openCustomFolder(grid, folder);
+            };
+
+            card.innerHTML = `
+                <div class="block-pick-icon-wrap" style="font-size:1.6rem">📁</div>
+                <span class="block-pick-name" style="font-weight:bold">${this._escape(folder.name)}</span>
+                <small style="font-size:0.6rem;color:var(--muted2)">${folder.blockIds.length}個</small>
+                <div style="display:flex;gap:2px;justify-content:center;margin-top:3px;">
+                  <button class="folder-action-btn" title="名前変更" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:var(--muted2);padding:1px 4px;">✏️</button>
+                  <button class="folder-action-btn" title="削除" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:var(--danger,#e55);padding:1px 4px;">✕</button>
+                </div>
+            `;
+
+            // ✏️ 名前変更
+            card.querySelectorAll('.folder-action-btn')[0].onclick = (e) => {
+                e.stopPropagation();
+                const newName = prompt('新しいフォルダ名:', folder.name);
+                if (!newName?.trim()) return;
+                folder.name = newName.trim();
+                this._saveCustomFolders();
+                this._renderBlockSelectorGrid('all');
+            };
+            // ✕ 削除
+            card.querySelectorAll('.folder-action-btn')[1].onclick = (e) => {
+                e.stopPropagation();
+                if (!confirm(`「${folder.name}」フォルダを削除しますか？（中のブロックは未分類に戻ります）`)) return;
+                this._customFolders = this._customFolders.filter(f => f.id !== folder.id);
+                this._saveCustomFolders();
+                this._renderBlockSelectorGrid('all');
+            };
+
+            grid.appendChild(card);
+        }
+
+        // ── 未分類セクション ──
+        if (unassigned.length > 0) {
+            const label = document.createElement('div');
+            label.style.cssText = 'grid-column:1/-1;font-size:0.72rem;color:var(--muted2);padding:0.25rem 0;margin-top:0.25rem;border-top:1px solid var(--border);';
+            label.textContent = `未分類 (${unassigned.length})`;
+            grid.appendChild(label);
+
+            for (const bid of unassigned) {
+                const name = this.langData?.[bid] || bid.replace('minecraft:', '');
+                const bcard = document.createElement('div');
+                bcard.className = 'block-pick-card';
+                bcard.style.cssText = 'cursor:pointer;';
+
+                if (this._dragEditMode) {
+                    bcard.draggable = true;
+                    bcard.style.cursor = 'grab';
+                    bcard.ondragstart = (e) => {
+                        e.dataTransfer.setData('text/plain', bid);
+                        bcard.style.opacity = '0.5';
+                    };
+                    bcard.ondragend = () => { bcard.style.opacity = '1'; };
+                } else {
+                    bcard.onclick = () => this._selectBlockFromModal(bid, name, bcard.querySelector('img')?.src);
+                }
+
+                bcard.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(bid)}</div><span class="block-pick-name">${this._escape(name)}</span>`;
+                grid.appendChild(bcard);
             }
         }
     }
 
+    // フォルダの中身を表示
+    _openCustomFolder(grid, folder) {
+        grid.innerHTML = '';
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));grid-auto-rows:min-content;gap:0.5rem;overflow-y:auto;align-items:start;align-content:start;';
+
+        // 戻るボタン
+        const backBtn = document.createElement('button');
+        backBtn.className = 'mc-btn small';
+        backBtn.style.cssText = 'grid-column:1/-1;background:var(--surface3);font-size:0.8rem;height:30px;';
+        backBtn.textContent = `← 戻る (${folder.name})`;
+        backBtn.onclick = () => this._renderBlockSelectorGrid('all');
+        grid.appendChild(backBtn);
+
+        if (folder.blockIds.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'grid-column:1/-1;text-align:center;color:var(--muted2);padding:2rem;font-size:0.85rem;';
+            empty.textContent = 'フォルダは空です。ドラッグ編集モードでブロックを追加してください。';
+            grid.appendChild(empty);
+            return;
+        }
+
+        for (const bid of folder.blockIds) {
+            const name = this.langData?.[bid] || bid.replace('minecraft:', '');
+            const bcard = document.createElement('div');
+            bcard.className = 'block-pick-card';
+            bcard.style.cssText = 'cursor:pointer;position:relative;';
+
+            if (this._dragEditMode) {
+                bcard.draggable = true;
+                bcard.style.cursor = 'grab';
+                bcard.ondragstart = (e) => {
+                    e.dataTransfer.setData('text/plain', bid);
+                    bcard.style.opacity = '0.5';
+                };
+                bcard.ondragend = () => { bcard.style.opacity = '1'; };
+                // フォルダ内でのみ：「このフォルダから削除」ボタン
+                const removeBtn = document.createElement('button');
+                removeBtn.title = 'このフォルダから削除';
+                removeBtn.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(229,85,85,0.8);border:none;border-radius:50%;width:16px;height:16px;font-size:0.6rem;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;';
+                removeBtn.textContent = '✕';
+                removeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    folder.blockIds = folder.blockIds.filter(id => id !== bid);
+                    this._saveCustomFolders();
+                    this._openCustomFolder(grid, folder);
+                };
+                bcard.appendChild(removeBtn);
+            } else {
+                bcard.onclick = () => this._selectBlockFromModal(bid, name, bcard.querySelector('img')?.src);
+            }
+
+            bcard.innerHTML = `<div class="block-pick-icon-wrap">${this._getBlockIconHtml(bid)}</div><span class="block-pick-name">${this._escape(name)}</span>`;
+            if (this._dragEditMode) {
+                const removeBtn2 = document.createElement('button');
+                removeBtn2.title = 'このフォルダから削除';
+                removeBtn2.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(229,85,85,0.85);border:none;border-radius:50%;width:16px;height:16px;font-size:0.6rem;cursor:pointer;color:#fff;line-height:1;';
+                removeBtn2.textContent = '✕';
+                removeBtn2.onclick = (e) => {
+                    e.stopPropagation();
+                    folder.blockIds = folder.blockIds.filter(id => id !== bid);
+                    this._saveCustomFolders();
+                    this._openCustomFolder(grid, folder);
+                };
+                bcard.appendChild(removeBtn2);
+            }
+
+            grid.appendChild(bcard);
+        }
+    }
+
+    _getBlockIconHtml(blockId, states = {}) {
+        const id = String(blockId);
+        const local = id.replace(/^minecraft:/, '');
+        if (ResourcePack.isLoaded()) {
+            const packUrl = ResourcePack.getBestIconUrl(id, states);
+            if (packUrl) return `<img src="${packUrl}" class="block-pick-icon" alt="${local}">`;
+        }
+        const imgId = this._bedrockToJava(local);
+        const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
+        
+        const isBlock = /_block$|_ore$|_stone$|_planks$|_log$|_wood$|terracotta$|wool$|glass$|concrete$/.test(imgId);
+        const f = isBlock ? 'block' : 'item', s = isBlock ? 'item' : 'block';
+        
+        const srcs = [
+            `https://minecraft.wiki/images/Invicon_${wikiName}.png`,
+            `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item/${imgId}.png`,
+            `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}.png`
+        ];
+        if (isBlock) srcs.push(`https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}_top.png`);
+
+        const first = srcs.shift(), fb = JSON.stringify(srcs).replace(/"/g, '&quot;');
+        return `<img class="block-pick-icon" src="${first}" alt="${local}" data-fb="${fb}" onerror="var fb=JSON.parse(this.dataset.fb||'[]');if(fb.length){this.src=fb.shift();this.dataset.fb=JSON.stringify(fb)}else{this.parentNode.innerHTML='📦'}">`;
+    }
+
     _selectBlockFromModal(id, name, imgUrl) {
+        if (this._blockSelectorMode === 'dotart') {
+            if (this.dotArtEditor && this._dotArtReplaceOldId) {
+                this.dotArtEditor.replaceBlock(this._dotArtReplaceOldId, id);
+                this._toast(`🪄 全て置換: ${id.replace('minecraft:', '')}`);
+            }
+            this._hideModal('modal-block-selector');
+            this._dotArtReplaceOldId = null;
+            return;
+        }
+        if (this._blockSelectorMode === 'palette') {
+            if (this.dotArtEditor) {
+                this.dotArtEditor.setBlock(id);
+                // パレットに一時的に追加（UI表示用）
+                this._addTempPaletteBlock(id, name);
+                this._toast(`🎨 パレットにセット: ${name}`);
+            }
+            this._hideModal('modal-block-selector');
+            return;
+        }
         const which = this._blockSelectorMode === 'from' ? 'replace-from' : 'replace-to';
         document.getElementById(which).value = id;
 
@@ -988,15 +1241,33 @@ class App {
     }
 
     _getBlockCatalogEntries(category, search = '') {
-        const entries = category === 'all'
-            ? [...BLOCK_CATALOG.full, ...BLOCK_CATALOG.stairs, ...BLOCK_CATALOG.slabs, ...BLOCK_CATALOG.fences, ...BLOCK_CATALOG.misc]
-            : (BLOCK_CATALOG[category] || []);
-
-        if (!search) return entries;
-        return entries.filter(e => {
-            if (e.type === 'color') return e.name.toLowerCase().includes(search);
-            const n = this.langData?.[e.id] || e.name;
-            return n.toLowerCase().includes(search) || (e.id || '').includes(search);
+        let rawIds;
+        if (category === 'all') {
+            const all = new Set();
+            for (const key of Object.keys(BC_DATA)) {
+                const data = BC_DATA[key];
+                if (Array.isArray(data)) {
+                    data.forEach(id => all.add(id));
+                } else if (data && typeof data === 'object') {
+                    Object.values(data).forEach(arr => Array.isArray(arr) && arr.forEach(id => all.add(id)));
+                }
+            }
+            rawIds = [...all];
+        } else {
+            const catData = BC_DATA[category];
+            if (!catData) {
+                rawIds = [];
+            } else if (Array.isArray(catData)) {
+                rawIds = catData;
+            } else {
+                rawIds = Object.values(catData).flat();
+            }
+        }
+        if (!search) return rawIds;
+        const q = search.toLowerCase();
+        return rawIds.filter(id => {
+            const name = this.langData?.[id] || id.replace('minecraft:', '');
+            return name.toLowerCase().includes(q) || id.includes(q);
         });
     }
 
@@ -1018,7 +1289,7 @@ class App {
         list.innerHTML = '';
         for (const [from, to] of map.entries()) {
             const fn = this.langData[from] || from.replace('minecraft:','');
-            const tn = this.langData[to] || to.replace('minecraft:','');
+            const tn = to === 'minecraft:air' ? '🗑️ 削除' : (this.langData[to] || to.replace('minecraft:',''));
             const fromThumb = getThumbUrl(from);
             const toThumb = getThumbUrl(to);
             const thumbStyle = 'width:20px;height:20px;object-fit:cover;image-rendering:pixelated;border-radius:2px;vertical-align:middle;margin-right:4px;background:#333;';
@@ -1030,7 +1301,7 @@ class App {
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                     ${fromImg}${this._escape(fn)} → ${toImg}${this._escape(tn)}
                 </span>
-                <button class="mc-btn small" data-from="${from}" style="flex-shrink:0;padding:0 0.4rem;font-size:0.7rem">✕</button>
+                <button class="mc-btn secondary small" data-from="${from}" style="flex-shrink:0;padding:0 0.4rem;font-size:0.7rem">✕</button>
             `;
             list.appendChild(row);
         }
@@ -1102,6 +1373,33 @@ class App {
 
     // ─── Drag & Drop ───────────────────────────────────────────────────────────
     _setupDragDrop() {
+        // サイドバーへのドロップ対応
+        const sidebar = document.getElementById('sidebar');
+        const sidebarHint = document.getElementById('sidebar-drop-hint');
+        let sidebarDragCount = 0;
+        sidebar.addEventListener('dragenter', (e) => {
+            if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+            sidebarDragCount++;
+            if (sidebarHint) sidebarHint.classList.add('active');
+        });
+        sidebar.addEventListener('dragleave', () => {
+            sidebarDragCount = Math.max(0, sidebarDragCount - 1);
+            if (sidebarDragCount === 0 && sidebarHint) sidebarHint.classList.remove('active');
+        });
+        sidebar.addEventListener('dragover', (e) => {
+            if (Array.from(e.dataTransfer?.types || []).includes('Files')) e.preventDefault();
+        });
+        sidebar.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            sidebarDragCount = 0;
+            if (sidebarHint) sidebarHint.classList.remove('active');
+            const files = Array.from(e.dataTransfer.files).filter(f => /\.mcstructure$/i.test(f.name));
+            if (files.length > 0) {
+                e.stopPropagation(); // ウェルカム画面側のdropと重複しないよう
+                await this._handleFiles(files);
+            }
+        });
+
         document.addEventListener('dragover', (e) => {
             e.preventDefault();
             const zone = document.getElementById('drop-zone');
@@ -1246,6 +1544,19 @@ class App {
     _selectProject(id) {
         this.currentProjectId = id;
         localStorage.setItem('mc_planner_last', id);
+
+        // キャッシュ管理: 現在のプロジェクト以外の重いデータを解放 (P1改善)
+        const currentProject = this._currentProject();
+        if (currentProject) {
+            const currentStructureIds = new Set(currentProject.structures.map(s => s.id));
+            for (const cachedId of this.coordsCache.keys()) {
+                if (!currentStructureIds.has(cachedId)) {
+                    this.coordsCache.delete(cachedId);
+                    this.bufferCache.delete(cachedId);
+                }
+            }
+        }
+
         this._renderProjectList();
         this._renderProjectView();
     }
@@ -1529,7 +1840,6 @@ class App {
         try {
             this._showLoading('NBT を再構築中...');
             // gzip 解凍が必要なら解凍
-            const { decompressIfNeeded } = await import('./nbt.js');
             const data = await decompressIfNeeded(buf);
             const parser = new NBTParser(data, 'le');
             const parsed = parser.parse();
@@ -1544,7 +1854,11 @@ class App {
                     const newName = repMap.get(entry.name);
                     if (newName) {
                         entry.name = newName;
-                        // 置換に伴って states を消すと一部のブロックは不安定なので維持
+                        // air（削除）に置換する場合は states を空にする
+                        if (newName === 'minecraft:air') {
+                            entry.states = {};
+                        }
+                        // 階段など向きのある素材は states を保持（方向・向きを引き継ぐ）
                         replacedCount++;
                     }
                 }
@@ -1669,7 +1983,7 @@ class App {
         const current = this.viewer3d.getHighlighted();
         document.querySelectorAll('.block-card.highlighted').forEach(c => c.classList.remove('highlighted'));
         if (current === blockId) {
-            this.viewer3d.clearHighlight();
+            this.viewer3d.clearSelectionIndicator();
             return;
         }
         this.viewer3d.highlightBlock(blockId);
@@ -1713,18 +2027,28 @@ class App {
             const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
 
             // 1) リソースパックがロード済みかつ item_texture.json に登録されている場合のみ使用
-            // ブロック上面テクスチャへのフォールバックはしない（wiki/mcasset でアイコン表示を維持）
             const guess = this._guessRawIdAndStates(item.id);
             let packUrl = null;
             if (ResourcePack.isLoaded()) {
-                packUrl = ResourcePack.getItemTextureUrl(item.id) || null;
+                // ネザーレンガ(ID: nether_brick)だけは単体アイテムアイコンではなくブロックの見た目を使いたい
+                if (imgId === 'nether_brick') {
+                    const faces = ResourcePack.getFaceUrls(item.id, { states: guess.states });
+                    packUrl = (faces && faces.found) ? (faces.top || faces.side || faces.all)?.url : null;
+                } else {
+                    packUrl = ResourcePack.getItemTextureUrl(item.id) || null;
+                }
             }
 
+            const isNetherBrick = (imgId === 'nether_brick');
+            const cdnBase = `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures`;
             const sources = [
                 ...(packUrl ? [packUrl] : []),
-                `https://minecraft.wiki/images/Invicon_${wikiName}.png`,
-                `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item/${imgId}.png`,
-                `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}.png`,
+                `https://minecraft.wiki/images/${isNetherBrick ? 'Nether_Bricks' : 'Invicon_' + wikiName}.png`,
+                `${cdnBase}/item/${imgId}.png`,
+                `${cdnBase}/block/${isNetherBrick ? 'nether_bricks' : imgId}.png`,
+                // 一般的なブロック用フォールバック（側面など）
+                `${cdnBase}/block/${imgId}_side.png`,
+                `${cdnBase}/block/${imgId}_top.png`,
                 `/textures/${imgId}.png`,
                 `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2270%22>📦</text></svg>`
             ];
@@ -1735,6 +2059,7 @@ class App {
             const card = document.createElement('div');
             card.className = `block-card glass-card ${isPrepared ? 'prepared' : ''}`;
             card.dataset.id = item.id;
+            card.title = 'クリックで3D表示をハイライト';
             // クリックで 3D ビューにハイライト送信（トグル動作）
             card.addEventListener('click', (e) => {
                 if (e.target.closest('.prepared-label, .wiki-overlay, .block-name')) return;
@@ -1743,7 +2068,7 @@ class App {
 
             card.innerHTML = `
                 ${showWiki ? `<a href="${wikiUrl}" target="_blank" class="wiki-overlay" title="Wikiで開く">📖</a>` : ''}
-                <label class="prepared-label" title="準備済み">
+                <label class="prepared-label" title="準備済み（完了）にマーク">
                     <input type="checkbox" class="prepared-check" data-id="${item.id}" ${isPrepared ? 'checked' : ''}>
                     <span class="check-vis"></span>
                 </label>
@@ -1753,7 +2078,7 @@ class App {
                          class="block-icon-img" alt="">
                 </div>
                 <div class="block-info">
-                    <div class="block-name ${showId ? 'is-id' : ''}" data-fullid="${item.id}">${this._escape(displayName)}</div>
+                    <div class="block-name ${showId ? 'is-id' : ''}" data-fullid="${item.id}" title="クリックでIDをコピー">${this._escape(displayName)}</div>
                     <div class="block-count">${item.count.toLocaleString()}</div>
                     <div class="block-stack">${item.stacks}st + ${item.remainder}個</div>
                     ${shulkerCount > 0 ? `<div class="shulker-badge">🔮 ${shulkerCount}箱 +${shulkerRem}st</div>` : ''}
@@ -1788,7 +2113,11 @@ class App {
     _savePrepared() {
         const data = {};
         for (const [pid, set] of this.preparedItems) data[pid] = [...set];
-        localStorage.setItem('mc_planner_prepared', JSON.stringify(data));
+        try {
+            localStorage.setItem('mc_planner_prepared', JSON.stringify(data));
+        } catch (e) {
+            console.warn('準備状況の保存に失敗しました(容量不足等):', e);
+        }
     }
 
     _exportDotArtPng() {
@@ -1864,8 +2193,6 @@ class App {
             this.dotArtEditor = new DotArtEditor(canvas, {
                 gridW: 32, gridH: 32, cellSize: 16,
                 onUpdate: (counts) => this._renderDotArtMaterials(counts),
-                // 追加: テクスチャパックからアイコンを取得する関数
-                // アイテムアイコン(3D)ではなく、ブロックの上面(平面)を取得する
                 getTexture: (id) => {
                     try {
                         if (!ResourcePack.isLoaded()) return null;
@@ -1878,6 +2205,14 @@ class App {
                     }
                 }
             });
+            
+            // 一括置換イベントのリスニング
+            canvas.addEventListener('dotart-request-replace', (e) => {
+                this._dotArtReplaceOldId = e.detail.oldId;
+                this._blockSelectorMode = 'dotart';
+                this._openBlockSelector();
+            });
+
             this._setupDotArt();
         }
     }
@@ -1934,10 +2269,23 @@ class App {
             const w = parseInt($('grid-width').value);
             const h = parseInt($('grid-height').value);
             if (w >= 8 && w <= 2048 && h >= 8 && h <= 2048) {
-                ed.resize(w, h);
-                this._toast(`📏 グリッドを ${w}x${h} にリサイズ`);
+                if (this.dotArtEditor) {
+                    this.dotArtEditor.resize(w, h);
+                    this._toast(`📏 グリッドを ${w}x${h} にリサイズ`);
+                }
+            } else {
+                this._toast('サイズは 8 〜 2048 の範囲で指定してください', 'error');
             }
         };
+
+        // パレット変更
+        const btnPal = $('btn-palette-change');
+        if (btnPal) {
+            btnPal.onclick = () => {
+                this._blockSelectorMode = 'palette';
+                this._openBlockSelector();
+            };
+        }
 
         // クリア
         $('btn-clear-canvas').onclick = () => {
@@ -1949,9 +2297,49 @@ class App {
         $('btn-img2dot-pick').onclick = () => fileIn.click();
         fileIn.onchange = (e) => {
             const f = e.target.files[0];
-            if (f) this._img2dotConvert(f);
+            if (f) {
+                this._lastDotArtFile = f;
+                $('btn-img2dot-apply').disabled = false;
+                this._img2dotConvert(f);
+            }
             e.target.value = '';
         };
+
+        // 再生成
+        $('btn-img2dot-apply').onclick = () => {
+            if (this._lastDotArtFile) this._img2dotConvert(this._lastDotArtFile);
+        };
+
+        // サイズモード切替
+        const sizeMode = $('dotart-size-mode');
+        const mapCtrls = $('dotart-map-size-controls');
+        const cusCtrls = $('dotart-custom-size-controls');
+        sizeMode.onchange = () => {
+            const isMap = sizeMode.value === 'map';
+            mapCtrls.style.display = isMap ? 'flex' : 'none';
+            cusCtrls.style.display = isMap ? 'none' : 'flex';
+        };
+
+        // 地図サイズプレビュー
+        const updateMapPreview = () => {
+            const scale = parseInt($('map-scale').value);
+            const tx = parseInt($('map-tiles-x').value) || 1;
+            const ty = parseInt($('map-tiles-y').value) || 1;
+            const unit = 128 * Math.pow(2, scale);
+            $('map-size-preview').textContent = `計算後のサイズ: ${unit * tx} × ${unit * ty}`;
+        };
+        $('map-scale').addEventListener('change', updateMapPreview);
+        $('map-tiles-x').addEventListener('input', updateMapPreview);
+        $('map-tiles-y').addEventListener('input', updateMapPreview);
+
+        // スライダーの数値表示更新
+        ['contrast', 'saturation', 'dither'].forEach(id => {
+            const range = $(`img2dot-${id}`);
+            const val = $(`img2dot-${id}-val`);
+            if (range && val) {
+                range.addEventListener('input', () => { val.textContent = range.value; });
+            }
+        });
 
         // 座標計算
         $('btn-map-calc-pos').onclick = () => {
@@ -1970,38 +2358,59 @@ class App {
             });
         };
 
+        // PNG保存
+        $('btn-export-png').onclick = () => this._exportDotArtPng();
+
         // 構造としてプロジェクトに追加
         $('btn-dotart-to-struct').onclick = () => this._addDotArtAsStructure();
     }
 
     async _img2dotConvert(file) {
         this._showLoading('画像をブロックに変換中...');
+        // UI描画の猶予を与える (P2改善)
+        await new Promise(r => setTimeout(r, 50));
+
         try {
             const m = await import('./image2dot.js');
             const img = await m.loadImage(file);
 
-            // 統合版地図仕様の読み取り
-            const scale = parseInt(document.getElementById('map-scale').value);
-            const tilesX = parseInt(document.getElementById('map-tiles-x').value) || 1;
-            const tilesY = parseInt(document.getElementById('map-tiles-y').value) || 1;
-            
-            const unitSize = m.MAP_BASE_SIZE * Math.pow(2, scale);
-            const gridW = unitSize * tilesX;
-            const gridH = unitSize * tilesY;
+            // サイズ決定モードの読み取り
+            const sizeMode = document.getElementById('dotart-size-mode').value;
+            let gridW, gridH;
+
+            if (sizeMode === 'map') {
+                const scale = parseInt(document.getElementById('map-scale').value);
+                const tilesX = parseInt(document.getElementById('map-tiles-x').value) || 1;
+                const tilesY = parseInt(document.getElementById('map-tiles-y').value) || 1;
+                const unitSize = m.MAP_BASE_SIZE * Math.pow(2, scale);
+                gridW = unitSize * tilesX;
+                gridH = unitSize * tilesY;
+            } else {
+                gridW = parseInt(document.getElementById('grid-width').value) || 32;
+                gridH = parseInt(document.getElementById('grid-height').value) || 32;
+            }
 
             const mode = document.getElementById('img2dot-mode').value;
             const filterKey = document.getElementById('img2dot-filter').value;
-            const dither = document.getElementById('img2dot-dither').checked;
+            const trim = document.getElementById('img2dot-trim').checked;
+            const airMode = document.getElementById('img2dot-air').checked;
+            const contrast = parseFloat(document.getElementById('img2dot-contrast').value) || 1.0;
+            const saturation = parseFloat(document.getElementById('img2dot-saturation').value) || 1.0;
+            const dither = parseFloat(document.getElementById('img2dot-dither').value) || 0;
 
             const res = m.convert(img, {
-                mode, gridW, gridH,
+                gridW, gridH,
                 paletteFilter: m.FILTER_PRESETS[filterKey],
-                dithering: dither
+                autoTrim: trim,
+                airMode,
+                contrast,
+                saturation,
+                dither,
+                mode: mode
             });
 
             this.dotArtEditor.resize(gridW, gridH);
-            this.dotArtEditor.grid = res.grid;
-            this.dotArtEditor.render();
+            this.dotArtEditor.setData(res.grid); // setData で内部的に _saveState が呼ばれる
             this._renderDotArtMaterials(this.dotArtEditor.getMaterialCount());
 
             this._toast(`✨ ${gridW}x${gridH} のドット絵を生成しました`);
@@ -2042,10 +2451,39 @@ class App {
         this._renderMaterialsTab();
     }
 
-    _updateDotArtMaterials() {
-        if (!this.dotArtEditor) return;
-        const counts = this.dotArtEditor.getMaterialCount();
-        this._renderDotArtMaterials(counts);
+    _addTempPaletteBlock(id, name) {
+        const $ = id => document.getElementById(id);
+        const paletteBox = $('block-palette');
+        if (!paletteBox) return;
+
+        // 重複チェック
+        const existing = [...paletteBox.querySelectorAll('.palette-btn')].find(b => b.dataset.id === id);
+        if (existing) {
+            existing.click();
+            return;
+        }
+
+        const btn = document.createElement('button');
+        btn.className = 'palette-btn active';
+        btn.dataset.id = id;
+        btn.title = name;
+        
+        // アイコン表示
+        const iconUrl = ResourcePack.isLoaded() ? ResourcePack.getItemTextureUrl(id) : null;
+        if (iconUrl) {
+            btn.innerHTML = `<img src="${iconUrl}" style="width:100%;height:100%;image-rendering:pixelated;object-fit:contain;">`;
+        } else {
+            btn.style.backgroundColor = '#888';
+            btn.textContent = '🧱';
+        }
+
+        document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        btn.onclick = () => {
+            document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (this.dotArtEditor) this.dotArtEditor.setBlock(id);
+        };
+        paletteBox.insertBefore(btn, paletteBox.firstChild);
     }
 
     _renderDotArtMaterials(counts) {
@@ -2113,6 +2551,7 @@ class App {
 
     /** 起動時に IndexedDB から全構造バッファを bufferCache へ */
     async _autoRestoreStructureBuffers() {
+        this._isRestoringBuffers = true;
         try {
             const all = await ResourcePack.loadAllStructureBuffers();
             if (!all || all.size === 0) return;
@@ -2120,9 +2559,10 @@ class App {
                 if (!entry || !entry.buffer) continue;
                 this.bufferCache.set(id, entry.buffer);
             }
-            console.log(`[restore] ${all.size}件の構造バッファを IDB から復元`);
         } catch (e) {
             console.warn('Auto-restore structure buffers failed:', e);
+        } finally {
+            this._isRestoringBuffers = false;
         }
     }
 
@@ -2186,7 +2626,13 @@ class App {
         }
 
         const project = this._currentProject();
-        if (project) this._updateViewer3DSelect(project);
+        if (project) {
+            this._updateViewer3DSelect(project);
+            // すでに3Dビューが初期化されている場合、プロジェクト切り替えに合わせて自動再読込
+            if (this.viewer3d?.isInitialized) {
+                this._load3DView();
+            }
+        }
     }
 
     _updateViewer3DSelect(project) {
@@ -2212,7 +2658,137 @@ class App {
         }
     }
 
+    _getSliceValues() {
+        const gi = id => parseInt(document.getElementById(id)?.value ?? 0, 10);
+        return {
+            yMin: gi('layer-min'),  yMax: gi('layer-max'),
+            xMin: gi('layer-xmin'), xMax: gi('layer-xmax'),
+            zMin: gi('layer-zmin'), zMax: gi('layer-zmax'),
+        };
+    }
+
+    _onViewer3DClick(info) {
+        // 既存ポップアップを閉じる
+        document.getElementById('v3d-block-popup')?.remove();
+        // ハイライト解除
+        this.viewer3d?.clearSelectionIndicator();
+        if (!info) return; // 空白クリック
+
+        const { blockId, coord, screenX, screenY } = info;
+        const name = this.langData?.[blockId] || blockId.replace('minecraft:', '');
+        // 選択ブロックをハイライト（黄色）
+        this.viewer3d?.setSelectionIndicator(coord);
+
+        const popup = document.createElement('div');
+        popup.id = 'v3d-block-popup';
+        popup.style.cssText = `
+            position:fixed; z-index:9999;
+            left:${Math.min(screenX + 8, window.innerWidth - 230)}px;
+            top:${Math.min(screenY + 8, window.innerHeight - 170)}px;
+            background:var(--surface2,#1e2a3a); border:1px solid var(--border,#2a3f5a);
+            border-radius:10px; padding:0.7rem 0.9rem; min-width:210px;
+            box-shadow:0 8px 32px rgba(0,0,0,0.6); font-size:0.82rem; color:var(--text,#e2e8f0);
+        `;
+
+        const iconHtml = this._getBlockIconHtml(blockId);
+        popup.innerHTML = `
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;border-bottom:1px solid var(--border,#2a3f5a);padding-bottom:0.5rem">
+                <div style="width:32px;height:32px;flex-shrink:0;outline:2px solid #f6d860;outline-offset:2px;border-radius:4px">${iconHtml}</div>
+                <div>
+                    <div style="font-weight:700;font-size:0.88rem;color:#f6d860">${this._escape(name)}</div>
+                    <div style="font-size:0.65rem;color:var(--muted2,#64748b);margin-top:0.1rem">${this._escape(blockId)}</div>
+                    ${coord ? `<div style="font-size:0.62rem;color:var(--muted2,#64748b)">X:${coord.x} Y:${coord.y} Z:${coord.z}</div>` : ''}
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.3rem">
+                <button id="v3d-pop-set-replace" class="mc-btn secondary small" style="width:100%;text-align:left">🔄 置換元に設定</button>
+                ${coord ? `<button id="v3d-pop-del-one" class="mc-btn secondary small" style="width:100%;text-align:left;color:var(--warning,#f6ad55)">🗑️ このブロック1つだけ削除</button>` : ''}
+                <button id="v3d-pop-del-all" class="mc-btn secondary small" style="width:100%;text-align:left;color:var(--danger,#e55)">💥 この種類を全て削除</button>
+                ${this._deletedPositions.size > 0 ? `<button id="v3d-pop-restore" class="mc-btn secondary small" style="width:100%;text-align:left;opacity:0.7">↺ 削除をリセット(${this._deletedPositions.size}件)</button>` : ''}
+            </div>
+        `;
+        document.body.appendChild(popup);
+
+        // 置換元に設定
+        document.getElementById('v3d-pop-set-replace')?.addEventListener('click', () => {
+            const fromEl = document.getElementById('replace-from');
+            const fromNameEl = document.getElementById('replace-from-name');
+            if (fromEl) fromEl.value = blockId;
+            if (fromNameEl) fromNameEl.textContent = name;
+            popup.remove();
+            this._toast(`🔄 「${name}」を置換元に設定しました`);
+        });
+
+        // 1つだけ削除
+        document.getElementById('v3d-pop-del-one')?.addEventListener('click', () => {
+            if (coord) {
+                this._deletedPositions.add(`${coord.x},${coord.y},${coord.z}`);
+                this._applySlice();
+                popup.remove();
+                this._toast(`🗑️ 1ブロック削除しました (合計 ${this._deletedPositions.size} 件)`);
+            }
+        });
+
+        // この種類を全て削除（置換として air に置換）
+        document.getElementById('v3d-pop-del-all')?.addEventListener('click', () => {
+            const fromEl = document.getElementById('replace-from');
+            const toEl = document.getElementById('replace-to');
+            const fromNameEl = document.getElementById('replace-from-name');
+            const toNameEl = document.getElementById('replace-to-name');
+            if (fromEl) fromEl.value = blockId;
+            if (fromNameEl) fromNameEl.textContent = name;
+            if (toEl) toEl.value = 'minecraft:air';
+            if (toNameEl) toNameEl.textContent = 'air (削除)';
+            // 置換リストに追加
+            document.getElementById('btn-add-replace')?.click();
+            popup.remove();
+            this._toast(`💥 「${name}」を削除置換に追加しました`);
+        });
+
+        // 削除リセット
+        document.getElementById('v3d-pop-restore')?.addEventListener('click', () => {
+            this._deletedPositions.clear();
+            this._applySlice();
+            popup.remove();
+            this._toast('↺ 削除をリセットしました');
+        });
+
+        // 他の場所クリックで閉じる（ハイライトも解除）
+        const close = (e) => {
+            if (!popup.contains(e.target)) {
+                popup.remove();
+                this.viewer3d?.clearSelectionIndicator();
+                document.removeEventListener('pointerdown', close);
+            }
+        };
+        setTimeout(() => document.addEventListener('pointerdown', close), 10);
+    }
+
+    _applySlice() {
+        if (!this.viewer3d?.isInitialized || !this.viewer3d._lastCoords) return;
+        const sel = document.getElementById('viewer3d-structure-select');
+        const project = this._currentProject();
+        const structure = project?.structures.find(s => s.id === sel?.value);
+        if (!structure) return;
+        const coords = this.coordsCache.get(sel.value);
+        if (!coords) return;
+        const replaced = this._applyReplacements(sel.value, coords);
+        const filtered = this._deletedPositions.size > 0
+            ? replaced.filter(c => !this._deletedPositions.has(`${c.x},${c.y},${c.z}`))
+            : replaced;
+        const { yMin, yMax, xMin, xMax, zMin, zMax } = this._getSliceValues();
+        const cmRadio = document.querySelector('input[name="viewer3d-colormode"]:checked');
+        this.viewer3d.loadStructure(filtered, structure.size, {
+            yMin, yMax, xMin, xMax, zMin, zMax,
+            colorMode: cmRadio?.value || 'material'
+        });
+    }
+
     async _load3DView() {
+        if (this._isRestoringBuffers) {
+            this._toast('構造データを復元中です。完了までお待ちください...', 'info');
+            return;
+        }
         const container = document.getElementById('viewer3d-container');
         const sel = document.getElementById('viewer3d-structure-select');
         const project = this._currentProject();
@@ -2251,11 +2827,27 @@ class App {
                 this.viewer3d = new Viewer3D(container);
             }
             await this.viewer3d.init();
+            
+            // 現在の床タイプを適用
+            const floorType = document.getElementById('floor-type-select')?.value || 'grass';
+            this.viewer3d.setFloorType(floorType);
 
-            const yMinEl = document.getElementById('layer-min');
-            const yMaxEl = document.getElementById('layer-max');
-            const yMin = yMinEl ? parseInt(yMinEl.value, 10) : 0;
-            const yMax = yMaxEl ? parseInt(yMaxEl.value, 10) : 999;
+            // ─ スライダーの上限をこの構造に合わせてリセット ─
+            const sz = structure.size;
+            if (sz) {
+                const setSlider = (id, valId, max, val) => {
+                    const el = document.getElementById(id);
+                    const vl = document.getElementById(valId);
+                    if (el) { el.max = max; el.value = val; }
+                    if (vl) vl.textContent = val;
+                };
+                setSlider('layer-min',  'layer-min-val',  sz.y - 1, 0);
+                setSlider('layer-max',  'layer-max-val',  sz.y - 1, sz.y - 1);
+                setSlider('layer-xmin', 'layer-xmin-val', sz.x - 1, 0);
+                setSlider('layer-xmax', 'layer-xmax-val', sz.x - 1, sz.x - 1);
+                setSlider('layer-zmin', 'layer-zmin-val', sz.z - 1, 0);
+                setSlider('layer-zmax', 'layer-zmax-val', sz.z - 1, sz.z - 1);
+            }
 
             const cmRadio = document.querySelector('input[name="viewer3d-colormode"]:checked');
             const colorMode = cmRadio ? cmRadio.value : 'material';
@@ -2263,7 +2855,15 @@ class App {
             const replacedCoords = this._applyReplacements(structureId, coords);
             // 置換が変わるたびにマテリアルキャッシュを破棄してテクスチャを引き直す
             this.viewer3d._matCache?.clear();
-            this.viewer3d.loadStructure(replacedCoords, structure.size, { yMin, yMax, colorMode });
+            const { yMin, yMax, xMin, xMax, zMin, zMax } = this._getSliceValues();
+            // 1つ削除フィルタを適用
+            const filteredCoords = this._deletedPositions.size > 0
+                ? replacedCoords.filter(c => !this._deletedPositions.has(`${c.x},${c.y},${c.z}`))
+                : replacedCoords;
+            this.viewer3d.loadStructure(filteredCoords, structure.size, { yMin, yMax, xMin, xMax, zMin, zMax, colorMode });
+            // クリックコールバックを毎回設定（再初期化後も有効）
+            this.viewer3d.onBlockClick = (info) => this._onViewer3DClick(info);
+            this._updateTextureStatusUI();
 
             const infoEl = document.getElementById('viewer3d-info');
             if (infoEl) {
@@ -2272,11 +2872,41 @@ class App {
         } catch (err) {
             console.error('_load3DView failed:', err);
             this._toast('3D表示に失敗しました: ' + err.message, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.style.display = 'none'; // 開始ボタンは隠す
+            }
+            const reloadBtn = document.getElementById('btn-reload-3d');
+            if (reloadBtn) reloadBtn.style.display = 'inline-block'; // 代わりに更新ボタンを出す
+        }
+    }
+
+    /** テクスチャ読み込み状態のUI更新 */
+    _updateTextureStatusUI() {
+        const stats = this.viewer3d?.textureStats;
+        const box = document.getElementById('v3d-texture-status');
+        if (!box) return;
+
+        if (!stats || this.viewer3d.colorMode !== 'realtexture') {
+            box.querySelector('.status-summary').textContent = '— / —';
+            box.querySelector('.status-detail').textContent = 'リアル表示モードではありません';
+            return;
         }
 
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = '3D表示を更新';
+        const total = stats.success + stats.missing;
+        const successPercent = total > 0 ? Math.round((stats.success / total) * 100) : 0;
+        
+        box.querySelector('.status-summary').textContent = `${stats.success} / ${total} (${successPercent}%)`;
+        
+        if (stats.missing === 0) {
+            box.querySelector('.status-detail').textContent = '✅ すべてのテクスチャが正常に解決されました';
+            box.querySelector('.status-summary').style.color = 'var(--primary)';
+        } else {
+            const missingList = Array.from(stats.missingIds).slice(0, 3).map(id => id.replace('minecraft:', '')).join(', ');
+            const more = stats.missingIds.size > 3 ? ` など計${stats.missingIds.size}種` : '';
+            box.querySelector('.status-detail').innerHTML = `⚠️ <span style="color:var(--accent)">${stats.missing}個</span>のブロックでテクスチャ不足<br><small>${missingList}${more}</small>`;
+            box.querySelector('.status-summary').style.color = 'var(--accent)';
         }
     }
 
@@ -2362,6 +2992,298 @@ class App {
         if (local === 'coarse_dirt') return { rawId: 'minecraft:dirt', states: { dirt_type: 'coarse' } };
         // フォールバック
         return { rawId: blockId, states: null };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // TOUR SYSTEM
+    // ─────────────────────────────────────────────────────────────────────
+
+    _setupTour() {
+        if (!document.getElementById('tour-style')) {
+            const s = document.createElement('style');
+            s.id = 'tour-style';
+            s.textContent = [
+                '#tour-overlay{position:fixed;inset:0;z-index:9000;pointer-events:none}',
+                '#tour-overlay.active{display:block}',
+                '#tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.01);z-index:9001;pointer-events:none}',
+                '#tour-spotlight{position:fixed;z-index:9002;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.65);border-radius:6px}',
+                /* フローティング説明カード */
+                '#tour-card{position:fixed;z-index:9003;pointer-events:all;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:12px;padding:1rem 1.2rem;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.65)}',
+                '#tour-title{font-size:1rem;font-weight:700;margin:0 0 0.5rem;color:var(--text,#e2e8f0)}',
+                '#tour-body{font-size:0.86rem;color:var(--muted,#c8d4e8);margin:0;line-height:1.65;white-space:pre-line}',
+                /* 固定ナビバー */
+                '#tour-nav-bar{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:9004;display:flex;gap:0.6rem;align-items:center;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:16px;padding:0.7rem 1.2rem;box-shadow:0 4px 28px rgba(0,0,0,0.65);pointer-events:all;white-space:nowrap}',
+                '#tour-step-ind{font-size:0.9rem;color:var(--accent,#63b3ed);font-family:monospace;padding:0 0.6rem;min-width:54px;text-align:center;letter-spacing:.04em}',
+                '#tour-prev-btn,#tour-next-btn{font-size:0.9rem!important;padding:0.48rem 1.1rem!important;min-width:84px}',
+                '#tour-close-btn{font-size:0.82rem!important;padding:0.4rem 0.75rem!important;background:var(--surface3,#2d3748)!important;margin-left:0.4rem}',
+                '#btn-tour:hover{background:rgba(99,179,237,0.15)!important}'
+            ].join('\n');
+            document.head.appendChild(s);
+        }
+
+        if (!document.getElementById('tour-overlay')) {
+            const el = document.createElement('div');
+            el.id = 'tour-overlay';
+            /* 説明カード（スポットライト付近に浮かぶ、クリック透過） */
+            el.innerHTML = '<div id="tour-backdrop"></div><div id="tour-spotlight"></div>'
+                + '<div id="tour-card">'
+                + '<h4 id="tour-title"></h4>'
+                + '<p id="tour-body"></p>'
+                + '</div>'
+                /* ナビバー（常に画面下中央、マウス移動不要） */
+                + '<div id="tour-nav-bar">'
+                + '<button id="tour-prev-btn" class="mc-btn small secondary">← 前へ</button>'
+                + '<span id="tour-step-ind">1 / 1</span>'
+                + '<button id="tour-next-btn" class="mc-btn small primary">次へ →</button>'
+                + '<button id="tour-close-btn" class="mc-btn small">✕ 閉じる</button>'
+                + '</div>';
+            document.body.appendChild(el);
+
+            document.getElementById('tour-backdrop').onclick  = () => this._closeTour();
+            document.getElementById('tour-close-btn').onclick = () => this._closeTour();
+            document.getElementById('tour-prev-btn').onclick  = () => this._showTourStep(this._tourStep - 1);
+            document.getElementById('tour-next-btn').onclick  = () => {
+                if (this._tourStep < this._tourSteps.length - 1) this._showTourStep(this._tourStep + 1);
+                else this._closeTour();
+            };
+            document.addEventListener('keydown', (e) => {
+                if (!document.getElementById('tour-overlay')?.classList.contains('active')) return;
+                if (e.key === 'Escape')    this._closeTour();
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') document.getElementById('tour-next-btn')?.click();
+                if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   document.getElementById('tour-prev-btn')?.click();
+            });
+        }
+
+        const btn = document.getElementById('btn-tour');
+        if (btn) btn.onclick = () => this._startTour();
+    }
+
+    _startTour() {
+        const nl = '\n';
+        const TOURS = {
+            materials: [
+                { target: '#btn-add-structure',          pos: 'bottom', title: '① 構造ファイルを追加',    body: '「＋ 構造を追加」ボタンで .mcstructure ファイルを読み込みます。' + nl + 'ウェルカム画面へのドラッグ＆ドロップも使えます。' },
+                { target: '#structures-list',            pos: 'bottom', title: '② 構造一覧',             body: '追加した構造ファイルがここに並びます。' + nl + '複数追加すると素材が自動的に合算されます。倍数設定も可能です。' },
+                { target: '.stats-grid',                 pos: 'top',    title: '③ 合計素材',             body: '全構造のブロック数・種類・スタック数・シュルカー箱数が自動計算されます。' },
+                { target: '#structure-breakdown-details',pos: 'top',    title: '④ 構造別の内訳',          body: 'クリックで展開すると、構造ごとの素材内訳を確認できます。' },
+                { target: '#btn-copy-md',                pos: 'top',    title: '⑤ エクスポート',          body: 'Markdown形式でコピーしたり CSVとして書き出せます。' + nl + 'チェックリストや在庫管理表として使えます。' },
+                { target: '#search-input',               pos: 'top',    title: '⑥ 検索とフィルター',       body: 'ブロック名で絞り込んだり、建築・装飾などカテゴリ別にフィルターをかけられます。' }
+            ],
+            viewer3d: [
+                { target: '#btn-load-3d',                pos: 'bottom', title: '① 3D表示を開始',         body: 'このボタンを押すと構造が3Dでレンダリングされます。' + nl + 'はじめに必ず押してください。' },
+                { target: '#viewer3d-structure-select',  pos: 'bottom', title: '② 構造を選択',           body: '複数の構造がある場合、ここで表示したいものを切り替えられます。' },
+                { target: '#viewer3d-container',         pos: 'right',  title: '③ 3Dビューの操作',       body: '【回転】右ドラッグ' + nl + '【パン】Shift + 左ドラッグ' + nl + '【ズーム】マウスホイール' + nl + '【ブロック選択】左クリック → 名前・置換・削除メニュー' },
+                { target: '[data-section="replace"]',    pos: 'left',   title: '④ ブロック置換',          body: '素材Aを素材Bに一括置換できます。' + nl + 'コスト削減やデザイン変更に便利です。' },
+                { target: '[data-section="textures"]',   pos: 'left',   title: '⑤ テクスチャパック',      body: '公式リソースパック（zip）をアップロードすると' + nl + 'リアルなテクスチャになります。' },
+                { target: '#btn-export-mcstructure',     pos: 'left',   title: '⑥ 構造をエクスポート',    body: '置換後の構造を .mcstructure でダウンロードできます。' + nl + 'そのままMinecraftでインポートして使えます。' },
+                { target: '#layer-min',                      pos: 'left',   title: '⑦ 断面フィルター',          body: 'Y/X/Z 各軸の最小・最大スライダーを動かすと' + nl + 'その範囲だけを切り出して3D表示できます。' + nl + '内部構造の確認に便利です。↺ リセットで全体に戻ります。' }
+            ],
+            dotart: [
+                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像を選んで自動変換',  body: 'まずはこのボタンで画像を選びましょう。' + nl + '一瞬でマイクラのドット絵に変換されます！' },
+                { target: '#dotart-size-mode',           pos: 'bottom', title: '② サイズを微調整する',  body: '思ったより大きい/小さい時はここで。' + nl + '設定を変えて「✨ 再生成」を押せば即座に反映されます。' },
+                { target: '#dotart-canvas',              pos: 'right',  title: '③ 変換されたドット絵',  body: 'ここに結果が表示されます。' + nl + '細かい部分はペンや消しゴムで直接直せます。' },
+                { target: '.tool-buttons',               pos: 'right',  title: '④ 便利な「一括置換」',   body: '魔法の杖 (🪄) ツールを使うと、' + nl + '特定の色を別のブロックに一気に置き換えられます。' },
+                { target: '#btn-palette-change',         pos: 'left',   title: '⑤ パレットを自由に増やす',body: 'カタログから好きなブロックを選んで、' + nl + '自分だけのパレットを組み立てましょう。' },
+                { target: '#dotart-materials',           pos: 'left',   title: '⑥ 必要なブロックを確認',  body: '最後はここで合計数を確認。' + nl + '「構造として追加」すれば、建築リストに合算されます！' }
+            ],
+            settings: [
+                { target: '#panel-settings', pos: 'top', title: '⚙️ 設定',
+                  body: 'アプリの外観・データ管理・初期化などが行えます。' + nl + '設定はブラウザに自動保存されます。' }
+            ],
+            home: [
+                { target: '.welcome-icon',                pos: 'bottom', title: '👋 Structure Planner へようこそ',
+                  body: '.mcstructure ファイルを読み込んで' + nl + '素材管理・3D表示・ドット絵作成ができるツールです。' },
+                { target: '#btn-drop-file',               pos: 'bottom', title: '① ファイルを開く',
+                  body: 'ボタンを押してファイル選択するか、' + nl + 'ファイルをこの画面にドラッグ＆ドロップで追加できます。' },
+                { target: '#btn-create-project-welcome',  pos: 'bottom', title: '② 新規プロジェクト',
+                  body: '空のプロジェクトを作って、後からファイルを追加していくこともできます。' },
+                { target: '#sidebar-drop-hint',           pos: 'right',  title: '③ サイドバーにもドロップ',
+                  body: '左のプロジェクト一覧エリアにもドラッグ＆ドロップできます。' + nl + 'ファイルを素早く追加したいときに便利です。' },
+                { target: '#project-list',                pos: 'right',  title: '④ プロジェクト一覧',
+                  body: '追加したプロジェクトがここに並びます。' + nl + 'クリックで開き、右クリックで削除・名前変更ができます。' },
+                { target: '#btn-new-project',             pos: 'bottom', title: '⑤ 新規プロジェクト',
+                  body: '新しいプロジェクトを作成します。' + nl + '作成後に構造ファイルを追加してください。' }
+            ]
+        };
+
+        const isWelcome = !document.getElementById('welcome-screen').classList.contains('hidden');
+        this._tourSteps = isWelcome ? TOURS.home : (TOURS[this.currentTab] || TOURS.materials);
+        this._tourStep  = 0;
+        document.getElementById('tour-overlay').classList.add('active');
+        this._showTourStep(0);
+    }
+
+    // ─── スプリング状態（rAF + バネ物理アニメーション用）─────────────────
+    _initTourSpring() {
+        // スポットライト用 (x,y,w,h) とカード用 (cx,cy) を別々に管理
+        // カードはスポットライトより少し遅れて追いかける（先行演出）
+        return {
+            // スポットライト現在値
+            x:0, y:0, w:0, h:0,
+            // スポットライト速度
+            vx:0, vy:0, vw:0, vh:0,
+            // スポットライト目標
+            tx:0, ty:0, tw:0, th:0,
+            // カード現在値
+            cx:0, cy:0,
+            // カード速度
+            vcx:0, vcy:0,
+            // カード目標（スポットライトと共通計算）
+            tcx:0, tcy:0,
+            init: false  // 最初だけ即座に配置
+        };
+    }
+
+    _tickTourSpring(now) {
+        if (!this._tourSpring || !document.getElementById('tour-overlay')?.classList.contains('active')) return;
+        const s = this._tourSpring;
+        const dt = Math.min((now - (s._prevTime || now)) / 1000, 0.05);
+        s._prevTime = now;
+
+        // バネ定数: K=stiffness, D=damping
+        // ζ = D/(2√K) ≈ 0.72 → わずかにアンダーダンプ（小さなオーバーシュート）
+        const K = 260, D = 26;
+        // カードはスポットライトより少し柔らかく追いかける
+        const CK = 200, CD = 22;
+
+        const spring = (pos, vel, tgt, k, d) => {
+            const acc = k * (tgt - pos) - d * vel;
+            const nv = vel + acc * dt;
+            const np = pos + nv * dt;
+            return [np, nv];
+        };
+
+        [s.x, s.vx] = spring(s.x, s.vx, s.tx, K, D);
+        [s.y, s.vy] = spring(s.y, s.vy, s.ty, K, D);
+        [s.w, s.vw] = spring(s.w, s.vw, s.tw, K, D);
+        [s.h, s.vh] = spring(s.h, s.vh, s.th, K, D);
+        [s.cx, s.vcx] = spring(s.cx, s.vcx, s.tcx, CK, CD);
+        [s.cy, s.vcy] = spring(s.cy, s.vcy, s.tcy, CK, CD);
+
+        // 遠距離移動でも速度を制限（長距離ステップが高速になりすぎないよう）
+        const MAX_V = 550;
+        s.vx  = Math.max(-MAX_V, Math.min(MAX_V, s.vx));
+        s.vy  = Math.max(-MAX_V, Math.min(MAX_V, s.vy));
+        s.vw  = Math.max(-MAX_V, Math.min(MAX_V, s.vw));
+        s.vh  = Math.max(-MAX_V, Math.min(MAX_V, s.vh));
+        s.vcx = Math.max(-MAX_V, Math.min(MAX_V, s.vcx));
+        s.vcy = Math.max(-MAX_V, Math.min(MAX_V, s.vcy));
+
+        const sp = document.getElementById('tour-spotlight');
+        if (sp) {
+            sp.style.left   = s.x + 'px';
+            sp.style.top    = s.y + 'px';
+            sp.style.width  = s.w + 'px';
+            sp.style.height = s.h + 'px';
+        }
+        const card = document.getElementById('tour-card');
+        if (card) {
+            card.style.left = s.cx + 'px';
+            card.style.top  = s.cy + 'px';
+        }
+
+        // まだ動いているなら次フレームも走らせる
+        const settled = [
+            Math.abs(s.tx-s.x), Math.abs(s.ty-s.y), Math.abs(s.tw-s.w), Math.abs(s.th-s.h),
+            Math.abs(s.tcx-s.cx), Math.abs(s.tcy-s.cy),
+            Math.abs(s.vx), Math.abs(s.vy), Math.abs(s.vw), Math.abs(s.vh),
+            Math.abs(s.vcx), Math.abs(s.vcy)
+        ].every(v => v < 0.15);
+
+        if (!settled) {
+            this._tourRafId = requestAnimationFrame(t => this._tickTourSpring(t));
+        } else {
+            this._tourRafId = null;
+        }
+    }
+
+    _startTourSpringRaf() {
+        if (this._tourRafId) cancelAnimationFrame(this._tourRafId);
+        if (!this._tourSpring) return;  // _closeTour後の安全ガード
+        this._tourSpring._prevTime = performance.now();
+        // 同じ位置でも必ずRAFを起動して settled チェックを通す
+        this._tourRafId = requestAnimationFrame(t => this._tickTourSpring(t));
+    }
+
+    _showTourStep(idx) {
+        const steps = this._tourSteps;
+        if (!steps || idx < 0 || idx >= steps.length) return;
+        this._tourStep = idx;
+        const step = steps[idx];
+
+        const el = document.querySelector(step.target);
+        if (!el) {
+            if (idx < steps.length - 1) { this._showTourStep(idx + 1); return; }
+            else { this._closeTour(); return; }
+        }
+
+        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+
+        // スポットライト・カードの目標座標を計算してスプリングの目標に設定
+        const computeTargets = () => {
+            const rect = el.getBoundingClientRect();
+            const pad  = 8;
+            const s    = this._tourSpring;
+
+            // スポットライト目標
+            s.tx = rect.left   - pad;
+            s.ty = rect.top    - pad;
+            s.tw = rect.width  + pad * 2;
+            s.th = rect.height + pad * 2;
+
+            // カード目標
+            const card = document.getElementById('tour-card');
+            const vw = window.innerWidth, vh = window.innerHeight;
+            const cw = 308, ch = (card?.offsetHeight || 190);
+            const pos = step.pos || 'bottom';
+            let cx, cy;
+            if (pos === 'bottom')    { cx = Math.min(Math.max(rect.left, 8), vw-cw-8); cy = Math.min(rect.bottom+pad+8, vh-ch-8); }
+            else if (pos === 'top')  { cx = Math.min(Math.max(rect.left, 8), vw-cw-8); cy = Math.max(rect.top-ch-pad-8, 8); }
+            else if (pos === 'left') { cx = Math.max(rect.left-cw-pad-8, 8);           cy = Math.min(Math.max(rect.top, 8), vh-ch-8); }
+            else                     { cx = Math.min(rect.right+pad+8, vw-cw-8);       cy = Math.min(Math.max(rect.top, 8), vh-ch-8); }
+            s.tcx = cx; s.tcy = cy;
+
+            // 初回のみ瞬間配置（アニメーションなし）
+            if (!s.init) {
+                s.x=s.tx; s.y=s.ty; s.w=s.tw; s.h=s.th;
+                s.cx=cx; s.cy=cy;
+                s.init = true;
+            }
+        };
+
+        // スプリング初期化（未作成なら）
+        if (!this._tourSpring) this._tourSpring = this._initTourSpring();
+        computeTargets();
+        this._startTourSpringRaf();
+
+        // ページスクロール等で目標がずれるのを補正（軽量な再計算）
+        if (this._tourTargetTimer) clearInterval(this._tourTargetTimer);
+        this._tourTargetTimer = setInterval(() => {
+            if (!this._tourSpring || !document.getElementById('tour-overlay')?.classList.contains('active')) {
+                clearInterval(this._tourTargetTimer); return;
+            }
+            computeTargets();
+            if (!this._tourRafId) this._startTourSpringRaf();
+        }, 200);
+
+        // カードの中身を更新
+        const titleEl = document.getElementById('tour-title');
+        if (titleEl) titleEl.textContent = step.title || '';
+        const bodyEl = document.getElementById('tour-body');
+        if (bodyEl) bodyEl.textContent  = step.body  || '';
+        const stepInd = document.getElementById('tour-step-ind');
+        if (stepInd) stepInd.textContent = `${idx + 1} / ${steps.length}`;
+        const prevBtn = document.getElementById('tour-prev-btn');
+        const nextBtn = document.getElementById('tour-next-btn');
+        if (prevBtn) prevBtn.disabled = idx === 0;
+        if (nextBtn) nextBtn.textContent = idx === steps.length - 1 ? '✓ 閉じる' : '次へ →';
+    }
+
+    _closeTour() {
+        if (this._tourRafId) { cancelAnimationFrame(this._tourRafId); this._tourRafId = null; }
+        clearInterval(this._tourTargetTimer);
+        this._tourSpring = null; // 次回開始時に再初期化
+        document.getElementById('tour-overlay')?.classList.remove('active');
     }
 
     _escape(str) {
