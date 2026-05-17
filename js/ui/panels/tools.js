@@ -9,6 +9,10 @@ import { generateScaffolding, generateInversion, convertResultToLitematic, downl
 
 const $ = id => document.getElementById(id);
 
+// Saved original structure state so any preview can be undone.
+// Set once before the first preview render; reset when structure changes.
+let _savedOriginalState = null; // { coords, size, blockId? }
+
 // lightpatch でハイライトする光源ブロック ID
 const LIGHT_BLOCK_IDS = [
   'minecraft:shroomlight', 'minecraft:soul_lantern', 'minecraft:lantern',
@@ -36,8 +40,16 @@ export function initToolsPanel(app) {
   // ── 地面Y 自動検出ボタン ─────────────────────────────────────────────
   $('btn-scaffold-autoground')?.addEventListener('click', () => _autoDetectGround(app));
 
-  // ── 構造選択変更 → 地面Y自動セット ──────────────────────────────────
-  $('tools-structure-select')?.addEventListener('change', () => _autoDetectGround(app, true));
+  // ── 構造選択変更 → 地面Y自動セット + プレビュー状態リセット ──────────
+  $('tools-structure-select')?.addEventListener('change', () => {
+    _savedOriginalState = null;
+    _autoDetectGround(app, true);
+  });
+
+  // ── プレビュー「元に戻す」ボタン（動的に生成されるため委譲で捕捉）────
+  document.addEventListener('click', (e) => {
+    if (e.target?.id === 'btn-undo-preview') _restoreOriginalInViewer(app);
+  });
 
   // 錆止めプリセット
   $('btn-preset-wax')?.addEventListener('click', () => {
@@ -180,17 +192,17 @@ async function _previewScaffoldInViewer(app, dataBuf, originalCoords, structId) 
 
   try {
     if (!viewer.isInitialized) await viewer.init();
+    _saveOriginalState(app, structId);
     const size = structure?.size ?? { x: 64, y: 64, z: 64 };
     viewer.loadStructure(combined, size, { autoFocus: true });
     viewer.setHighlightBlocks([SCAFFOLD_BLOCK_ID]);
-
-    // Make scaffold pillars visible THROUGH walls: many of them stand at
-    // standing positions adjacent to the structure (sometimes in interior
-    // air pockets) and would be hidden by exterior walls. Disabling depth
-    // testing on scaffold meshes lets the user see where every scaffold
-    // needs to go regardless of camera angle.
     _makeMeshesXrayed(viewer, SCAFFOLD_BLOCK_ID);
 
+    // Show undo button inside the scaffold result section
+    const resultEl = $('tool-scaffold-result');
+    if (resultEl && !resultEl.querySelector('#btn-undo-preview')) {
+      resultEl.insertAdjacentHTML('beforeend', _undoButtonHtml());
+    }
     app._toast?.(`👁 足場 ${json.scaffoldBlocks?.length ?? 0} ブロックを水色でプレビュー`);
   } catch (err) {
     app._toast?.('プレビュー表示エラー: ' + err.message, 'error');
@@ -263,7 +275,7 @@ async function _runInvert(app, mode) {
         </div>
       `;
       $(`btn-preview-${mode}`)?.addEventListener('click', () =>
-        _previewInViewer(app, result.data, mode)
+        _previewInViewer(app, result.data, mode, structId)
       );
       $(`btn-save-${mode}`)?.addEventListener('click', () =>
         _saveResultAsLitematic(app, result.data, mode, structId)
@@ -275,7 +287,7 @@ async function _runInvert(app, mode) {
 }
 
 // ── 3Dビューへのプレビュー表示（invert / hollow / lightpatch）────────────
-async function _previewInViewer(app, dataBuf, mode) {
+async function _previewInViewer(app, dataBuf, mode, structId) {
   let json;
   try {
     json = JSON.parse(new TextDecoder().decode(dataBuf));
@@ -328,6 +340,7 @@ async function _previewInViewer(app, dataBuf, mode) {
 
   try {
     if (!viewer.isInitialized) await viewer.init();
+    if (structId) _saveOriginalState(app, structId);
     viewer.loadStructure(coords, { x: SX, y: SY, z: SZ }, { autoFocus: true });
 
     // ハイライト対象: モード別
@@ -337,16 +350,19 @@ async function _previewInViewer(app, dataBuf, mode) {
 
     if (hlIds.length > 0) {
       viewer.setHighlightBlocks(hlIds);
-      // x-ray highlighted markers so they're visible through the structure walls
       for (const id of hlIds) _makeMeshesXrayed(viewer, id);
+    }
+
+    // Show undo button inside the mode result section
+    const resultEl = $(`tool-${mode}-result`);
+    if (resultEl && !resultEl.querySelector('#btn-undo-preview')) {
+      resultEl.insertAdjacentHTML('beforeend', _undoButtonHtml());
     }
 
     const hlCount = hlIds.length > 0
       ? coords.filter(c => hlIds.some(id => c.blockId === id)).length
       : 0;
-    const hlMsg = hlCount > 0
-      ? `（光源 ${hlCount} 箇所をハイライト）`
-      : '';
+    const hlMsg = hlCount > 0 ? `（光源 ${hlCount} 箇所をハイライト）` : '';
     app._toast?.(`👁 ${coords.length.toLocaleString()} ブロックをプレビュー表示${hlMsg}`);
   } catch (err) {
     app._toast?.('プレビュー表示エラー: ' + err.message, 'error');
@@ -383,4 +399,35 @@ async function _saveResultAsLitematic(app, dataBuf, mode, structId) {
 
 function _esc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── プレビュー前に元の構造状態を保存 ─────────────────────────────────────
+function _saveOriginalState(app, structId) {
+  if (_savedOriginalState) return; // already saved — don't overwrite
+  const coords = app.coordsCache?.get(structId);
+  const project = app._currentProject?.();
+  const structure = project?.structures.find(s => s.id === structId);
+  if (!coords) return;
+  _savedOriginalState = {
+    coords,
+    size: structure?.size ?? { x: 64, y: 64, z: 64 },
+  };
+}
+
+// ── 元の構造に戻す ──────────────────────────────────────────────────────────
+async function _restoreOriginalInViewer(app) {
+  const saved = _savedOriginalState;
+  if (!saved) { app._toast?.('戻せる状態がありません', 'error'); return; }
+  const viewer = app.viewer3d;
+  if (!viewer) return;
+  if (!viewer.isInitialized) await viewer.init();
+  viewer.loadStructure(saved.coords, saved.size, { autoFocus: false });
+  viewer.setHighlightBlocks([]);
+  _savedOriginalState = null;
+  app._toast?.('↩ 元の構造に戻しました');
+}
+
+// ── 「元に戻す」ボタンを挿入するHTML ──────────────────────────────────────
+function _undoButtonHtml() {
+  return `<button class="mc-btn secondary small" id="btn-undo-preview" style="margin-top:0.4rem;width:100%">↩ 元の構造に戻す</button>`;
 }

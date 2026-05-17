@@ -132,6 +132,7 @@ export function computeStandingPositions(targetBlocks, groundY = 0) {
  * @param {number}                   groundY     - Y level of the solid ground
  * @param {object}                   [opts]
  * @param {boolean} [opts.verbose=false] - Include per-pillar debug info in result
+ * @param {Set<string>}              [targetSet] - Solid structure block keys (for pillar viability)
  * @returns {{
  *   scaffoldBlocks: Set<string>,       - Coord keys of all scaffold placements
  *   buildSequence:  Array<string>,     - Ordered list: pillar-first, then branches
@@ -140,7 +141,7 @@ export function computeStandingPositions(targetBlocks, groundY = 0) {
  *   stats: { pillarCount, branchCount, totalBlocks }
  * }}
  */
-export function generateScaffold(standingMap, groundY = 0, opts = {}) {
+export function generateScaffold(standingMap, groundY = 0, opts = {}, targetSet = new Set()) {
   const scaffoldBlocks = new Set();
   const buildSequence  = [];
   const pillars        = [];
@@ -165,17 +166,26 @@ export function generateScaffold(standingMap, groundY = 0, opts = {}) {
   while (uncovered.size > 0 && iterations++ < MAX_ITER) {
 
     // ── 2a: Find the best standing position (greedy: covers most uncovered) ─
+    // Prefer positions reachable via an unobstructed vertical scaffold pillar.
     let bestStandingKey = null;
     let bestCoverCount  = 0;
+    let bestIsClear     = false; // does best have a clear pillar?
 
     for (const [sKey, coveredBlocks] of standingToBlocks) {
       let count = 0;
       for (const bKey of coveredBlocks) {
         if (uncovered.has(bKey)) count++;
       }
-      if (count > bestCoverCount) {
+      if (count === 0) continue;
+
+      const [sx, sy, sz] = decode3(sKey);
+      const clear = _isPillarClear(sx, sy, sz, groundY, targetSet);
+
+      // Prefer clear-pillar positions; among equal coverage prefer clear.
+      if (count > bestCoverCount || (count === bestCoverCount && clear && !bestIsClear)) {
         bestCoverCount  = count;
         bestStandingKey = sKey;
+        bestIsClear     = clear;
       }
     }
 
@@ -223,32 +233,42 @@ export function generateScaffold(standingMap, groundY = 0, opts = {}) {
   }
 
   // ── Step 3: Dead zone detection — remaining uncovered blocks ─────────────
+  // Find the closest standing position (preferring clear pillars) and add a pillar.
   let deadZoneAttempts = 0;
   while (uncovered.size > 0 && deadZoneAttempts++ < uncovered.size + 10) {
-    // Pick any remaining uncovered block and force a new pillar nearest to it
     const bKey          = uncovered.values().next().value;
     const [bx, by, bz]  = decode3(bKey);
     const standingSet   = standingMap.get(bKey);
 
     if (!standingSet || standingSet.size === 0) {
-      uncovered.delete(bKey); // unreachable by design — skip
+      uncovered.delete(bKey); // handled by Phase 4 overhead logic below
       continue;
     }
 
-    // Find the standing position closest to an existing pillar (or the block itself)
-    let closestStanding = null;
-    let closestDist     = Infinity;
+    // Prefer: clear-pillar standing positions; closest to existing pillar as tiebreaker
+    let closestStanding  = null;
+    let closestDist      = Infinity;
+    let closestIsClear   = false;
 
     for (const sKey of standingSet) {
-      const [sx, , sz] = decode3(sKey);
-      let minPillarDist = Infinity;
-      for (const p of pillars) {
-        const d = (sx - p.x) ** 2 + (sz - p.z) ** 2;
-        if (d < minPillarDist) minPillarDist = d;
+      const [sx, sy, sz] = decode3(sKey);
+      const clear = _isPillarClear(sx, sy, sz, groundY, targetSet);
+      let minPillarDist = 0;
+      if (pillars.length > 0) {
+        minPillarDist = Infinity;
+        for (const p of pillars) {
+          const d = (sx - p.x) ** 2 + (sz - p.z) ** 2;
+          if (d < minPillarDist) minPillarDist = d;
+        }
       }
-      if (minPillarDist < closestDist) {
+
+      if (
+        (clear && !closestIsClear) ||
+        (clear === closestIsClear && minPillarDist < closestDist)
+      ) {
         closestDist     = minPillarDist;
         closestStanding = sKey;
+        closestIsClear  = clear;
       }
     }
 
@@ -268,6 +288,58 @@ export function generateScaffold(standingMap, groundY = 0, opts = {}) {
     for (const bKey2 of coveredByNew) uncovered.delete(bKey2);
   }
 
+  // ── Step 4: Overhead scaffold — blocks reachable only from above ──────────
+  // For blocks the side-pillar algorithm still can't cover (e.g. enclosed roof
+  // blocks where all horizontal standing positions pass through structure walls),
+  // build an external vertical pillar at the nearest clear XZ column that reaches
+  // 2 blocks ABOVE the target, then extend horizontal branches inward. The player
+  // climbs the exterior pillar and looks down to place the remaining blocks.
+  const OVERHEAD_OFFSETS = [
+    [0,0],[1,0],[-1,0],[0,1],[0,-1],
+    [1,1],[1,-1],[-1,1],[-1,-1],
+    [2,0],[-2,0],[0,2],[0,-2],
+    [2,1],[2,-1],[-2,1],[-2,-1],[1,2],[-1,2],[1,-2],[-1,-2],
+  ];
+
+  while (uncovered.size > 0) {
+    const bKey = uncovered.values().next().value;
+    const [bx, by, bz] = decode3(bKey);
+    let placed = false;
+
+    for (const [dx, dz] of OVERHEAD_OFFSETS) {
+      const sx = bx + dx, sz = bz + dz;
+      // Stand 2 above the block so player looks straight down or at an angle
+      const sy = by + 2;
+      // Verify reach from this overhead position
+      const eyeY = sy + EYE_HEIGHT;
+      if (dist2(bx + 0.5, by + 0.5, bz + 0.5, sx + 0.5, eyeY, sz + 0.5) > PLAYER_REACH * PLAYER_REACH) continue;
+      if (!_isPillarClear(sx, sy, sz, groundY, targetSet)) continue;
+
+      const sKey = key3(sx, sy, sz);
+      const newPillar = _buildPillar(sx, sy, sz, groundY);
+      for (const pk of newPillar) {
+        if (!scaffoldBlocks.has(pk)) { scaffoldBlocks.add(pk); buildSequence.push(pk); }
+      }
+      pillars.push({ x: sx, z: sz, topY: sy });
+
+      const topCovers = standingToBlocks.get(sKey) ?? new Set();
+      for (const bk of topCovers) uncovered.delete(bk);
+
+      const branchBlocks = _extendBranches(sx, sy, sz, uncovered, standingMap, scaffoldBlocks);
+      for (const bk of branchBlocks) {
+        buildSequence.push(bk);
+        const [bsx, bsy, bsz] = decode3(bk);
+        const branchCovers = standingToBlocks.get(key3(bsx, bsy, bsz));
+        if (branchCovers) for (const bk2 of branchCovers) uncovered.delete(bk2);
+      }
+
+      placed = true;
+      break;
+    }
+
+    if (!placed) uncovered.delete(bKey); // truly unreachable — give up on this block
+  }
+
   const pillarCount  = pillars.length;
   const branchCount  = scaffoldBlocks.size - pillarCount * 1; // approximation
   const totalBlocks  = scaffoldBlocks.size;
@@ -284,6 +356,17 @@ export function generateScaffold(standingMap, groundY = 0, opts = {}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns true if a vertical scaffold pillar from groundY to sy at (sx, sz)
+ * does not pass through any solid structure block.
+ */
+function _isPillarClear(sx, sy, sz, groundY, targetSet) {
+  for (let py = groundY; py <= sy; py++) {
+    if (targetSet.has(key3(sx, py, sz))) return false;
+  }
+  return true;
+}
 
 /**
  * Build a vertical scaffold pillar from groundY up to standingY at (sx, sz).
@@ -385,13 +468,9 @@ export function planScaffolding(targetBlocks, groundY = 0) {
     };
   }
 
+  const targetSet   = new Set(targetBlocks.map(([x, y, z]) => key3(x, y, z)));
   const standingMap = computeStandingPositions(targetBlocks, groundY);
-  const result      = generateScaffold(standingMap, groundY);
-
-  // Scaffold positions that overlap with the structure itself are physically
-  // impossible (the player can't place scaffolding into a wall). The structure
-  // wall already acts as scaffolding in those slots, so we just drop them.
-  const targetSet = new Set(targetBlocks.map(([x, y, z]) => key3(x, y, z)));
+  const result      = generateScaffold(standingMap, groundY, {}, targetSet);
   const isTarget  = (k) => targetSet.has(k);
 
   // Convert Set<string> to Array<[x,y,z]> for serialisation, filtering out
