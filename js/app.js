@@ -1255,6 +1255,24 @@ class App {
         };
         $('btn-export-png').onclick = () => this._exportDotArtPng();
         $('btn-dotart-to-struct').onclick = () => this._addDotArtAsStructure();
+        $('btn-dotart-pdf')?.addEventListener('click', () => this._exportDotArtPDF());
+    }
+
+    async _exportDotArtPDF() {
+        const editor = this.dotArtEditor;
+        if (!editor || !editor.grid) { this._toast?.('ドット絵が空です', 'error'); return; }
+        const tileSize = Math.max(8, Math.min(64, parseInt($('dotart-pdf-tile')?.value || '16', 10)));
+        try {
+            this._showLoading('PDF を生成中…');
+            const { exportDotArtTiledPDF } = await import('./ui/panels/dotart-pdf.js');
+            await exportDotArtTiledPDF(editor, DOT_PALETTE, tileSize, this.langData || {});
+            this._toast?.('📄 PDF をダウンロードしました');
+        } catch (err) {
+            console.error('[dotart-pdf]', err);
+            this._toast?.('PDF 生成エラー: ' + err.message, 'error');
+        } finally {
+            this._hideLoading();
+        }
     }
 
     async _img2dotConvert(file) {

@@ -120,6 +120,10 @@ self.onmessage = async (event) => {
         await handleInvertGen(taskId, payload);
         break;
 
+      case 'RESULT_TO_LITEMATIC':
+        await handleResultToLitematic(taskId, payload);
+        break;
+
       default:
         sendError(taskId, `Unknown task type: "${type}"`);
     }
@@ -810,6 +814,59 @@ async function handleInvertGen(taskId, payload) {
 
   sendProgress(taskId, 0.99, 'Done.');
   sendComplete(taskId, buf2, { mode, dimensions, ...stats });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESULT_TO_LITEMATIC handler
+// 既に変換済みの Bedrock palette+indices+dimensions (Phase 3 結果) を
+// CONVERT_LITEMATIC と同じパイプラインに流して .litematic を生成。
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleResultToLitematic(taskId, payload) {
+  const { dimensions, palette, indices, name, scaffoldBlocks } = payload;
+
+  let bedrockPalette, layer0Indices, dims;
+
+  if (scaffoldBlocks) {
+    // SCAFFOLD result: build palette { scaffolding, air } and indices from positions
+    const positions = scaffoldBlocks;
+    if (positions.length === 0) {
+      throw new Error('RESULT_TO_LITEMATIC: 足場ブロックが空です');
+    }
+    // Bounding box
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (const [x, y, z] of positions) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    const SX = maxX - minX + 1, SY = maxY - minY + 1, SZ = maxZ - minZ + 1;
+    dims = [SX, SY, SZ];
+    bedrockPalette = [
+      { name: 'minecraft:air',         states: {}, version: 18158593 },
+      { name: 'minecraft:scaffolding', states: {}, version: 18158593 },
+    ];
+    layer0Indices = new Int16Array(SX * SY * SZ); // 0 = air
+    for (const [x, y, z] of positions) {
+      const i = ((x - minX) * SY + (y - minY)) * SZ + (z - minZ);
+      layer0Indices[i] = 1;
+    }
+  } else {
+    // INVERT/HOLLOW/LIGHTPATCH result: already has palette + indices + dimensions
+    dims = dimensions;
+    bedrockPalette = palette;
+    layer0Indices = new Int16Array(indices);
+  }
+
+  const parsed = {
+    dimensions:   dims,
+    worldOrigin:  [0, 0, 0],
+    bedrockPalette,
+    layer0Indices,
+    layer1Indices: null,
+  };
+  await _convertParsedToLitematic(taskId, parsed, { name: name || 'converted' });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

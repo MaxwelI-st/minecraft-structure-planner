@@ -470,6 +470,30 @@ export async function generateScaffolding(metadata) {
  * @param {string}      [opts.mode='invert'] - 'invert' | 'hollow' | 'lightpatch'
  * @returns {Promise<{ data: ArrayBuffer, metadata: object }>}
  */
+/**
+ * Phase 3 結果 (scaffold/invert/hollow/lightpatch の JSON) を .litematic に変換。
+ *
+ * @param {object} resultPayload - { dimensions?, palette?, indices?, scaffoldBlocks?, name? }
+ * @returns {Promise<{ data: ArrayBuffer, metadata: object }>}
+ */
+export async function convertResultToLitematic(resultPayload) {
+  progress.show('.litematic に変換中…', 0);
+  try {
+    const result = await processWorker.postTask(
+      'RESULT_TO_LITEMATIC',
+      resultPayload,
+      [],
+      (p, stage) => progress.update(stage, p),
+    );
+    progress.hide();
+    return { data: result.data, metadata: result.metadata };
+  } catch (err) {
+    progress.hide();
+    toast.error(`.litematic 変換エラー: ${err.message}`);
+    throw err;
+  }
+}
+
 export async function generateInversion(mcstructureBuffer, opts = {}) {
   const mode = opts.mode ?? 'invert';
   const labels = { hollow: 'ハリボテ化', invert: '掘削ガイド', lightpatch: '湧き潰し' };

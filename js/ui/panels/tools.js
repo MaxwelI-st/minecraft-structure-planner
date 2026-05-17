@@ -5,7 +5,7 @@
  * app インスタンス経由で bufferCache / coordsCache にアクセスする。
  */
 
-import { generateScaffolding, generateInversion, downloadBuffer } from '../../main.js';
+import { generateScaffolding, generateInversion, convertResultToLitematic, downloadBuffer } from '../../main.js';
 
 const $ = id => document.getElementById(id);
 
@@ -116,10 +116,14 @@ async function _runScaffold(app) {
         ${uncovered > 0 ? `<div style="color:var(--accent)">⚠️ 未到達: ${uncovered} ブロック（手動補完が必要）</div>` : ''}
         <div style="display:flex;gap:0.4rem;margin-top:0.4rem;flex-wrap:wrap">
           <button class="mc-btn secondary small" id="btn-preview-scaffold">👁 3Dプレビュー</button>
+          <button class="mc-btn primary small" id="btn-save-scaffold">💾 .litematic 保存</button>
         </div>
       `;
       $('btn-preview-scaffold')?.addEventListener('click', () =>
         _previewScaffoldInViewer(app, data, coords, structId)
+      );
+      $('btn-save-scaffold')?.addEventListener('click', () =>
+        _saveResultAsLitematic(app, data, 'scaffold', structId)
       );
     }
   } catch (err) {
@@ -212,10 +216,14 @@ async function _runInvert(app, mode) {
         ${extra}
         <div style="display:flex;gap:0.4rem;margin-top:0.4rem;flex-wrap:wrap">
           <button class="mc-btn secondary small" id="btn-preview-${mode}">👁 3Dプレビュー</button>
+          <button class="mc-btn primary small" id="btn-save-${mode}">💾 .litematic 保存</button>
         </div>
       `;
       $(`btn-preview-${mode}`)?.addEventListener('click', () =>
         _previewInViewer(app, result.data, mode)
+      );
+      $(`btn-save-${mode}`)?.addEventListener('click', () =>
+        _saveResultAsLitematic(app, result.data, mode, structId)
       );
     }
   } catch (err) {
@@ -285,6 +293,34 @@ async function _previewInViewer(app, dataBuf, mode) {
     app._toast?.(`👁 ${coords.length.toLocaleString()} ブロックをプレビュー表示${hlMsg}`);
   } catch (err) {
     app._toast?.('プレビュー表示エラー: ' + err.message, 'error');
+  }
+}
+
+// ── Phase 3 結果を .litematic として保存 ─────────────────────────────────
+async function _saveResultAsLitematic(app, dataBuf, mode, structId) {
+  let json;
+  try {
+    json = JSON.parse(new TextDecoder().decode(dataBuf));
+  } catch {
+    app._toast?.('結果データの解析に失敗しました', 'error');
+    return;
+  }
+
+  const project = app._currentProject?.();
+  const structure = project?.structures.find(s => s.id === structId);
+  const baseName = (structure?.name || structure?.fileName || 'structure').replace(/\.(mcstructure|litematic|nbt)$/i, '');
+  const filename = `${baseName}_${mode}.litematic`;
+
+  const payload = mode === 'scaffold'
+    ? { scaffoldBlocks: json.scaffoldBlocks ?? [], name: `${baseName}_scaffold` }
+    : { dimensions: json.dimensions, palette: json.palette, indices: json.indices, name: `${baseName}_${mode}` };
+
+  try {
+    const { data } = await convertResultToLitematic(payload);
+    downloadBuffer(data, filename);
+    app._toast?.(`💾 ${filename} を保存しました`);
+  } catch (err) {
+    app._toast?.('.litematic 変換エラー: ' + err.message, 'error');
   }
 }
 
