@@ -256,10 +256,6 @@ function parseBedrock(root) {
     return { coords, counts, totalCount, sx, sy, sz, edition: 'bedrock' };
 }
 
-function _isTransparent(blockId) {
-    return /glass|leaves|fence|trapdoor|door|stairs|slab|carpet|wall|pane|bars|water|lava|ice|cobweb|chain|ladder|sapling|grass$|fern|vine|kelp|seagrass|torch|button|pressure_plate|sign|banner|rail|hopper|piston/.test(blockId);
-}
-
 /* ─── カテゴリ分類 ────────────────────────────────────────────── */
 function getCategory(id) {
     const b = normalizeId(id).replace('minecraft:', '');
