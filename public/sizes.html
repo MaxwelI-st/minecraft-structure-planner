@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Size Comparison</title>
+  <style>
+    body { background: #fadae8; padding: 40px; font-family: sans-serif; }
+    h1 { color: #7a3058; }
+    .row { display: flex; gap: 40px; margin: 40px 0; align-items: flex-start; }
+    .box { text-align: center; }
+    .box p { color: #7a3058; margin-bottom: 10px; font-weight: bold; }
+    .frame { background: white; border: 2px solid #e890c0; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .f512 { width: 512px; height: 512px; }
+    .f256 { width: 256px; height: 256px; }
+    .f128 { width: 128px; height: 128px; }
+    .f64 { width: 64px; height: 64px; }
+    .f48 { width: 48px; height: 48px; }
+    img { mix-blend-mode: multiply; }
+  </style>
+</head>
+<body>
+  <h1>Sakura Logo — Size Comparison</h1>
+
+  <div class="row">
+    <div class="box">
+      <p>512 × 512 px<br>(ウェルカム)</p>
+      <div class="frame f512"><img src="/icons/light-3/logo.png" style="width: 100%;"></div>
+    </div>
+    <div class="box">
+      <p>256 × 256 px<br>(タブ)</p>
+      <div class="frame f256"><img src="/icons/light-3/logo.png" style="width: 100%;"></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="box">
+      <p>128 × 128 px<br>(小さめ)</p>
+      <div class="frame f128"><img src="/icons/light-3/logo.png" style="width: 100%;"></div>
+    </div>
+    <div class="box">
+      <p>64 × 64 px<br>(ファビコン)</p>
+      <div class="frame f64"><img src="/icons/light-3/logo.png" style="width: 100%;"></div>
+    </div>
+    <div class="box">
+      <p>48 × 48 px<br>(サイドバー)</p>
+      <div class="frame f48"><img src="/icons/light-3/logo.png" style="width: 100%;"></div>
+    </div>
+  </div>
+</body>
+</html>

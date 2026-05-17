@@ -1,0 +1,49 @@
+<!doctype html><html><head><meta charset=utf-8><title>Icons review</title>
+<style>
+body{background:#222;color:#eee;font-family:system-ui;margin:1rem}
+h2{margin:1.5rem 0 .5rem;color:#aaa;font-size:.9rem;letter-spacing:.1em}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem}
+.cell{background:repeating-conic-gradient(#3a3a3a 0% 25%,#2a2a2a 0% 50%) 0/16px 16px;border-radius:6px;padding:6px;font-size:.7rem;text-align:center;cursor:pointer;border:2px solid transparent;transition:.1s}
+.cell img{width:100%;display:block}
+.cell .name{margin-top:4px;color:#aaa}
+.cell.bad{border-color:#f43;background:#400}
+.bar{position:sticky;top:0;background:#111;padding:.6rem;margin:-1rem -1rem 1rem;display:flex;gap:1rem;align-items:center;border-bottom:1px solid #333}
+button{background:#3a7;color:#fff;border:0;padding:.5rem 1rem;border-radius:4px;cursor:pointer;font-weight:600}
+button:hover{background:#4c8}
+#count{color:#f43;font-weight:700}
+textarea{width:100%;height:120px;background:#000;color:#0f8;font-family:monospace;border:1px solid #333;padding:.5rem}
+</style></head><body>
+<div class=bar>
+  <button onclick=copyBad()>📋 弾いた一覧をコピー</button>
+  <span><span id=count>0</span> 枚を弾き中</span>
+  <span style=color:#888>← クリックでトグル（赤=弾く）</span>
+</div>
+<textarea id=out readonly placeholder="ここに弾いたパスが出る"></textarea>
+<div id=root></div>
+<script>
+const themes=['dark-1','dark-2','dark-3','dark-4','dark-5','dark-6','dark-7','dark-8','dark-9','dark-10','dark-11','dark-12','dark-13','light-1','light-2','light-3','light-4','light-5','light-6','light-7','light-8','light-9','light-10','light-11','light-12','light-13'];
+const icons=['logo','tab-materials','tab-3d','tab-dotart','tab-themes','tab-settings','btn-download'];
+const bad=new Set();
+const root=document.getElementById('root');
+for(const t of themes){
+  const h=document.createElement('h2');h.textContent=t;root.appendChild(h);
+  const g=document.createElement('div');g.className='grid';
+  for(const i of icons){
+    const c=document.createElement('div');c.className='cell';
+    const path=`${t}/${i}.png`;
+    c.innerHTML=`<img src="icons/${path}" loading=lazy><div class=name>${i}</div>`;
+    c.onclick=()=>{
+      if(bad.has(path)){bad.delete(path);c.classList.remove('bad');}
+      else{bad.add(path);c.classList.add('bad');}
+      document.getElementById('count').textContent=bad.size;
+      document.getElementById('out').value=[...bad].sort().join('\n');
+    };
+    g.appendChild(c);
+  }
+  root.appendChild(g);
+}
+function copyBad(){
+  const t=document.getElementById('out');t.select();document.execCommand('copy');
+  alert(`${bad.size} 件コピーした`);
+}
+</script></body></html>

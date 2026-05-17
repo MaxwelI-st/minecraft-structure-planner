@@ -34,9 +34,39 @@
   white-space: nowrap;
 }
 
+/* プレビュー内の数字とテキストはカードのテーマフォントを継承 */
+.theme-card-preview .preview-stat-num,
+.theme-card-preview .preview-tab,
+.theme-card-preview .preview-btn-primary,
+.theme-card-preview .preview-btn-sample {
+  font-family: inherit !important;
+}
+
+/* パステル系プレビュー: 数字は実UIと同じく Caveat */
+.theme-card[data-theme-id="light-1"]  .preview-stat-num,
+.theme-card[data-theme-id="light-2"]  .preview-stat-num,
+.theme-card[data-theme-id="light-3"]  .preview-stat-num,
+.theme-card[data-theme-id="light-5"]  .preview-stat-num,
+.theme-card[data-theme-id="light-6"]  .preview-stat-num,
+.theme-card[data-theme-id="light-7"]  .preview-stat-num,
+.theme-card[data-theme-id="light-8"]  .preview-stat-num,
+.theme-card[data-theme-id="light-10"] .preview-stat-num,
+.theme-card[data-theme-id="light-13"] .preview-stat-num {
+  font-family: 'Caveat', 'Klee One', cursive !important;
+  font-size: 17px !important;
+}
+
 /* テーマカードのタグも折り返さず */
 .theme-tag {
   white-space: nowrap;
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+.theme-card-desc {
+  font-size: 0.72rem;
+  margin-top: 1px;
 }
 
 /* デバッグタブは普段は控えめに */
@@ -65,6 +95,116 @@
   height: 5.5rem !important;
 }
 
+/* ─── テーマ別フォント統一 ───────────────────── */
+/* ダーク系 (dark-1 デフォルト維持): Audiowide で統一 */
+:root[data-theme="dark-2"],
+:root[data-theme="dark-5"],
+:root[data-theme="dark-6"],
+:root[data-theme="dark-7"],
+:root[data-theme="dark-10"] {
+  --font-ui: 'Audiowide', 'Noto Sans JP', sans-serif;
+}
+:root[data-theme="dark-2"]  body,
+:root[data-theme="dark-5"]  body,
+:root[data-theme="dark-6"]  body,
+:root[data-theme="dark-7"]  body,
+:root[data-theme="dark-10"] body {
+  font-family: 'Audiowide', 'Noto Sans JP', sans-serif !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* ── 特殊系: 雰囲気マッチ ────────────────────── */
+:root[data-theme="dark-3"]  { --font-ui: 'Cinzel', 'Noto Serif JP', serif; }                     /* Anemo: ファンタジー彫り */
+:root[data-theme="dark-4"]  { --font-ui: 'Orbitron', 'Noto Sans JP', sans-serif; }               /* Stim Rush: サイバー */
+:root[data-theme="dark-11"] { --font-ui: 'Audiowide', 'Noto Sans JP', sans-serif; }              /* Cyberpunk Tokyo */
+:root[data-theme="dark-12"] { --font-ui: 'Orbitron', 'Noto Sans JP', sans-serif; }               /* Holographic */
+:root[data-theme="dark-13"] { --font-ui: 'Pacifico', 'Noto Serif JP', cursive; }                 /* Sunset Mirage: 暖筆記体 */
+:root[data-theme="light-4"] { --font-ui: 'Special Elite', 'Noto Serif JP', serif; }              /* Blueprint: タイプライター */
+:root[data-theme="dark-3"]  body { font-family: 'Cinzel', 'Noto Serif JP', serif !important; letter-spacing: 0.04em !important; }
+:root[data-theme="dark-4"]  body { font-family: 'Orbitron', 'Noto Sans JP', sans-serif !important; letter-spacing: 0.02em !important; }
+:root[data-theme="dark-11"] body { font-family: 'Audiowide', 'Noto Sans JP', sans-serif !important; letter-spacing: 0.02em !important; }
+:root[data-theme="dark-12"] body { font-family: 'Orbitron', 'Noto Sans JP', sans-serif !important; letter-spacing: 0.02em !important; }
+:root[data-theme="dark-13"] body { font-family: 'Pacifico', 'Noto Serif JP', cursive !important; letter-spacing: 0 !important; }
+:root[data-theme="light-4"] body { font-family: 'Special Elite', 'Noto Serif JP', serif !important; letter-spacing: 0 !important; }
+/* パステル系: Lora */
+:root[data-theme="light-1"],
+:root[data-theme="light-2"],
+:root[data-theme="light-3"],
+:root[data-theme="light-5"],
+:root[data-theme="light-6"],
+:root[data-theme="light-7"],
+:root[data-theme="light-8"],
+:root[data-theme="light-10"],
+:root[data-theme="light-13"] {
+  --font-ui: 'Lora', 'Noto Serif JP', serif;
+}
+:root[data-theme="light-1"] body,
+:root[data-theme="light-2"] body,
+:root[data-theme="light-3"] body,
+:root[data-theme="light-5"] body,
+:root[data-theme="light-6"] body,
+:root[data-theme="light-7"] body,
+:root[data-theme="light-8"] body,
+:root[data-theme="light-10"] body,
+:root[data-theme="light-13"] body {
+  font-family: 'Lora', 'Noto Serif JP', serif !important;
+  letter-spacing: 0 !important;
+}
+/* パステルのセクションタイトル＆ロゴはかわいい手書き系 */
+:root[data-theme="light-1"]  .section-title,
+:root[data-theme="light-2"]  .section-title,
+:root[data-theme="light-3"]  .section-title,
+:root[data-theme="light-5"]  .section-title,
+:root[data-theme="light-6"]  .section-title,
+:root[data-theme="light-7"]  .section-title,
+:root[data-theme="light-8"]  .section-title,
+:root[data-theme="light-10"] .section-title,
+:root[data-theme="light-13"] .section-title {
+  font-family: 'Caveat', 'Klee One', cursive !important;
+  font-size: 1.6rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* サイドバーのロゴを少し大きく */
+.logo-icon-wrap {
+  width: 3.4rem !important;
+  height: 3.4rem !important;
+}
+.logo h1,
+:root[data-theme] .logo h1 {
+  font-size: 0.95rem !important;
+  letter-spacing: 1.2px !important;
+  font-family: 'Press Start 2P', 'DotGothic16', 'Silkscreen', monospace !important;
+}
+.logo {
+  gap: 0.7rem !important;
+}
+
+/* 構造カードのテーマロゴアイコン */
+.sc-icon-img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  display: block;
+}
+
+/* タブアイコン（テーマ別 PNG）*/
+.tab-icon {
+  width: 32px;
+  height: 32px;
+  vertical-align: middle;
+  margin-right: 0.3rem;
+  object-fit: contain;
+}
+.btn-icon {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 0.25rem;
+  object-fit: contain;
+}
+
 /* タブヘッダーをコンパクト＆スクロール可能に（横スクロールで切れない） */
 .tab-nav {
   flex-wrap: nowrap;
@@ -73,8 +213,10 @@
 }
 .tab-btn {
   flex-shrink: 0;
-  padding: 0.55rem 0.85rem !important;
-  font-size: 0.8rem !important;
+  padding: 0.7rem 1rem !important;
+  font-size: 0.9rem !important;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* プロジェクトリスト選択中：左ボーダー */
@@ -109,10 +251,57 @@
   margin-top: 2px;
 }
 
-/* 統計の数字も少しおとなしく */
+/* 統計の数字 — テーマフォントを継承させる */
 .stat-value {
   font-size: 1.9rem !important;
   font-weight: 800 !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* ダーク系: Audiowide で統一 */
+:root[data-theme="dark-2"]  .stat-value, :root[data-theme="dark-2"]  .block-count,
+:root[data-theme="dark-5"]  .stat-value, :root[data-theme="dark-5"]  .block-count,
+:root[data-theme="dark-6"]  .stat-value, :root[data-theme="dark-6"]  .block-count,
+:root[data-theme="dark-7"]  .stat-value, :root[data-theme="dark-7"]  .block-count,
+:root[data-theme="dark-10"] .stat-value, :root[data-theme="dark-10"] .block-count {
+  font-family: 'Audiowide', 'Noto Sans JP', sans-serif !important;
+}
+
+/* 特殊系: テーマフォントを数字にも */
+:root[data-theme="dark-3"]  .stat-value, :root[data-theme="dark-3"]  .block-count { font-family: 'Cinzel', 'Noto Serif JP', serif !important; }
+:root[data-theme="dark-4"]  .stat-value, :root[data-theme="dark-4"]  .block-count { font-family: 'Orbitron', 'Noto Sans JP', sans-serif !important; }
+:root[data-theme="dark-11"] .stat-value, :root[data-theme="dark-11"] .block-count { font-family: 'Audiowide', 'Noto Sans JP', sans-serif !important; }
+:root[data-theme="dark-12"] .stat-value, :root[data-theme="dark-12"] .block-count { font-family: 'Orbitron', 'Noto Sans JP', sans-serif !important; }
+:root[data-theme="dark-13"] .stat-value, :root[data-theme="dark-13"] .block-count { font-family: 'Pacifico', 'Noto Serif JP', cursive !important; font-size: 2.4rem !important; }
+:root[data-theme="light-4"] .stat-value, :root[data-theme="light-4"] .block-count { font-family: 'Special Elite', 'Noto Serif JP', serif !important; }
+
+/* パステル系: 統計数字とブロックカウントも手書き風で可愛く */
+:root[data-theme="light-1"]  .stat-value,
+:root[data-theme="light-2"]  .stat-value,
+:root[data-theme="light-3"]  .stat-value,
+:root[data-theme="light-5"]  .stat-value,
+:root[data-theme="light-6"]  .stat-value,
+:root[data-theme="light-7"]  .stat-value,
+:root[data-theme="light-8"]  .stat-value,
+:root[data-theme="light-10"] .stat-value,
+:root[data-theme="light-13"] .stat-value {
+  font-family: 'Caveat', 'Klee One', cursive !important;
+  font-size: 2.6rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+:root[data-theme="light-1"]  .block-count,
+:root[data-theme="light-2"]  .block-count,
+:root[data-theme="light-3"]  .block-count,
+:root[data-theme="light-5"]  .block-count,
+:root[data-theme="light-6"]  .block-count,
+:root[data-theme="light-7"]  .block-count,
+:root[data-theme="light-8"]  .block-count,
+:root[data-theme="light-10"] .block-count,
+:root[data-theme="light-13"] .block-count {
+  font-family: 'Caveat', 'Klee One', cursive !important;
+  font-size: 1.6rem !important;
+  font-weight: 700 !important;
 }
 
 /* チェックボックスを少しコンパクトに */
@@ -218,11 +407,57 @@
   line-height: 1.4;
 }
 
-/* シュルカー: ボックスグリッド */
+/* シュルカー: ボックスグリッド (2列 + 全体サイズ縮小) */
 .shulker-boxes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+.shulker-box-card { max-width: 100%; }
+.shulker-grid { padding: 0.35rem !important; gap: 2px !important; }
+.shulker-slot { border-radius: 2px !important; }
+.slot-tex { width: 78% !important; height: 78% !important; }
+.slot-count { font-size: 0.95rem !important; -webkit-text-stroke: 1.5px #1a1a1a !important; }
+.shulker-box-header { padding: 0.3rem 0.5rem !important; font-size: 0.65rem !important; }
+
+/* 単一アイテムBoxのコンパクト表示 */
+.shulker-compact-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.shulker-compact {
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 6px;
+}
+.compact-tex {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4));
+  flex-shrink: 0;
+}
+.compact-emoji { font-size: 1.6rem; }
+.compact-info { min-width: 0; flex: 1; }
+.compact-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text, #fff);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compact-meta {
+  font-size: 0.7rem;
+  color: var(--muted2, #94a3b8);
+  margin-top: 1px;
 }
 .shulker-box-card {
   background: rgba(255,255,255,0.03);
@@ -288,21 +523,29 @@
   filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));
   z-index: 1;
 }
+.slot-tex {
+  position: relative;
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));
+  z-index: 1;
+}
 .slot-count {
   position: absolute;
   bottom: 1px;
   right: 3px;
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-size: 1.55rem;
+  font-weight: 900;
   color: #fff;
   font-family: var(--font-mono, monospace);
   line-height: 1;
+  -webkit-text-stroke: 2px #1a1a1a;
+  paint-order: stroke fill;
   text-shadow:
-    -1px -1px 0 #2a2a2a,
-     1px -1px 0 #2a2a2a,
-    -1px  1px 0 #2a2a2a,
-     1px  1px 0 #2a2a2a,
-     0 0 3px rgba(0,0,0,0.9);
+    0 1px 0 #000,
+    0 0 4px rgba(0,0,0,0.9);
   z-index: 2;
   letter-spacing: -0.02em;
 }

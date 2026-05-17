@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gen:icons": "node scripts/generate-icons.js",
+    "gen:icons:skip": "node scripts/generate-icons.js --skip-existing"
   },
   "devDependencies": {
     "vite": "^5.0.0",

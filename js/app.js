@@ -70,6 +70,11 @@ class App {
     }
 
     async _init() {
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark-1';
+        document.querySelectorAll('[data-theme-icon]').forEach(el => {
+            el.src = `/icons/${currentTheme}/${el.dataset.themeIcon}.png`;
+        });
+
         try {
             const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
             const res = await fetch(baseUrl + 'data/lang_ja.json');
@@ -486,58 +491,66 @@ class App {
 
     // ── テーマ ──────────────────────────────────────────────────────────
     static THEMES = [
-        { id: 'dark-1',  name: 'Default Dark',       kind: 'dark',  sample: ['#070c14', '#f59e0b', '#4ade80'] },
-        { id: 'dark-2',  name: 'RTX Neon Glass',     kind: 'dark',  sample: ['#121212', '#4ade80', '#22c55e'] },
-        { id: 'dark-3',  name: 'Anemo Wanderer',     kind: 'dark',  sample: ['#0e1f24', '#67e8f9', '#a5f3fc'] },
-        { id: 'dark-4',  name: 'Stim Rush',          kind: 'dark',  sample: ['#1a1a1a', '#a3e635', '#c084fc'] },
-        { id: 'dark-5',  name: 'Obsidian Architect', kind: 'dark',  sample: ['#000000', '#cbd5e1', '#64748b'] },
-        { id: 'dark-6',  name: 'Midnight Espresso',  kind: 'dark',  sample: ['#2a1810', '#fb923c', '#fed7aa'] },
-        { id: 'dark-7',  name: 'Deep Ocean',         kind: 'dark',  sample: ['#0c1e3e', '#1e40af', '#ffffff'] },
-        { id: 'dark-8',  name: 'Retro Terminal',     kind: 'dark',  sample: ['#000000', '#ff00ff', '#00ffff'] },
-        { id: 'dark-9',  name: 'Aurora Glass',       kind: 'dark',  sample: ['#0a0a18', '#4ade80', '#7c3aed'] },
-        { id: 'dark-10', name: 'Brutalist Slate',    kind: 'dark',  sample: ['#1a1a1a', '#ffffff', '#666666'] },
-        { id: 'light-1', name: 'Lavender Mist',      kind: 'light', sample: ['#ede0f8', '#a878d8', '#dcc8f0'] },
-        { id: 'light-2', name: 'Frosted Crystal',    kind: 'light', sample: ['#eef2f7', '#1d4ed8', '#ffffff'] },
-        { id: 'light-3', name: 'Sakura Spring',      kind: 'light', sample: ['#fce7f3', '#e11d48', '#fbcfe8'] },
-        { id: 'light-4', name: 'Blueprint Paper',    kind: 'light', sample: ['#fafaf5', '#dc2626', '#000000'] },
-        { id: 'light-5', name: 'Paper Sage',         kind: 'light', sample: ['#f5f1e8', '#4a5d3a', '#6b8050'] },
-        { id: 'light-6', name: 'Mint Lab',           kind: 'light', sample: ['#ecfdf5', '#0f766e', '#14b8a6'] },
-        { id: 'light-7', name: 'Latte Cafe',         kind: 'light', sample: ['#faf3e0', '#78350f', '#b45309'] },
-        { id: 'light-8', name: 'Coral Bloom',        kind: 'light', sample: ['#fac8b8', '#ec9080', '#fdddd4'] },
-        { id: 'light-9', name: 'Brutalist Mono',     kind: 'light', sample: ['#f5f5f5', '#000000', '#555555'] },
-        { id: 'light-10',name: 'Aurora Bright',      kind: 'light', sample: ['#f0f4ff', '#7c3aed', '#fce7f3'] },
-        { id: 'dark-11', name: 'Cyberpunk Tokyo',    kind: 'dark',  sample: ['#050006', '#00f0ff', '#ff0080'] },
-        { id: 'dark-12', name: 'Holographic',        kind: 'dark',  sample: ['#0e0e1e', '#ff9adf', '#6ec5ff'] },
-        { id: 'dark-13', name: 'Sunset Mirage',      kind: 'dark',  sample: ['#1a0a14', '#ffc88a', '#ff9a8d'] },
-        { id: 'light-11',name: 'Vintage Newspaper',  kind: 'light', sample: ['#f5ecd9', '#c23030', '#333333'] },
-        { id: 'light-12',name: 'Bento Box',          kind: 'light', sample: ['#f8f3e5', '#c0392b', '#e8a02e'] },
-        { id: 'light-13',name: 'Hydrangea',          kind: 'light', sample: ['#e8edf8', '#7c83b8', '#f4d4e0'] },
+        // ── ダーク系 ───────────────────────────────
+        { id: 'dark-1',  name: 'Default Dark',       kind: 'dark',    tags: ['ニュートラル','寒色'],     desc: 'ネイビー×グリーン',     sample: ['#070c14', '#f59e0b', '#4ade80'] },
+        { id: 'dark-2',  name: 'RTX Neon Glass',     kind: 'dark',    tags: ['ネオン','クール'],         desc: 'ブラック×エメラルド',   sample: ['#121212', '#4ade80', '#22c55e'] },
+        { id: 'dark-5',  name: 'Obsidian Architect', kind: 'dark',    tags: ['モノクロ','ミニマル'],     desc: '黒×シルバー',           sample: ['#000000', '#cbd5e1', '#64748b'] },
+        { id: 'dark-6',  name: 'Midnight Espresso',  kind: 'dark',    tags: ['クレイ','温色'],           desc: 'コーヒー×オレンジ',     sample: ['#2a1810', '#fb923c', '#fed7aa'] },
+        { id: 'dark-7',  name: 'Deep Ocean',         kind: 'dark',    tags: ['和風','ゼン'],             desc: '深緑×金',               sample: ['#0c1e3e', '#1e40af', '#ffffff'] },
+        { id: 'dark-10', name: 'Brutalist Slate',    kind: 'dark',    tags: ['硬派','IDE'],              desc: 'スレート×グリーン',     sample: ['#1a1a1a', '#ffffff', '#666666'] },
+        // ── パステル系 ─────────────────────────────
+        { id: 'light-1', name: 'Lavender Mist',      kind: 'pastel',  tags: ['パステル','夢幻'],         desc: 'ラベンダー×パープル',   sample: ['#ede0f8', '#a878d8', '#dcc8f0'] },
+        { id: 'light-2', name: 'Frosted Crystal',    kind: 'pastel',  tags: ['クリア','クール'],         desc: 'アイス×ブルー',         sample: ['#eef2f7', '#1d4ed8', '#ffffff'] },
+        { id: 'light-3', name: 'Sakura Spring',      kind: 'pastel',  tags: ['パステル','春'],           desc: '桜×ピンク',             sample: ['#fce7f3', '#e11d48', '#fbcfe8'] },
+        { id: 'light-5', name: 'Paper Sage',         kind: 'pastel',  tags: ['ナチュラル','マット'],     desc: 'ペーパー×セージ',       sample: ['#f5f1e8', '#4a5d3a', '#6b8050'] },
+        { id: 'light-6', name: 'Mint Lab',           kind: 'pastel',  tags: ['クリア','クール'],         desc: 'ミント×ターコイズ',     sample: ['#ecfdf5', '#0f766e', '#14b8a6'] },
+        { id: 'light-7', name: 'Latte Cafe',         kind: 'pastel',  tags: ['温色','クラフト'],         desc: 'ラテ×ブラウン',         sample: ['#faf3e0', '#78350f', '#b45309'] },
+        { id: 'light-8', name: 'Coral Bloom',        kind: 'pastel',  tags: ['パステル','温色'],         desc: 'コーラル×ピーチ',       sample: ['#fac8b8', '#ec9080', '#fdddd4'] },
+        { id: 'light-10',name: 'Aurora Bright',      kind: 'pastel',  tags: ['夢幻','パステル'],         desc: 'オーロラ×パステル',     sample: ['#f0f4ff', '#7c3aed', '#fce7f3'] },
+        { id: 'light-13',name: 'Hydrangea',          kind: 'pastel',  tags: ['雨季','パステル'],         desc: '紫陽花×ライラック',     sample: ['#e8edf8', '#7c83b8', '#f4d4e0'] },
+        // ── 特殊系 ─────────────────────────────────
+        { id: 'dark-3',  name: 'Anemo Wanderer',     kind: 'special', tags: ['ファンタジー','ネオン'],   desc: '紫×マゼンタ×シアン',   sample: ['#0e1f24', '#67e8f9', '#a5f3fc'] },
+        { id: 'dark-4',  name: 'Stim Rush',          kind: 'special', tags: ['サイバー','シャープ'],     desc: '黒×パープル×ライム',   sample: ['#1a1a1a', '#a3e635', '#c084fc'] },
+        { id: 'dark-8',  name: 'Retro Terminal',     kind: 'special', tags: ['レトロ','ピクセル'],       desc: 'CRT×ピンク',           sample: ['#000000', '#ff00ff', '#00ffff'] },
+        { id: 'dark-9',  name: 'Aurora Glass',       kind: 'special', tags: ['グラス','幻想'],           desc: 'オーロラ×ガラス',       sample: ['#0a0a18', '#4ade80', '#7c3aed'] },
+        { id: 'dark-11', name: 'Cyberpunk Tokyo',    kind: 'special', tags: ['ネオン','ナイト'],         desc: 'シアン×ピンクネオン',   sample: ['#050006', '#00f0ff', '#ff0080'] },
+        { id: 'dark-12', name: 'Holographic',        kind: 'special', tags: ['ホロ','虹彩'],             desc: 'ホログラム×パール',     sample: ['#0e0e1e', '#ff9adf', '#6ec5ff'] },
+        { id: 'dark-13', name: 'Sunset Mirage',      kind: 'special', tags: ['夕焼け','グラデ'],         desc: 'コーラル×ピーチ',       sample: ['#1a0a14', '#ffc88a', '#ff9a8d'] },
+        { id: 'light-4', name: 'Blueprint Paper',    kind: 'special', tags: ['設計','クラフト'],         desc: '紙×レッド',             sample: ['#fafaf5', '#dc2626', '#000000'] },
+        { id: 'light-9', name: 'Brutalist Mono',     kind: 'special', tags: ['硬派','モノクロ'],         desc: '白×黒',                 sample: ['#f5f5f5', '#000000', '#555555'] },
+        { id: 'light-11',name: 'Vintage Newspaper',  kind: 'special', tags: ['レトロ','紙'],             desc: 'セピア×レッド',         sample: ['#f5ecd9', '#c23030', '#333333'] },
+        { id: 'light-12',name: 'Bento Box',          kind: 'special', tags: ['和風','クラフト'],         desc: '朱×金',                 sample: ['#f8f3e5', '#c0392b', '#e8a02e'] },
     ];
 
     static THEME_FONTS = {
-        'dark-2':  "'Rajdhani', 'Zen Kaku Gothic New', sans-serif",
-        'dark-3':  "'Outfit', 'Zen Kaku Gothic New', sans-serif",
-        'dark-4':  "'Inter', 'Noto Sans JP', sans-serif",
-        'dark-5':  "'Inter', 'Noto Sans JP', sans-serif",
-        'dark-6':  "'Crimson Text', 'Noto Serif JP', serif",
-        'dark-7':  "'Cormorant Garamond', 'Noto Serif JP', serif",
+        // ── ダーク系: Audiowide ─────────────────────────────────────
+        'dark-2':  "'Audiowide', 'Noto Sans JP', sans-serif",
+        'dark-5':  "'Audiowide', 'Noto Sans JP', sans-serif",
+        'dark-6':  "'Audiowide', 'Noto Sans JP', sans-serif",
+        'dark-7':  "'Audiowide', 'Noto Sans JP', sans-serif",
+        'dark-10': "'Audiowide', 'Noto Sans JP', sans-serif",
+        // ── パステル系: Lora ────────────────────────────────────────
+        'light-1': "'Lora', 'Noto Serif JP', serif",
+        'light-2': "'Lora', 'Noto Serif JP', serif",
+        'light-3': "'Lora', 'Noto Serif JP', serif",
+        'light-5': "'Lora', 'Noto Serif JP', serif",
+        'light-6': "'Lora', 'Noto Serif JP', serif",
+        'light-7': "'Lora', 'Noto Serif JP', serif",
+        'light-8': "'Lora', 'Noto Serif JP', serif",
+        'light-10':"'Lora', 'Noto Serif JP', serif",
+        'light-13':"'Lora', 'Noto Serif JP', serif",
+        // ── 特殊系: 雰囲気マッチ ──────────────────────────────────
+        'dark-3':  "'Cinzel', 'Noto Serif JP', serif",
+        'dark-4':  "'Orbitron', 'Noto Sans JP', sans-serif",
         'dark-8':  "'Press Start 2P', 'DotGothic16', monospace",
         'dark-9':  "'Quicksand', 'Zen Maru Gothic', sans-serif",
-        'dark-10': "'Inter', 'Noto Sans JP', sans-serif",
-        'dark-11': "'JetBrains Mono', 'Zen Kaku Gothic New', monospace",
-        'dark-12': "'Space Grotesk', 'Zen Kaku Gothic New', sans-serif",
-        'dark-13': "'Quicksand', 'Zen Maru Gothic', sans-serif",
-        'light-1': "'Quicksand', 'Zen Maru Gothic', sans-serif",
-        'light-2': "'Manrope', 'Noto Sans JP', sans-serif",
-        'light-3': "'Fredoka', 'Zen Maru Gothic', sans-serif",
-        'light-5': "'Lora', 'Noto Serif JP', serif",
-        'light-6': "'Manrope', 'Noto Sans JP', sans-serif",
-        'light-8': "'Quicksand', 'Zen Maru Gothic', sans-serif",
+        'dark-11': "'Audiowide', 'Noto Sans JP', sans-serif",
+        'dark-12': "'Orbitron', 'Noto Sans JP', sans-serif",
+        'dark-13': "'Pacifico', 'Noto Serif JP', cursive",
+        'light-4': "'Special Elite', 'Noto Serif JP', serif",
         'light-9': "'IBM Plex Mono', 'Klee One', monospace",
-        'light-10':"'Quicksand', 'Zen Maru Gothic', sans-serif",
         'light-11':"'Playfair Display', 'Noto Serif JP', serif",
         'light-12':"'Shippori Mincho', 'Yu Mincho', serif",
-        'light-13':"'Lora', 'Noto Serif JP', serif",
     };
 
     static MESH_PREVIEW_BG = {
@@ -606,9 +619,15 @@ class App {
         const rNum = parseFloat(v.radius) || 8;
         const previewRadius = Math.round(rNum * 0.65) + 'px';
         const isActive = t.id === currentId;
-        const kindLabel = t.kind === 'dark' ? '🌙 Dark' : '☀️ Light';
+        const tone = t.id.startsWith('dark-') ? '🌙 Dark' : '☀️ Light';
+        const catLabel = t.kind === 'dark' ? 'ダーク' : t.kind === 'pastel' ? 'パステル' : '特殊';
+        const tagsHtml = (t.tags || []).map(tag =>
+          `<span class="theme-tag" style="border:1px solid ${v.border2};color:${v.muted2};">${tag}</span>`
+        ).join('');
+        const descHtml = t.desc ? `<div class="theme-card-desc" style="color:${v.muted2};">· ${t.desc}</div>` : '';
+        const cardBg = `linear-gradient(180deg, ${v.bg2 || v.bg} 0%, ${v.bg} 100%)`;
         return `
-            <div class="theme-card${isActive ? ' active' : ''}" data-theme-id="${t.id}" style="${inlineVars}">
+            <div class="theme-card${isActive ? ' active' : ''}" data-theme-id="${t.id}" style="${inlineVars};background:${cardBg};border:1px solid ${v.border};">
                 <div class="theme-card-preview" style="background:${previewBg};border-radius:${previewRadius};font-family:${themeFont};">
                     <div class="preview-sidebar" style="background:${v.sidebar};border-right:1px solid ${v.border};">
                         <div class="preview-logo" style="background:${v.accent};box-shadow:0 0 6px ${v.accent}66;"></div>
@@ -640,7 +659,8 @@ class App {
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;">${t.name}</span>
                     <span class="theme-fav-btn${isFav ? ' active' : ''}" data-fav-id="${t.id}" title="${isFav ? 'お気に入り解除' : 'お気に入り'}" style="color:${isFav ? v.accent : v.muted};cursor:pointer;">${isFav ? '★' : '☆'}</span>
                 </div>
-                <div class="theme-card-kind" style="color:${v.muted2};">${kindLabel}</div>
+                <div class="theme-card-tags" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:2px;">${tagsHtml}</div>
+                ${descHtml}
             </div>`;
     }
 
@@ -683,12 +703,14 @@ class App {
         bar.className = 'theme-filter-bar';
         const totalAll = App.THEMES.length;
         const totalDark = App.THEMES.filter(t => t.kind === 'dark').length;
-        const totalLight = App.THEMES.filter(t => t.kind === 'light').length;
+        const totalPastel = App.THEMES.filter(t => t.kind === 'pastel').length;
+        const totalSpecial = App.THEMES.filter(t => t.kind === 'special').length;
         bar.innerHTML = `
             <div class="filter-pills" style="margin-bottom:1rem">
               <button class="filter-pill active" data-theme-filter="all">すべて (${totalAll})</button>
-              <button class="filter-pill" data-theme-filter="dark">🌙 Dark (${totalDark})</button>
-              <button class="filter-pill" data-theme-filter="light">☀️ Light (${totalLight})</button>
+              <button class="filter-pill" data-theme-filter="dark">🌙 ダーク (${totalDark})</button>
+              <button class="filter-pill" data-theme-filter="pastel">🌸 パステル (${totalPastel})</button>
+              <button class="filter-pill" data-theme-filter="special">✨ 特殊 (${totalSpecial})</button>
               <button class="filter-pill" data-theme-action="random" style="margin-left:auto">🎲 ランダム</button>
               <button class="filter-pill" data-theme-action="reset">↺ デフォルトに戻す</button>
               <button class="filter-pill" data-theme-action="font-toggle" title="テーマ固有フォントを無効化">🔤 デフォルトフォント</button>
@@ -729,6 +751,9 @@ class App {
         document.querySelectorAll('.theme-card').forEach(c => {
             c.classList.toggle('active', c.dataset.themeId === id);
         });
+        document.querySelectorAll('[data-theme-icon]').forEach(el => {
+            el.src = `/icons/${id}/${el.dataset.themeIcon}.png`;
+        });
     }
 
     _renderMaterialsTab() {
@@ -747,12 +772,13 @@ class App {
             list.innerHTML = '<p class="empty-hint">「構造を追加」で .mcstructure / .litematic / .nbt ファイルを追加してください</p>';
             return;
         }
+        const themeId = document.documentElement.getAttribute('data-theme') || 'dark-1';
         project.structures.forEach(s => {
             const card = document.createElement('div');
             card.className = 'structure-card glass-card';
             const hasCoords = this.coordsCache.has(s.id);
             card.innerHTML = `
-                <div class="sc-icon">🏗️</div>
+                <div class="sc-icon"><img class="sc-icon-img" data-theme-icon="logo" src="/icons/${themeId}/logo.png" alt=""></div>
                 <div class="sc-info">
                     <div class="sc-name">${this._escape(s.name)}</div>
                     <div class="sc-meta">
@@ -786,7 +812,8 @@ class App {
     }
 
     _renderIntegratedStats(project) {
-        const integrated = ProjectManager.getIntegrated(project, this.replacements);
+        const integrated = ProjectManager.getIntegrated(project, this.replacements)
+            .filter(r => !/structure_block|structure_void|jigsaw|barrier/.test(r.id));
         const totalBlocks = integrated.reduce((a, r) => a + r.count, 0);
         const totalSlots = integrated.reduce((a, r) => a + r.slots, 0);
         const shulkers = Math.ceil(totalSlots / 27);

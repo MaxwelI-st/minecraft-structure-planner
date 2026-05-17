@@ -1,4 +1,4 @@
-import { normalizeId } from '../bedrock_normalize.js';
+import { normalizeId, normalizeBedrockBlock } from '../bedrock_normalize.js';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 export const uid = () => Math.random().toString(36).slice(2, 10);
@@ -72,13 +72,20 @@ export class ProjectManager {
             const mult = s.multiplier || 1;
             const repMap = replacementsByStructure?.get(s.id);
             for (const r of s.results) {
-                const normRId = normalizeId(r.id);
+                let normRId = normalizeId(r.id);
+                let countMul = 1;
+                // 古いキャッシュ救済: state情報なしでも正規化を試みる
+                const norm = normalizeBedrockBlock(normRId, {});
+                if (norm && norm.id && norm.id !== normRId && !norm.skip) {
+                    normRId = norm.id;
+                    if (norm.increment && norm.increment > 1) countMul = norm.increment;
+                }
                 const to = repMap ? (repMap.get(normRId) || repMap.get('minecraft:' + normRId.replace('minecraft:', '')) || repMap.get(normRId.replace('minecraft:', ''))) : null;
                 const id = to || normRId;
                 const lowId = id.toLowerCase();
                 if (lowId === 'minecraft:air' || lowId === 'air') continue;
                 const existing = totals.get(id) || 0;
-                totals.set(id, existing + r.count * mult);
+                totals.set(id, existing + r.count * mult * countMul);
             }
         }
         return Array.from(totals.entries()).map(([id, count]) => {

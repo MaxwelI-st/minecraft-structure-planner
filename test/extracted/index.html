@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5">
+  <meta name="theme-color" content="#0a0f1a">
+  <meta name="color-scheme" content="dark">
+  <title>Structure Material Planner — Minecraft 建築素材プランナー</title>
+  <meta name="description" content="Bedrock Edition .mcstructure を解析して必要素材を計算。ドット絵生成、3Dビュー、コストダウン置換、リソースパック対応。">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Structure Material Planner">
+  <meta property="og:description" content="Minecraft 統合版の建築素材を自動計算。.mcstructure 対応、3Dビュー、コストダウン置換、画像→ドット絵生成。">
+  <meta property="og:locale" content="ja_JP">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Structure Material Planner">
+  <meta name="twitter:description" content="Minecraft の建築素材を自動計算する Web ツール">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="./icon.png">
+  <link rel="apple-touch-icon" href="./icon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Silkscreen&family=Press+Start+2P&family=VT323&family=Space+Grotesk:wght@400;500;700&family=Playfair+Display:wght@400;700;900&family=Shippori+Mincho:wght@400;700;900&family=Cormorant+Garamond:wght@500;700&family=Courier+Prime:wght@400;700&family=Caveat:wght@500;700&family=Rajdhani:wght@500;600;700&family=Crimson+Text:wght@400;600;700&family=Quicksand:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Lora:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;700&family=Zen+Maru+Gothic:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=DotGothic16&family=Klee+One:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/polish.css">
+
+  <!-- JSZip / Three.js は遅延ロード可能だがここで先読みしてキャッシュさせる -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="window.__jszipFailed=true"></script>
+</head>
+<body>
+
+<!-- ─── Loading Overlay ──────────────────────────────────────── -->
+<div id="loading-overlay" class="loading-overlay hidden">
+  <div class="loading-spinner">
+    <span class="spinner-icon">🧱</span>
+    <p id="loading-text">解析中...</p>
+  </div>
+</div>
+
+<!-- ─── Toast Container ──────────────────────────────────────── -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- ─── Hidden File Input ────────────────────────────────────── -->
+<input type="file" id="file-input" accept=".mcstructure,.litematic,.nbt" class="hidden">
+
+<!-- ─── App Layout ───────────────────────────────────────────── -->
+<div class="app-layout">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <button class="logo logo-button" id="btn-go-home" type="button" title="ホーム（プロジェクト一覧）に戻る">
+        <span class="logo-icon-wrap"><img src="./icon.png" class="logo-icon-img" alt="icon"></span>
+        <h1>Structure<br><span>Planner</span></h1>
+      </button>
+    </div>
+
+    <div class="sidebar-actions">
+      <button class="mc-btn primary full-width" id="btn-new-project">
+        <span>＋</span>&nbsp;新規プロジェクト
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">プロジェクト</div>
+      <div id="project-list" class="project-list"></div>
+      <div id="sidebar-drop-hint" class="sidebar-drop-hint">
+        📂 ここにドロップ
+      </div>
+    </div>
+
+
+  </aside>
+
+  <!-- ── Main Content ──────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Welcome Screen -->
+    <div id="welcome-screen" class="welcome-screen">
+      <div class="welcome-content">
+        <div class="welcome-icon"><img src="./icon.png" alt="Structure Planner" class="welcome-icon-img"></div>
+        <h2>Structure&nbsp;Planner</h2>
+        <p>.mcstructure を解析して<br>素材管理・3D表示・ドット絵作成をまとめて管理</p>
+        <div class="welcome-actions">
+          <button class="mc-btn primary large" id="btn-drop-file">📂 .mcstructure を開く</button>
+          <button class="mc-btn secondary large" id="btn-create-project-welcome">＋ 新規プロジェクト</button>
+        </div>
+        <div class="drop-hint-area" id="drop-zone">
+          <p>ここにファイルをドロップ</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project View -->
+    <div id="project-view" class="project-view hidden">
+
+      <!-- Project Header -->
+      <div class="project-header">
+        <div class="project-title-area">
+          <h2 id="project-title" class="project-title">プロジェクト名</h2>
+          <span id="project-date" class="project-date"></span>
+        </div>
+        <div class="project-header-actions">
+          <button class="mc-btn secondary small" id="btn-add-structure">＋ 構造を追加</button>
+          <button class="icon-btn" id="btn-project-menu" title="メニュー">⋮</button>
+        </div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="materials">📦 素材一覧</button>
+        <button class="tab-btn" data-tab="viewer3d">🧊 3Dビュー</button>
+        <button class="tab-btn" data-tab="dotart">🖼️ ドット絵</button>
+        <button class="tab-btn" data-tab="themes">🎨 テーマ</button>
+        <button class="tab-btn" data-tab="settings">⚙️ 設定</button>
+        <button class="tab-btn" data-tab="debug">🐛 デバッグ <span id="debug-tab-badge" style="display:none;background:#f56565;color:white;border-radius:10px;padding:1px 6px;font-size:0.7rem;margin-left:4px;">0</span></button>
+        <button id="btn-tour" title="このタブの使い方ガイドを見る" style="margin-left:auto;background:none;border:1.5px solid var(--accent,#63b3ed);color:var(--accent,#63b3ed);border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:0.85rem;flex-shrink:0;display:flex;align-items:center;justify-content:center;align-self:center;">?</button>
+      </nav>
+
+      <!-- ── Tab Panels ──────────────────────────────────────────── -->
+      <div class="tab-panels">
+
+        <!-- Tab: 素材一覧 -->
+        <div class="tab-panel active" id="panel-materials">
+
+          <!-- Structures in project -->
+          <section style="margin-bottom:1.5rem">
+            <div class="section-header">
+              <h3>構造ファイル</h3>
+            </div>
+            <div id="structures-list" class="structures-list"></div>
+          </section>
+
+          <!-- Integrated Stats -->
+          <section class="section-integrated">
+            <h3 class="section-title">📊 合計素材</h3>
+            <div class="stats-grid">
+              <div class="stat-card" id="stat-total">
+                <div class="stat-label">合計ブロック</div>
+                <div class="stat-value value">—</div>
+              </div>
+              <div class="stat-card" id="stat-unique">
+                <div class="stat-label">種類</div>
+                <div class="stat-value value">—</div>
+              </div>
+              <div class="stat-card" id="stat-stacks">
+                <div class="stat-label">スタック数</div>
+                <div class="stat-value value">—</div>
+              </div>
+              <div class="stat-card" id="stat-shulkers">
+                <div class="stat-label">シュルカー箱</div>
+                <div class="stat-value value">—</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Per-structure breakdown (collapsible) -->
+          <details id="structure-breakdown-details" class="breakdown-section">
+            <summary>📋 構造別の内訳を表示</summary>
+            <div id="structure-breakdown-content"></div>
+          </details>
+
+          <!-- Export buttons -->
+          <div style="display:flex;gap:0.5rem;margin:0.5rem 0;flex-wrap:wrap">
+            <button class="mc-btn primary small" id="btn-copy-md">📋 Markdownでコピー</button>
+            <button class="mc-btn secondary small" id="btn-export-csv">📤 CSVエクスポート</button>
+          </div>
+
+          <!-- Controls -->
+          <div class="controls-bar">
+            <input type="text" class="search-input" id="search-input" placeholder="🔍 ブロックを検索...">
+            <div class="filter-pills">
+              <button class="filter-pill active" data-category="all">すべて</button>
+              <button class="filter-pill" data-category="building">建築</button>
+              <button class="filter-pill" data-category="decoration">装飾</button>
+              <button class="filter-pill" data-category="redstone">RS</button>
+              <button class="filter-pill" data-category="nature">自然</button>
+              <button class="filter-pill" data-category="other">その他</button>
+            </div>
+            <div class="toggle-group">
+              <label class="toggle-item">
+                <input type="checkbox" id="id-toggle">
+                <span class="toggle-label">ID表示</span>
+              </label>
+              <label class="toggle-item">
+                <input type="checkbox" id="wiki-toggle">
+                <span class="toggle-label">Wiki</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Block List -->
+          <div id="block-list" class="block-list"></div>
+        </div><!-- /panel-materials -->
+
+        <!-- Tab: ドット絵 -->
+        <div class="tab-panel hidden" id="panel-dotart">
+          <div class="dotart-layout">
+
+            <!-- Left: Toolbar -->
+            <div class="dotart-toolbar">
+              <div class="toolbar-section" style="margin-bottom:0.5rem">
+                <div class="toolbar-label" style="font-size:0.75rem; opacity:0.8">モード</div>
+                <div style="display:flex; gap:0.3rem">
+                  <button id="btn-dotart-mode-edit" class="mc-btn secondary small" style="flex:1">✏️ 編集</button>
+                  <button id="btn-dotart-mode-view" class="mc-btn primary small" style="flex:1">🔍 全体</button>
+                </div>
+              </div>
+
+              <div class="toolbar-section">
+                <div class="toolbar-label">グリッドサイズ設定</div>
+                <div class="v3d-field" style="margin-bottom:0.5rem">
+                  <span>サイズ決定モード:</span>
+                  <select id="dotart-size-mode" class="control-select">
+                    <option value="map">🗺️ 統合版 地図設定に従う</option>
+                    <option value="custom">✏️ カスタムサイズ指定</option>
+                  </select>
+                </div>
+
+                <!-- Custom Size (Hidden by default) -->
+                <div id="dotart-custom-size-controls" class="size-controls" style="display:none; margin-bottom:0.5rem">
+                  <input type="number" id="grid-width"  value="32" min="8" max="2048" class="size-input">
+                  <span style="color:var(--muted)">×</span>
+                  <input type="number" id="grid-height" value="32" min="8" max="2048" class="size-input">
+                  <button class="mc-btn secondary small" id="btn-resize-grid">適用</button>
+                </div>
+
+                <!-- Map Settings -->
+                <div id="dotart-map-size-controls" style="display:flex;flex-direction:column;gap:0.4rem; background:rgba(0,0,0,0.15); padding:0.5rem; border-radius:6px">
+                  <label class="v3d-field" style="font-size:0.75rem">
+                    <span>スケール:</span>
+                    <select id="map-scale" class="control-select" style="font-size:0.72rem">
+                      <option value="0">Scale 0 (128×128)</option>
+                      <option value="1">Scale 1 (256×256)</option>
+                      <option value="2">Scale 2 (512×512)</option>
+                      <option value="3">Scale 3 (1024×1024)</option>
+                    </select>
+                  </label>
+                  <label class="v3d-field" style="font-size:0.75rem">
+                    <span>分割数:</span>
+                    <div style="display:flex;align-items:center;gap:0.3rem">
+                      <input type="number" id="map-tiles-x" value="1" min="1" max="16" class="size-input" style="width:40px">
+                      <span>×</span>
+                      <input type="number" id="map-tiles-y" value="1" min="1" max="16" class="size-input" style="width:40px">
+                    </div>
+                  </label>
+                  <div id="map-size-preview" style="font-size:0.65rem; color:var(--primary); text-align:right">計算後のサイズ: 128 × 128</div>
+                </div>
+              </div>
+
+              <div class="toolbar-section">
+                <div class="toolbar-label">ツール</div>
+                <div class="tool-buttons">
+                  <button class="tool-btn active" data-tool="pen"    title="ペン">✏️</button>
+                  <button class="tool-btn"         data-tool="fill"   title="塗りつぶし">🪣</button>
+                  <button class="tool-btn"         data-tool="replace" title="一括置換">🪄</button>
+                  <button class="tool-btn"         data-tool="eraser" title="消しゴム">🧹</button>
+                </div>
+              </div>
+
+              <div class="toolbar-section">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem">
+                  <div class="toolbar-label" style="margin-bottom:0">ブロック</div>
+                  <button class="mc-btn secondary small" id="btn-palette-change" style="padding:1px 6px;font-size:0.65rem">🎨 変更/追加</button>
+                </div>
+                <div class="block-palette" id="block-palette"></div>
+              </div>
+
+              <div class="toolbar-section" style="gap:0.4rem;display:flex;flex-direction:column">
+                <button class="mc-btn secondary small" id="btn-clear-canvas">🗑️ クリア</button>
+                <button class="mc-btn primary small"   id="btn-export-dotart">📊 素材計算</button>
+                <button class="mc-btn secondary small" id="btn-export-png">🖼️ PNG保存</button>
+              </div>
+
+              <div class="toolbar-section">
+                <div class="toolbar-label">統合版 地図設定</div>
+                <div style="display:flex;flex-direction:column;gap:0.4rem">
+                  <label class="v3d-field" style="font-size:0.75rem">
+                    <span>スケール:</span>
+                    <select id="map-scale" class="control-select" style="font-size:0.72rem">
+                      <option value="0">Scale 0 (128×128)</option>
+                      <option value="1">Scale 1 (256×256)</option>
+                      <option value="2">Scale 2 (512×512)</option>
+                      <option value="3">Scale 3 (1024×1024)</option>
+                    </select>
+                  </label>
+                  <label class="v3d-field" style="font-size:0.75rem">
+                    <span>分割数:</span>
+                    <div style="display:flex;align-items:center;gap:0.3rem">
+                      <input type="number" id="map-tiles-x" value="1" min="1" max="8" class="size-input" style="width:40px">
+                      <span>×</span>
+                      <input type="number" id="map-tiles-y" value="1" min="1" max="8" class="size-input" style="width:40px">
+                    </div>
+                  </label>
+                  <div style="display:flex;flex-direction:column;gap:0.3rem">
+                    <label class="v3d-field" style="font-size:0.75rem">
+                      <span>現在座標 (X/Z):</span>
+                      <div style="display:flex;align-items:center;gap:0.3rem">
+                        <input type="number" id="map-cur-x" value="0" class="size-input" style="width:50px">
+                        <input type="number" id="map-cur-z" value="0" class="size-input" style="width:50px">
+                      </div>
+                    </label>
+                    <button class="mc-btn secondary small full-width" id="btn-map-calc-pos" style="font-size:0.7rem">最寄り角にスナップ</button>
+                    <div id="map-pos-info" style="font-size:0.68rem;color:var(--primary);background:rgba(0,0,0,0.2);padding:0.4rem;border-radius:4px;display:none;line-height:1.4"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="toolbar-section">
+                <div class="toolbar-label">✨ 画像から自動生成</div>
+                <div style="display:flex;gap:0.3rem; margin-bottom:0.4rem">
+                  <button class="mc-btn primary small full-width" id="btn-img2dot-pick">🖼️ 画像を選択</button>
+                  <button class="mc-btn accent small" id="btn-img2dot-apply" title="現在の設定で再生成" disabled>✨ 再生成</button>
+                </div>
+                <button class="mc-btn secondary small full-width" id="btn-dotart-to-struct" title="現在のドット絵を素材計算に含める">➕ 構造として追加</button>
+                <input type="file" id="img2dot-file" accept="image/*" hidden>
+                <div style="display:flex;flex-direction:column;gap:0.4rem;margin-top:0.4rem">
+                  <div class="v3d-field">
+                    <span style="font-size:0.7rem">モード:</span>
+                    <select id="img2dot-mode" class="control-select" style="font-size:0.72rem">
+                      <option value="visual">見た目（ブロック色）</option>
+                      <option value="mapcolor">マップ表示色</option>
+                    </select>
+                  </div>
+                  <div class="v3d-field">
+                    <span style="font-size:0.7rem">パレット:</span>
+                    <select id="img2dot-filter" class="control-select" style="font-size:0.72rem">
+                      <option value="all">全ブロック</option>
+                      <option value="clean_only" selected>ノイズの少ないブロックのみ</option>
+                      <option value="wool_concrete_terracotta">羊毛＋コンクリ＋テラコッタ</option>
+                      <option value="survival_friendly">サバイバル現実的</option>
+                      <option value="no_ore">鉱石ブロック除外</option>
+                    </select>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+                    <div class="v3d-field">
+                      <span style="font-size:0.65rem">コントラスト: <span id="img2dot-contrast-val">1.0</span></span>
+                      <input type="range" id="img2dot-contrast" min="0.5" max="2.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="v3d-field">
+                      <span style="font-size:0.65rem">彩度: <span id="img2dot-saturation-val">1.0</span></span>
+                      <input type="range" id="img2dot-saturation" min="0.0" max="2.0" step="0.1" value="1.0">
+                    </div>
+                  </div>
+
+                  <div class="v3d-field">
+                    <span style="font-size:0.65rem">ディザリング: <span id="img2dot-dither-val">0.0</span></span>
+                    <input type="range" id="img2dot-dither" min="0.0" max="1.0" step="0.05" value="0.0">
+                  </div>
+
+                  <div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:0.2rem">
+                    <label class="toggle-item" style="font-size:0.7rem">
+                      <input type="checkbox" id="img2dot-air">
+                      <span class="toggle-label">背景透過(Air)</span>
+                    </label>
+                    <label class="toggle-item" style="font-size:0.7rem">
+                      <input type="checkbox" id="img2dot-trim" checked>
+                      <span class="toggle-label">自動切抜</span>
+                    </label>
+                    <label class="toggle-item" style="font-size:0.7rem">
+                      <input type="checkbox" id="img2dot-noise" checked>
+                      <span class="toggle-label">ノイズ除去</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Center: Canvas -->
+            <div class="dotart-canvas-area">
+              <canvas id="dotart-canvas" class="dotart-canvas"></canvas>
+            </div>
+
+            <!-- Right: Materials -->
+            <div class="dotart-materials" id="dotart-materials">
+              <h4>使用素材</h4>
+              <div id="dotart-material-list">
+                <p class="empty-hint">まだ描いていません</p>
+              </div>
+            </div>
+          </div>
+        </div><!-- /panel-dotart -->
+
+        <!-- Tab: 3Dビュー -->
+        <div class="tab-panel hidden" id="panel-viewer3d">
+          <div class="viewer3d-layout v3d-flex">
+
+            <!-- 3Dメインエリア（キャンバス + 下部コントロール） -->
+            <div class="v3d-main-area">
+              <div id="viewer3d-container" class="viewer3d-container v3d-canvas">
+                <div class="viewer3d-placeholder">
+                  <p>「3D表示を開始」を押してレンダリング</p>
+                  <p class="hint">カメラ操作: ドラッグ=回転 / 右ドラッグ=パン / ホイール=ズーム</p>
+                </div>
+                <div id="viewer3d-info" class="viewer3d-info-floating"></div>
+              </div>
+
+              <!-- 下部コントロールエリア -->
+              <div class="v3d-footer-controls">
+                <div class="v3d-control-group">
+                  <button class="mc-btn primary" id="btn-load-3d">🧊 3D表示を開始</button>
+                  <button class="mc-btn secondary" id="btn-v3d-undo" title="直前の操作を元に戻す">↺ 元に戻す</button>
+                  <button class="mc-btn secondary" id="btn-reset-camera" title="カメラリセット">📷 カメラリセット</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 右サイド: 固定パネル -->
+            <aside class="v3d-side-panel" id="viewer3d-side-panel">
+              <header class="v3d-panel-header">
+                <span>⚙️ 設定パネル</span>
+              </header>
+
+              <details class="v3d-section" data-section="display" open>
+                <summary>📺 表示設定</summary>
+                <div class="v3d-section-body">
+                  <label class="v3d-field">
+                    <span>表示する構造</span>
+                    <select id="viewer3d-structure-select" class="control-select"></select>
+                  </label>
+                  <!-- 断面スライダー -->
+                  <div class="v3d-field" style="gap:0.15rem">
+                    <span style="font-size:0.72rem;color:var(--muted2)">✂️ 断面フィルター</span>
+                    <div style="display:grid;grid-template-columns:1.2rem 1fr 1fr;gap:0.2rem 0.4rem;align-items:center;font-size:0.7rem;">
+                      <span style="color:#fc8181;font-weight:bold">X</span>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">左 <code id="layer-xmin-val">0</code></span>
+                        <input type="range" id="layer-xmin" min="0" max="255" value="0" class="range-input">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">右 <code id="layer-xmax-val">255</code></span>
+                        <input type="range" id="layer-xmax" min="0" max="255" value="255" class="range-input">
+                      </label>
+                      <span style="color:#68d391;font-weight:bold">Y</span>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">下 <code id="layer-min-val">0</code></span>
+                        <input type="range" id="layer-min" min="0" max="255" value="0" class="range-input">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">上 <code id="layer-max-val">255</code></span>
+                        <input type="range" id="layer-max" min="0" max="255" value="255" class="range-input">
+                      </label>
+                      <span style="color:#63b3ed;font-weight:bold">Z</span>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">手前 <code id="layer-zmin-val">0</code></span>
+                        <input type="range" id="layer-zmin" min="0" max="255" value="0" class="range-input">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:1px">
+                        <span style="font-size:0.62rem;color:var(--muted2)">奥 <code id="layer-zmax-val">255</code></span>
+                        <input type="range" id="layer-zmax" min="0" max="255" value="255" class="range-input">
+                      </label>
+                    </div>
+                    <button id="btn-slice-reset" class="mc-btn small" style="font-size:0.68rem;background:var(--surface3);margin-top:0.2rem">↺ リセット</button>
+                  </div>
+                  <div class="v3d-field">
+                    <span>表示色モード</span>
+                    <div class="color-mode-toggle">
+                      <label class="toggle-item">
+                        <input type="radio" name="viewer3d-colormode" value="material" checked>
+                        <span class="toggle-label">マテリアル色</span>
+                      </label>
+                      <label class="toggle-item" id="opt-realtexture-label">
+                        <input type="radio" name="viewer3d-colormode" value="realtexture">
+                        <span class="toggle-label">リアル</span>
+                      </label>
+                    </div>
+                  </div>
+                  <label class="v3d-field">
+                    <span>床のタイプ</span>
+                    <select id="floor-type-select" class="control-select">
+                      <option value="grid" selected>グリッド（透過）</option>
+                      <option value="grass">草原</option>
+                      <option value="sand">砂浜</option>
+                      <option value="snow">雪原</option>
+                      <option value="stone">石</option>
+                      <option value="nether">ネザー</option>
+                      <option value="end">エンド</option>
+                      <option value="water">水面</option>
+                      <option value="none">なし</option>
+                    </select>
+                  </label>
+                </div>
+              </details>
+
+              <details class="v3d-section" data-section="textures" open>
+                <summary>🎨 テクスチャ</summary>
+                <div class="v3d-section-body">
+                  <div class="v3d-field" style="flex-direction:row;gap:0.4rem;align-items:center;flex-wrap:wrap">
+                    <button class="mc-btn secondary small" id="btn-upload-pack">📦 アップロード</button>
+                    <button class="mc-btn small" id="btn-clear-pack">🗑️ 忘れる</button>
+                    <input type="file" id="pack-file-input" accept=".zip,.jar,.mcpack" hidden>
+                  </div>
+                  <label class="toggle-item" style="font-size:0.72rem">
+                    <input type="checkbox" id="pack-save-checkbox" checked>
+                    <span class="toggle-label">このブラウザに保存（1つまで）</span>
+                  </label>
+                  <div id="pack-status" class="v3d-status">未読込</div>
+                  <div class="v3d-hint">
+                    💡 おすすめ: <strong>Java Edition のリソースパック (.zip) が最も充実しています。</strong>
+                    公式サイト等でダウンロードした .zip のままアップロード可能です（解凍不要）。<br>
+                    ・<a href="https://github.com/Mojang/bedrock-samples/releases/latest" target="_blank" rel="noopener">Mojang 公式 (統合版)</a>
+                    ・<a href="https://github.com/Faithful-Resource-Pack/Faithful-Java-32x/releases" target="_blank" rel="noopener">Faithful 32x (Java版)</a>
+                  </div>
+                </div>
+              </details>
+
+              <details class="v3d-section" data-section="survival-tools">
+                <summary>🔧 サバイバルツール</summary>
+                <div class="v3d-section-body">
+                  <div class="v3d-field">
+                    <span style="font-size:0.72rem;color:var(--muted2)">対象構造</span>
+                    <select id="tools-structure-select" class="control-select"></select>
+                  </div>
+
+                  <div class="v3d-field">
+                    <span>🏗️ 足場生成</span>
+                    <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem">
+                      <span style="color:var(--muted2)">地面Y</span>
+                      <input type="number" id="tools-scaffold-groundy" value="0" min="-64" max="320" class="mc-input" style="width:56px">
+                      <button class="mc-btn secondary" id="btn-scaffold-autoground" style="font-size:0.65rem;padding:0.18rem 0.5rem;line-height:1.4" title="構造の最低Y座標を自動検出">⚡ 自動</button>
+                    </div>
+                    <button class="mc-btn secondary small full-width" id="btn-tool-scaffold">🏗️ 足場を計算してプレビュー</button>
+                    <div class="tool-result hidden" id="tool-scaffold-result"></div>
+                  </div>
+
+                  <div class="v3d-field">
+                    <span>🫙 ハリボテ化（中抜き）</span>
+                    <div style="font-size:0.72rem;color:var(--muted2)">6面囲まれた内部ブロックを格安素材に置換</div>
+                    <button class="mc-btn secondary small full-width" id="btn-tool-hollow">🫙 ハリボテ化を実行</button>
+                    <div class="tool-result hidden" id="tool-hollow-result"></div>
+                  </div>
+
+                  <div class="v3d-field">
+                    <span>🪓 掘削ガイド（反転）</span>
+                    <div style="font-size:0.72rem;color:var(--muted2)">ソリッド↔エア反転。掘る場所をグロウストーンで可視化</div>
+                    <button class="mc-btn secondary small full-width" id="btn-tool-invert">🪓 掘削ガイドを生成</button>
+                    <div class="tool-result hidden" id="tool-invert-result"></div>
+                  </div>
+
+                  <div class="v3d-field">
+                    <span>💡 湧き潰しパッチ</span>
+                    <div style="font-size:0.72rem;color:var(--muted2)">カーペット・下付きスラブをシュルームライトに置換</div>
+                    <button class="mc-btn secondary small full-width" id="btn-tool-lightpatch">💡 湧き潰しを適用</button>
+                    <div class="tool-result hidden" id="tool-lightpatch-result"></div>
+                  </div>
+
+                  <div class="v3d-field">
+                    <span>🛡️ 置換クイックプリセット</span>
+                    <button class="mc-btn secondary small" id="btn-preset-wax" title="置換元の銅ブロックを錆止め(waxed)版にセット">🛡️ 銅を錆止め版にセット</button>
+                  </div>
+                </div>
+              </details>
+
+              <details class="v3d-section" data-section="replace" open>
+                <summary>🔁 ブロック編集</summary>
+                <div class="v3d-section-body">
+                  <div class="v3d-field">
+                    <span>素材A → 素材B</span>
+                    <div class="v3d-field-row" style="margin-bottom: 0.3rem;">
+                      <button type="button" id="replace-from-btn" class="picker-display" style="width:100%;text-align:left;">
+                        <span id="replace-from-icon-wrap" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">📦</span>
+                        <span id="replace-from-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;">現在の構造から選択...</span>
+                        <span style="color:var(--muted2);font-size:0.65rem;flex-shrink:0;">▾</span>
+                      </button>
+                      <input type="hidden" id="replace-from" value="">
+                    </div>
+                    <div class="v3d-field-row" style="margin-bottom: 0.4rem;">
+                      <button type="button" id="replace-to-btn" class="picker-display" style="width:100%;text-align:left;">
+                        <span id="replace-to-icon-wrap" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">📦</span>
+                        <span id="replace-to-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;">置換先を選択...</span>
+                        <span style="color:var(--muted2);font-size:0.65rem;flex-shrink:0;">▾</span>
+                      </button>
+                      <input type="hidden" id="replace-to" value="">
+                    </div>
+                    <div style="display:flex;gap:0.3rem">
+                      <button class="mc-btn primary small" id="btn-replace-add">追加</button>
+                      <button class="mc-btn secondary small" id="btn-replace-reset">リセット</button>
+                    </div>
+                    <div id="replace-list" class="v3d-replace-list"></div>
+                  </div>
+                  <div class="v3d-field">
+                    <span>🖼️ テクスチャ読み込み状態</span>
+                    <div id="v3d-texture-status" class="v3d-status-box">
+                      <div class="status-summary">— / —</div>
+                      <div class="status-detail">パックが読み込まれていません</div>
+                    </div>
+                  </div>
+                  <hr class="v3d-sep">
+                  <div class="v3d-field">
+                    <span>💰 コストダウン一括置換</span>
+                    <select id="downgrade-preset" class="control-select">
+                      <option value="">プリセット選択...</option>
+                      <option value="realism_full">現実主義（一括）</option>
+                      <option value="dark_only">黒系のみ</option>
+                      <option value="light_only">白系のみ</option>
+                      <option value="gold_only">金/黄系のみ</option>
+                      <option value="teal_only">宝石系のみ</option>
+                      <option value="gray_only">鉄/銅系のみ</option>
+                      <option value="leaves_unify">葉を統一</option>
+                    </select>
+                    <button class="mc-btn primary small" id="btn-apply-downgrade">⚡ 適用</button>
+                    <button class="mc-btn secondary small" id="btn-export-mcstructure">💾 .mcstructure ダウンロード</button>
+                    <button class="mc-btn primary small" id="convert-litematic-btn"
+                      title="選択中の構造を .litematic に変換"
+                      style="background:linear-gradient(135deg,#6b46c1,#4c1d95);border-color:#7c3aed;margin-top:0.3rem;width:100%"
+                      disabled>
+                      🔷 .litematic 変換
+                    </button>
+                    <button class="mc-btn primary small" id="merge-convert-litematic-btn"
+                      title="プロジェクト内の全構造を合体して .litematic に変換"
+                      style="background:linear-gradient(135deg,#0e7490,#155e75);border-color:#0891b2;margin-top:0.3rem;width:100%"
+                      disabled>
+                      🔗 全構造を合体して .litematic 変換
+                    </button>
+                    <div id="litematic-status" style="font-size:0.68rem;color:var(--muted2);margin-top:0.2rem;text-align:center"></div>
+
+                </div>
+              </details>
+            </aside>
+          </div>
+        </div><!-- /panel-viewer3d -->
+
+        <!-- Tab: 設定 -->
+        <div class="tab-panel hidden" id="panel-settings">
+          <div class="settings-layout">
+            <div class="settings-section">
+              <h3>プロジェクト情報</h3>
+              <div class="setting-item">
+                <label>保存済みプロジェクト数</label>
+                <span id="setting-project-count" style="font-family:var(--font-mono);color:var(--primary)">—</span>
+              </div>
+              <div class="setting-item">
+                <label>ストレージ使用量</label>
+                <span id="setting-storage-size" style="font-family:var(--font-mono);color:var(--muted2)">—</span>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h3>表示設定</h3>
+              <div class="setting-item">
+                <label class="toggle-item" style="gap:0.5rem">
+                  <input type="checkbox" id="setting-java-fallback">
+                  <div style="display:flex;flex-direction:column">
+                    <span>Java版オンラインアセットのフォールバック</span>
+                    <span style="font-size:0.7rem;color:var(--muted2)">リソースパック未読み込み時に mcasset.cloud から取得します。</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h3>データ管理</h3>
+              <div class="setting-item">
+                <label>プロジェクト設定のバックアップ (JSON)<br><span style="font-size:0.7rem;color:var(--muted2)">※構造ファイル(.mcstructure)やリソースパックは含まれません。復元後に再読み込みが必要です。</span></label>
+                <button class="mc-btn secondary small" id="btn-export-all">📤 エクスポート</button>
+              </div>
+              <div class="setting-item">
+                <label>JSONから設定を復元</label>
+                <button class="mc-btn secondary small" id="btn-import-data">📥 インポート</button>
+              </div>
+              <div class="setting-item danger">
+                <label>全データを削除（取り消し不可）</label>
+                <button class="mc-btn danger small" id="btn-clear-all-data">🗑️ 全削除</button>
+              </div>
+              <div class="setting-item danger">
+                <label>IndexedDB 完全リセット<br><span style="font-size:0.7rem;color:var(--muted2)">古い DB バージョンが残っている時に使う。プロジェクト・テクスチャパック・構造バッファ全消し。</span></label>
+                <button class="mc-btn danger small" id="btn-reset-idb">⚡ IDB完全リセット</button>
+              </div>
+              <div class="setting-item danger">
+                <label>構造解析キャッシュのみ削除<br><span style="font-size:0.7rem;color:var(--muted2)">プロジェクト情報は残し、構造ファイルの再解析（スラブ合体など）を強制します。</span></label>
+                <button class="mc-btn danger small" id="btn-clear-struct-cache">🧹 解析キャッシュ削除</button>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h3>使い方</h3>
+              <div style="font-size:0.82rem;color:var(--muted2);line-height:1.9">
+                <p>① 左サイドバーの「新規プロジェクト」でプロジェクト作成</p>
+                <p>② 「構造を追加」で .mcstructure ファイルを複数追加可能</p>
+                <p>③ 各構造の <span style="color:var(--accent);font-family:var(--font-mono)">×N</span> ボタンで建築数（倍率）を設定</p>
+                <p>④ 「合計素材」に全構造×倍率の合計が表示されます</p>
+                <p>⑤ ブロック名クリックでブロックIDをコピー</p>
+                <p>⑥ チェックボックスで準備済み管理が可能</p>
+                <p>⑦ 3Dビュータブで構造を立体表示（ファイル再読み込み後に使用可）</p>
+              </div>
+            </div>
+          </div>
+        </div><!-- /panel-settings -->
+
+        <!-- Tab: テーマ -->
+        <div class="tab-panel hidden" id="panel-themes">
+          <div class="panel-content">
+            <div class="settings-section">
+              <h3>🎨 デザインテーマ</h3>
+              <p class="hint" style="color:var(--muted2);font-size:0.85rem;margin:6px 0 12px;">クリックでテーマを切替。設定はブラウザに保存されます。</p>
+                            <div class="themes-grid" id="themes-grid"></div>
+            </div>
+          </div>
+        </div><!-- /panel-themes -->
+
+        <!-- Tab: デバッグ -->
+        <div class="tab-panel hidden" id="panel-debug">
+          <section style="margin-bottom:1rem">
+            <div class="section-header" style="display:flex;align-items:center;gap:8px;">
+              <h3 style="flex:1">🐛 変換デバッグログ</h3>
+              <button id="debug-clear-btn"    class="btn-secondary" style="padding:4px 12px;font-size:0.85rem;">クリア</button>
+              <button id="debug-copy-btn"     class="btn-secondary" style="padding:4px 12px;font-size:0.85rem;transition:background 0.2s;">全コピー</button>
+              <button id="debug-download-btn" class="btn-secondary" style="padding:4px 12px;font-size:0.85rem;">📥 .txt 保存</button>
+            </div>
+            <p style="color:var(--muted);font-size:0.85rem;margin:8px 0;">直近の .litematic 変換で発生した警告・デバッグ情報の全件。</p>
+            <div id="debug-log" style="background:#0a0a0a;color:#a8e6cf;font-family:'Consolas','Monaco',monospace;font-size:0.78rem;line-height:1.5;padding:12px;border-radius:6px;max-height:60vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all;">(まだログがありません。.mcstructure を変換すると表示されます。)</div>
+          </section>
+        </div><!-- /panel-debug -->
+
+      </div><!-- /tab-panels -->
+    </div><!-- /project-view -->
+  </main>
+</div><!-- /app-layout -->
+
+<!-- ─── Modal: 新規プロジェクト ────────────────────────────────── -->
+<div class="modal-overlay hidden" id="modal-new-project">
+  <div class="modal glass-card">
+    <div class="modal-header">
+      <h3>新規プロジェクト</h3>
+      <button class="modal-close" data-modal="modal-new-project">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>プロジェクト名</label>
+      <input type="text" id="new-project-name" class="mc-input" placeholder="例: 村の家 × 5棟">
+    </div>
+    <div class="modal-footer">
+      <button class="mc-btn secondary" data-modal="modal-new-project">キャンセル</button>
+      <button class="mc-btn primary" id="btn-confirm-new-project">作成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Modal: 倍率設定 ─────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="modal-structure">
+  <div class="modal glass-card">
+    <div class="modal-header">
+      <h3 id="modal-structure-title">建築数の設定</h3>
+      <button class="modal-close" data-modal="modal-structure">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>何棟 / 何セット建築しますか？</label>
+      <div class="mult-selector">
+        <button class="mult-btn" data-mult="1">×1</button>
+        <button class="mult-btn" data-mult="2">×2</button>
+        <button class="mult-btn" data-mult="5">×5</button>
+        <button class="mult-btn" data-mult="10">×10</button>
+        <button class="mult-btn" data-mult="20">×20</button>
+        <button class="mult-btn" data-mult="custom">任意</button>
+      </div>
+      <input type="number" id="custom-mult-input" class="mc-input" placeholder="数を入力" min="1" style="display:none;margin-top:0.5rem">
+    </div>
+    <div class="modal-footer">
+      <button class="mc-btn secondary" data-modal="modal-structure">キャンセル</button>
+      <button class="mc-btn primary" id="btn-confirm-mult">適用</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Modal: ブロック選択 ─────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="modal-block-selector">
+  <div class="modal glass-card selector-modal">
+    <div class="modal-header">
+      <div class="header-main">
+        <h3 id="block-selector-title">ブロック選択</h3>
+        <p class="header-sub" id="block-selector-sub">ブロックを選んでください</p>
+      </div>
+      <button class="modal-close" data-modal="modal-block-selector">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="selector-controls">
+        <div class="search-wrap">
+          <input type="text" id="block-selector-search" class="mc-input" placeholder="🔍 ブロック名を検索（例：石、木、階段...）">
+        </div>
+        <div class="tab-pills" style="flex-wrap: wrap; gap: 4px;" id="block-selector-tabs">
+          <button class="tab-pill active" data-cat="current">現在のブロック</button>
+          <button class="tab-pill" data-cat="dotart">ドット絵用</button>
+          <button class="tab-pill" data-cat="all">📂 すべて</button>
+          <button class="tab-pill" data-cat="full">🧱 フルブロック</button>
+          <button class="tab-pill" data-cat="slab">🔲 ハーフ</button>
+          <button class="tab-pill" data-cat="stairs">📐 階段</button>
+          <button class="tab-pill" data-cat="deco">🌸 装飾</button>
+          <button class="tab-pill" data-cat="light">💡 発光</button>
+          <button class="tab-pill" data-cat="functional">⚙️ 機能</button>
+          <button class="tab-pill" data-cat="special">✨ 特殊</button>
+        </div>
+      </div>
+      <div class="block-grid" id="block-selector-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- JS -->
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

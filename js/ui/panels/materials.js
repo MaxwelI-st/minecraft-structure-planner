@@ -1,5 +1,33 @@
 import { computeShulkerPacking } from '../../modules/logic/crafting-tree.js';
 import { getBlockColor } from '../../render/viewer3d.js';
+import * as ResourcePack from '../../resourcepack.js';
+
+const CDN = 'https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures';
+
+function _textureCandidates(app, id) {
+  const rawId = String(id || '').replace(/^minecraft:/, '');
+  const imgId = app._bedrockToJava ? app._bedrockToJava(rawId) : rawId;
+  const wikiName = imgId.split('_').map(w => w[0]?.toUpperCase() + w.slice(1)).join('_');
+  const isNetherBrick = (imgId === 'nether_brick');
+  const guess = app._guessRawIdAndStates ? app._guessRawIdAndStates(id) : { states: undefined };
+  let packUrl = null;
+  if (ResourcePack.isLoaded()) {
+    if (isNetherBrick) {
+      const faces = ResourcePack.getFaceUrls(id, { states: guess.states });
+      packUrl = (faces && faces.found) ? (faces.top || faces.side || faces.all)?.url : null;
+    } else {
+      packUrl = ResourcePack.getItemTextureUrl(id) || null;
+    }
+  }
+  return [
+    ...(packUrl ? [packUrl] : []),
+    `https://minecraft.wiki/images/${isNetherBrick ? 'Nether_Bricks' : 'Invicon_' + wikiName}.png`,
+    `${CDN}/item/${imgId}.png`,
+    `${CDN}/block/${isNetherBrick ? 'nether_bricks' : imgId}.png`,
+    `${CDN}/block/${imgId}_side.png`,
+    `${CDN}/block/${imgId}_top.png`,
+  ];
+}
 
 function _colorHex(id) {
   const c = getBlockColor(id);
@@ -59,26 +87,83 @@ function _renderShulkerPack(app) {
       + '<div class="shulker-summary-label">空きスロット</div></div>'
       + '</div>';
 
-    const boxesHtml = boxes.map((slots, i) => {
-      const slotCells = Array.from({ length: 27 }, (_, j) => {
-        const slot = slots[j];
-        if (!slot) return '<div class="shulker-slot empty"></div>';
-        const label = _name(app, slot.id);
-        const emoji = _blockEmoji(slot.id);
-        const color = _colorHex(slot.id);
-        return '<div class="shulker-slot" title="' + label + ' × ' + slot.count + '" style="--slot-color:' + color + '">'
-          + '<div class="slot-bg"></div>'
-          + '<span class="slot-emoji">' + emoji + '</span>'
-          + '<span class="slot-count">' + slot.count + '</span>'
-          + '</div>';
-      }).join('');
+    // Group consecutive same-content boxes for compact display
+    const renderSlot = (slot) => {
+      if (!slot) return '<div class="shulker-slot empty"></div>';
+      const label = _name(app, slot.id);
+      const emoji = _blockEmoji(slot.id);
+      const color = _colorHex(slot.id);
+      const cands = _textureCandidates(app, slot.id);
+      const candAttr = cands.slice(1).join('|');
+      return '<div class="shulker-slot" title="' + label + ' × ' + slot.count + '" style="--slot-color:' + color + '">'
+        + '<div class="slot-bg"></div>'
+        + '<img class="slot-tex" src="' + cands[0] + '" data-fallbacks="' + candAttr + '" alt=""'
+        + ' onerror="(function(im){const f=(im.dataset.fallbacks||\'\').split(\'|\').filter(Boolean);if(f.length){im.src=f.shift();im.dataset.fallbacks=f.join(\'|\');}else{im.style.display=\'none\';im.nextElementSibling.style.display=\'inline\';}})(this)">'
+        + '<span class="slot-emoji" style="display:none">' + emoji + '</span>'
+        + '<span class="slot-count">' + slot.count + '</span>'
+        + '</div>';
+    };
+
+    // 1ボックスが単一アイテムのみかチェックして連続グループ化
+    const compactGroups = []; // {id, totalSlots, totalCount, boxIndices[]}
+    const fullBoxes = []; // {idx, slots}
+    let i = 0;
+    while (i < boxes.length) {
+      const slots = boxes[i].filter(Boolean);
+      const ids = new Set(slots.map(s => s.id));
+      // 27スロット全部単一アイテムで埋まってる場合のみコンパクト化
+      if (ids.size === 1 && slots.length === 27) {
+        const id = [...ids][0];
+        const group = { id, totalSlots: slots.length, totalCount: slots.reduce((a,s)=>a+s.count,0), boxIndices: [i] };
+        // 連続する同一単一アイテムBoxを合体
+        let j = i + 1;
+        while (j < boxes.length) {
+          const ns = boxes[j].filter(Boolean);
+          const nids = new Set(ns.map(s => s.id));
+          if (nids.size === 1 && [...nids][0] === id) {
+            group.totalSlots += ns.length;
+            group.totalCount += ns.reduce((a,s)=>a+s.count,0);
+            group.boxIndices.push(j);
+            j++;
+          } else break;
+        }
+        compactGroups.push(group);
+        i = j;
+      } else {
+        fullBoxes.push({ idx: i, slots: boxes[i] });
+        i++;
+      }
+    }
+
+    let compactHtml = '';
+    if (compactGroups.length > 0) {
+      compactHtml = '<div class="shulker-compact-row">' + compactGroups.map(g => {
+        const label = _name(app, g.id);
+        const cands = _textureCandidates(app, g.id);
+        const candAttr = cands.slice(1).join('|');
+        const emoji = _blockEmoji(g.id);
+        const boxCount = g.boxIndices.length;
+        const range = boxCount === 1 ? `Box ${g.boxIndices[0]+1}` : `Box ${g.boxIndices[0]+1}–${g.boxIndices[boxCount-1]+1}`;
+        return '<div class="shulker-compact" title="' + label + ' × ' + g.totalCount + '">'
+          + '<img class="compact-tex" src="' + cands[0] + '" data-fallbacks="' + candAttr + '" alt=""'
+          + ' onerror="(function(im){const f=(im.dataset.fallbacks||\'\').split(\'|\').filter(Boolean);if(f.length){im.src=f.shift();im.dataset.fallbacks=f.join(\'|\');}else{im.style.display=\'none\';im.nextElementSibling.style.display=\'inline\';}})(this)">'
+          + '<span class="compact-emoji" style="display:none">' + emoji + '</span>'
+          + '<div class="compact-info">'
+          + '<div class="compact-name">' + label + '</div>'
+          + '<div class="compact-meta">📦 ' + boxCount + ' Box（' + range + '）× ' + g.totalCount.toLocaleString() + '個</div>'
+          + '</div></div>';
+      }).join('') + '</div>';
+    }
+
+    const boxesHtml = fullBoxes.map(({ idx, slots }) => {
+      const slotCells = Array.from({ length: 27 }, (_, j) => renderSlot(slots[j])).join('');
       return '<div class="shulker-box-card">'
-        + '<div class="shulker-box-header">📦 Box ' + (i + 1) + ' / ' + totalBoxes + '</div>'
+        + '<div class="shulker-box-header">📦 Box ' + (idx + 1) + ' / ' + totalBoxes + '</div>'
         + '<div class="shulker-grid">' + slotCells + '</div>'
         + '</div>';
     }).join('');
 
-    body.innerHTML = summaryHtml + '<div class="shulker-boxes">' + boxesHtml + '</div>';
+    body.innerHTML = summaryHtml + compactHtml + '<div class="shulker-boxes">' + boxesHtml + '</div>';
 
   } catch (err) {
     body.innerHTML = '<p class="empty-hint" style="color:var(--red)">エラー: ' + err.message + '</p>';

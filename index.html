@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Silkscreen&family=Press+Start+2P&family=VT323&family=Space+Grotesk:wght@400;500;700&family=Playfair+Display:wght@400;700;900&family=Shippori+Mincho:wght@400;700;900&family=Cormorant+Garamond:wght@500;700&family=Courier+Prime:wght@400;700&family=Caveat:wght@500;700&family=Rajdhani:wght@500;600;700&family=Crimson+Text:wght@400;600;700&family=Quicksand:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Lora:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;700&family=Zen+Maru+Gothic:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=DotGothic16&family=Klee+One:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Silkscreen&family=Press+Start+2P&family=VT323&family=Space+Grotesk:wght@400;500;700&family=Playfair+Display:wght@400;700;900&family=Shippori+Mincho:wght@400;700;900&family=Cormorant+Garamond:wght@500;700&family=Courier+Prime:wght@400;700&family=Caveat:wght@500;700&family=Rajdhani:wght@500;600;700&family=Crimson+Text:wght@400;600;700&family=Quicksand:wght@400;500;600;700&family=Fredoka:wght@400;500;600;700&family=Lora:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;700&family=Zen+Maru+Gothic:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=DotGothic16&family=Klee+One:wght@400;600&family=Unbounded:wght@400;600;800&family=Syne:wght@500;700;800&family=Bagel+Fat+One&family=Instrument+Serif:ital@0;1&family=Bricolage+Grotesque:wght@400;600;800&family=Audiowide&family=Italianno&family=Sacramento&family=Yuji+Mai&family=Big+Shoulders+Display:wght@500;700;900&family=Cinzel:wght@400;600;800&family=Orbitron:wght@500;700;900&family=Pacifico&family=Special+Elite&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/style.css">
   <link rel="stylesheet" href="./css/polish.css">
 
@@ -82,7 +82,7 @@
     <!-- Welcome Screen -->
     <div id="welcome-screen" class="welcome-screen">
       <div class="welcome-content">
-        <div class="welcome-icon"><img src="/icon.png" alt="Structure Planner" class="welcome-icon-img"></div>
+        <div class="welcome-icon"><img src="/icons/dark-1/logo.png" alt="Structure Planner" class="welcome-icon-img" data-theme-icon="logo"></div>
         <h2>Structure&nbsp;Planner</h2>
         <p>.mcstructure を解析して<br>素材管理・3D表示・ドット絵作成をまとめて管理</p>
         <div class="welcome-actions">
@@ -112,11 +112,11 @@
 
       <!-- Tab Navigation -->
       <nav class="tab-nav">
-        <button class="tab-btn active" data-tab="materials">📦 素材一覧</button>
-        <button class="tab-btn" data-tab="viewer3d">🧊 3Dビュー</button>
-        <button class="tab-btn" data-tab="dotart">🖼️ ドット絵</button>
-        <button class="tab-btn" data-tab="themes">🎨 テーマ</button>
-        <button class="tab-btn" data-tab="settings">⚙️ 設定</button>
+        <button class="tab-btn active" data-tab="materials"><img class="tab-icon" data-theme-icon="tab-materials" src="/icons/dark-1/tab-materials.png" alt=""> 素材一覧</button>
+        <button class="tab-btn" data-tab="viewer3d"><img class="tab-icon" data-theme-icon="tab-3d" src="/icons/dark-1/tab-3d.png" alt=""> 3Dビュー</button>
+        <button class="tab-btn" data-tab="dotart"><img class="tab-icon" data-theme-icon="tab-dotart" src="/icons/dark-1/tab-dotart.png" alt=""> ドット絵</button>
+        <button class="tab-btn" data-tab="themes"><img class="tab-icon" data-theme-icon="tab-themes" src="/icons/dark-1/tab-themes.png" alt=""> テーマ</button>
+        <button class="tab-btn" data-tab="settings"><img class="tab-icon" data-theme-icon="tab-settings" src="/icons/dark-1/tab-settings.png" alt=""> 設定</button>
         <button class="tab-btn" data-tab="debug">🐛 デバッグ <span id="debug-tab-badge" style="display:none;background:#f56565;color:white;border-radius:10px;padding:1px 6px;font-size:0.7rem;margin-left:4px;">0</span></button>
         <button id="btn-tour" title="このタブの使い方ガイドを見る" style="margin-left:auto;background:none;border:1.5px solid var(--accent,#63b3ed);color:var(--accent,#63b3ed);border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:0.85rem;flex-shrink:0;display:flex;align-items:center;justify-content:center;align-self:center;">?</button>
       </nav>
@@ -612,18 +612,18 @@
                       <option value="leaves_unify">葉を統一</option>
                     </select>
                     <button class="mc-btn primary small" id="btn-apply-downgrade">⚡ 適用</button>
-                    <button class="mc-btn secondary small" id="btn-export-mcstructure">💾 .mcstructure ダウンロード</button>
+                    <button class="mc-btn secondary small" id="btn-export-mcstructure"><img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> .mcstructure ダウンロード</button>
                     <button class="mc-btn primary small" id="convert-litematic-btn"
                       title="選択中の構造を .litematic に変換"
                       style="background:linear-gradient(135deg,#6b46c1,#4c1d95);border-color:#7c3aed;margin-top:0.3rem;width:100%"
                       disabled>
-                      🔷 .litematic 変換
+                      <img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> .litematic 変換
                     </button>
                     <button class="mc-btn primary small" id="merge-convert-litematic-btn"
                       title="プロジェクト内の全構造を合体して .litematic に変換"
                       style="background:linear-gradient(135deg,#0e7490,#155e75);border-color:#0891b2;margin-top:0.3rem;width:100%"
                       disabled>
-                      🔗 全構造を合体して .litematic 変換
+                      <img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> 全構造を合体して .litematic 変換
                     </button>
                     <div id="litematic-status" style="font-size:0.68rem;color:var(--muted2);margin-top:0.2rem;text-align:center"></div>
 

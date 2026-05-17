@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sakura Icon Preview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: linear-gradient(135deg, #fadae8 0%, #fff6fb 100%);
+      font-family: -apple-system, sans-serif;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #7a3058;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+    .preview-section {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 30px;
+      box-shadow: 0 8px 28px rgba(232, 144, 192, 0.18);
+    }
+    .preview-section h2 {
+      color: #e890c0;
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      letter-spacing: 1px;
+    }
+    .sizes {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+    }
+    .size-demo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .size-label {
+      color: #7a3058;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .size-box {
+      background: #fadae8;
+      border: 1px solid #e890c0;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .size-box.s512 { width: 300px; height: 300px; }
+    .size-box.s256 { width: 256px; height: 256px; }
+    .size-box.s128 { width: 128px; height: 128px; }
+    .size-box.s64 { width: 64px; height: 64px; }
+    .size-box img { width: 100%; height: 100%; object-fit: contain; padding: 4px; mix-blend-mode: multiply; }
+    .context {
+      background: #f0f4ff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 30px;
+    }
+    .context-label {
+      color: #7a3058;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+    }
+    .ui-mockup {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+    .logo-slot {
+      width: 48px;
+      height: 48px;
+      background: #fadae8;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .logo-slot img { width: 100%; mix-blend-mode: multiply; }
+    .mockup-text {
+      flex: 1;
+      font-size: 13px;
+      color: #5a3878;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌸 Sakura Spring Theme — Logo Preview</h1>
+
+    <div class="preview-section">
+      <h2>Original Sizes</h2>
+      <div class="sizes">
+        <div class="size-demo">
+          <div class="size-label">512 × 512 px (App Logo)</div>
+          <div class="size-box s512">
+            <img src="/icons/light-3/logo.png" alt="Sakura Logo 512">
+          </div>
+        </div>
+        <div class="size-demo">
+          <div class="size-label">256 × 256 px (Tab Icon)</div>
+          <div class="size-box s256">
+            <img src="/icons/light-3/logo.png" alt="Sakura Logo 256">
+          </div>
+        </div>
+        <div class="size-demo">
+          <div class="size-label">128 × 128 px (Smaller)</div>
+          <div class="size-box s128">
+            <img src="/icons/light-3/logo.png" alt="Sakura Logo 128">
+          </div>
+        </div>
+        <div class="size-demo">
+          <div class="size-label">64 × 64 px (Favicon)</div>
+          <div class="size-box s64">
+            <img src="/icons/light-3/logo.png" alt="Sakura Logo 64">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="preview-section">
+      <h2>UI Context Examples</h2>
+      <div class="context">
+        <div class="context-label">Sidebar Logo</div>
+        <div class="ui-mockup">
+          <div class="logo-slot" style="width: 40px; height: 40px;">
+            <img src="/icons/light-3/logo.png" alt="">
+          </div>
+          <div class="mockup-text">MC Planner</div>
+        </div>
+      </div>
+      <div class="context">
+        <div class="context-label">Tab Icon</div>
+        <div class="ui-mockup">
+          <div class="logo-slot" style="width: 32px; height: 32px;">
+            <img src="/icons/light-3/logo.png" alt="">
+          </div>
+          <div class="mockup-text">Welcome</div>
+        </div>
+      </div>
+      <div class="context">
+        <div class="context-label">Header Logo</div>
+        <div class="ui-mockup">
+          <div class="logo-slot" style="width: 56px; height: 56px;">
+            <img src="/icons/light-3/logo.png" alt="">
+          </div>
+          <div class="mockup-text">Minecraft Structure Planner</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
