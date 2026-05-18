@@ -428,7 +428,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ─── Inputs ────────────────────────────────────────────── */
 .mc-input {
-  background: rgba(0,0,0,0.3);
+  background: var(--card);
   border: 1px solid var(--border2);
   border-radius: 8px;
   color: var(--text);
@@ -439,7 +439,7 @@ a { color: inherit; text-decoration: none; }
 }
 .mc-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74,222,128,0.15); }
 .control-select {
-  background: rgba(0,0,0,0.3);
+  background: var(--card);
   border: 1px solid var(--border2);
   border-radius: 8px;
   color: var(--text);
@@ -550,7 +550,7 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 1rem;
 }
 .search-input {
-  background: rgba(0,0,0,0.3);
+  background: var(--card);
   border: 1px solid var(--border2);
   border-radius: 8px;
   color: var(--text);
@@ -715,7 +715,7 @@ a { color: inherit; text-decoration: none; }
 .size-controls { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .size-input {
   width: 52px;
-  background: rgba(0,0,0,0.3);
+  background: var(--card);
   border: 1px solid var(--border2);
   border-radius: 6px;
   color: var(--text);
@@ -811,7 +811,7 @@ a { color: inherit; text-decoration: none; }
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
     gap: 4px;
-    background: rgba(0,0,0,0.2);
+    background: var(--bg2);
     padding: 0.5rem;
     border-radius: 8px;
     max-height: 180px;
@@ -932,7 +932,7 @@ a { color: inherit; text-decoration: none; }
 .tool-card-options { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
 .tool-card-options input { width: 70px; }
 .tool-result {
-  background: rgba(0,0,0,0.25); border-radius: 8px;
+  background: var(--bg2); border-radius: 8px;
   padding: 0.6rem 0.75rem; font-size: 0.76rem;
   color: var(--muted2); display: flex; flex-direction: column; gap: 0.4rem;
 }
@@ -1319,7 +1319,7 @@ body::before {
 .v3d-status { font-size: 0.74rem; color: var(--muted2, #aaa); }
 .v3d-hint { font-size: 0.7rem; color: var(--muted2, #888); line-height: 1.6; }
 .v3d-hint a { color: #5cb; }
-.v3d-replace-list { font-size: 0.7rem; color: var(--muted2); max-height: 80px; overflow-y: auto; padding: 0.25rem; background: rgba(0,0,0,0.2); border-radius: 4px; }
+.v3d-replace-list { font-size: 0.7rem; color: var(--muted2); max-height: 80px; overflow-y: auto; padding: 0.25rem; background: var(--bg2); border-radius: 4px; }
 .v3d-sep { border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 0.5rem 0; }
 
 /* フローティングUI */
@@ -1488,8 +1488,9 @@ body::before {
     width: 100%;
 }
 .picker-display {
-    background: rgba(0,0,0,0.35);
+    background: var(--card);
     border: 1px solid var(--border2);
+    color: var(--text);
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     display: flex;
@@ -1500,7 +1501,7 @@ body::before {
 }
 .picker-display:hover {
     border-color: var(--primary);
-    background: rgba(0,0,0,0.45);
+    background: var(--card-hover);
 }
 .picker-icon {
     width: 24px;
@@ -1650,7 +1651,7 @@ body::before {
 
 /* --- Texture Status UI --- */
 .v3d-status-box {
-    background: rgba(0,0,0,0.2);
+    background: var(--bg2);
     border: 1px solid var(--border2);
     border-radius: 6px;
     padding: 0.6rem;
@@ -3219,66 +3220,26 @@ body.fonts-default .header-main h3 {
     opacity: 0.6;
 }
 
-/* ── ライトテーマ: 3Dビュー右パネルのグレーオーバーレイを除去 ── */
+/* ── ライトテーマ: 3Dビュー右パネル ── */
 :root[data-theme^="light"] .v3d-panel-header {
-    background: var(--bg2, rgba(0,0,0,0.04));
+    background: var(--bg2);
     color: var(--text);
 }
 :root[data-theme^="light"] .v3d-section summary {
-    background: var(--hover-bg, rgba(0,0,0,0.03));
+    background: var(--hover-bg);
 }
 :root[data-theme^="light"] .v3d-section summary:hover {
-    background: var(--active-bg, rgba(0,0,0,0.06));
+    background: var(--active-bg);
 }
 :root[data-theme^="light"] .v3d-side-panel {
-    background: var(--sidebar, rgba(255,255,255,0.6));
+    background: var(--sidebar);
     border-left-color: var(--border);
 }
 :root[data-theme^="light"] .v3d-section {
     border-bottom-color: var(--border);
 }
-:root[data-theme^="light"] .v3d-replace-list {
-    background: var(--bg2, rgba(0,0,0,0.05));
-}
 
-/* ── ライトテーマ: 入力・セレクト・ステータスボックスのグレー除去 ── */
-:root[data-theme^="light"] .mc-input,
-:root[data-theme^="light"] .control-select {
-    background: var(--card, rgba(255,255,255,0.8));
-    border-color: var(--border2);
-}
-:root[data-theme^="light"] .v3d-status-box {
-    background: var(--bg2, rgba(0,0,0,0.04));
-    border-color: var(--border);
-}
-
-/* ── ライトテーマ: ピッカーボタン・ツール結果エリアのグレー除去 ── */
-:root[data-theme^="light"] .picker-display {
-    background: var(--card, rgba(255,255,255,0.8));
-    border-color: var(--border2);
-    color: var(--text);
-}
-:root[data-theme^="light"] .tool-result {
-    background: var(--bg2, rgba(0,0,0,0.04));
-}
-
-/* ── ライトテーマ: 素材検索・ドット絵パネルのグレー除去 ── */
-:root[data-theme^="light"] .search-input {
-    background: var(--card, rgba(255,255,255,0.8));
-    border-color: var(--border2);
-    color: var(--text);
-}
-:root[data-theme^="light"] .size-input {
-    background: var(--card, rgba(255,255,255,0.8));
-    border-color: var(--border2);
-    color: var(--text);
-}
-:root[data-theme^="light"] #dotart-map-size-controls {
-    background: var(--bg2, rgba(0,0,0,0.04));
-}
-:root[data-theme^="light"] .block-palette {
-    background: var(--card, rgba(255,255,255,0.6));
-}
+/* ── ライトテーマ: チェックボックスを薄くする（ダーク系は濃いまま） ── */
 :root[data-theme^="light"] .check-vis {
     background: rgba(0, 0, 0, 0.12) !important;
 }
