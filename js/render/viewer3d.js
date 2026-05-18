@@ -139,6 +139,12 @@ export class Viewer3D {
         this.pulseHighlight = false; // パルス点滅をデフォルト無効（チカチカ防止）
         // 置換を再適用して再描画が必要な場合に呼び出すコールバック（app.js がセット）
         this.onNeedsReload = null;
+        // Alt+ドラッグ（建造物移動）コールバック
+        this.onAltDragStart = null;   // ({coord, axis}) => void
+        this.onAltDragMove  = null;   // ({axis, dx}) => void
+        this.onAltDragEnd   = null;   // () => void
+        // 建造物ハイライト（Alt+ドラッグ中に対象構造を囲むボックス）
+        this._structureHighlightMeshes = [];
         // 範囲選択用の始点マーカーとボックス
         this._rangeStartMesh = null;
         this._rangeBoxMesh = null;
@@ -368,11 +374,23 @@ export class Viewer3D {
             _mouseDownAt = { x: e.clientX, y: e.clientY };
             _dragMoved = false;
             if (e.button === 0) {
-                // 左: Shift押しなら選択待ち、それ以外は回転
-                dragMode = e.shiftKey ? 'click' : 'orbit';
+                if (e.altKey) {
+                    // Alt+左: 建造物をX軸方向にドラッグ移動
+                    dragMode = 'pan-x';
+                    this._altDragRaycast(e, 'x');
+                } else {
+                    // 左: Shift押しなら選択待ち、それ以外は回転
+                    dragMode = e.shiftKey ? 'click' : 'orbit';
+                }
             } else if (e.button === 2) {
-                // 右: Shift押しなら範囲選択待ち、それ以外はパン
-                dragMode = e.shiftKey ? 'range-click' : 'pan';
+                if (e.altKey) {
+                    // Alt+右: 建造物をZ軸方向にドラッグ移動
+                    dragMode = 'pan-z';
+                    this._altDragRaycast(e, 'z');
+                } else {
+                    // 右: Shift押しなら範囲選択待ち、それ以外はパン
+                    dragMode = e.shiftKey ? 'range-click' : 'pan';
+                }
             } else if (e.button === 1) {
                 // 中ドラッグ → パン
                 dragMode = 'pan';
@@ -388,11 +406,22 @@ export class Viewer3D {
             }
             if (dragMode === 'orbit') orbitBy(dx, dy);
             else if (dragMode === 'pan') panBy(dx, dy);
+            else if (dragMode === 'pan-x') {
+                // Alt+左ドラッグ: 建造物をX軸方向に移動（app.js コールバックへ委譲）
+                if (this.onAltDragMove) this.onAltDragMove({ axis: 'x', dx });
+            } else if (dragMode === 'pan-z') {
+                // Alt+右ドラッグ: 建造物をZ軸方向に移動（app.js コールバックへ委譲）
+                if (this.onAltDragMove) this.onAltDragMove({ axis: 'z', dx });
+            }
             prevMouse = { x: e.clientX, y: e.clientY };
         });
         window.addEventListener('mouseup', (e) => {
+            // Alt+ドラッグ終了 → 構造ハイライト解除
+            if (dragMode === 'pan-x' || dragMode === 'pan-z') {
+                if (this.onAltDragEnd) this.onAltDragEnd();
+            }
             // 左クリック → ブロック選択（Shift時は移動制限しているので多少の動きを許容）
-            if (dragMode === 'click' && e.button === 0) {
+            else if (dragMode === 'click' && e.button === 0) {
                 if (!_dragMoved || e.shiftKey) this._handleClick(e, false);
             }
             // 右クリック → 範囲選択（Shift時は移動制限しているので多少の動きを許容）
@@ -444,6 +473,25 @@ export class Viewer3D {
             touches = t;
         }, { passive: false });
         el.addEventListener('touchend', (e) => { touches = Array.from(e.touches); prevPinchDist = null; }, { passive: false });
+    }
+
+    /** Alt+ドラッグ開始時にクリックしたブロックをレイキャストしてコールバックを呼ぶ */
+    _altDragRaycast(e, axis) {
+        if (!this.onAltDragStart || !this.meshes.length) return;
+        const THREE = window.THREE;
+        if (!THREE) return;
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+           -((e.clientY - rect.top)  / rect.height) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, this.camera);
+        const hits = raycaster.intersectObjects(this.meshes);
+        const coord = hits.length > 0
+            ? (hits[0].object.userData.instanceCoords?.[hits[0].instanceId] ?? null)
+            : null;
+        this.onAltDragStart({ coord, axis });
     }
 
     _updateCamera() {
@@ -992,6 +1040,128 @@ export class Viewer3D {
             this._rangeBoxMesh.material?.dispose();
             this._rangeBoxMesh = null;
         }
+    }
+
+    /**
+     * Alt+ドラッグ中に操作対象の建造物を目立たせるワイヤーフレームボックスを描画。
+     * @param {{minX,minY,minZ,maxX,maxY,maxZ}} bounds  表示座標系での AABB
+     * @param {string} [label]  建造物名（将来用）
+     */
+    /**
+     * Canvas テクスチャでスプライトラベルを生成（名前タグ）
+     * @param {string} text
+     */
+    _createLabelSprite(text) {
+        const THREE = window.THREE;
+        const W = 320, H = 64, r = 10, pad = 14;
+        const canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        // 角丸背景
+        ctx.fillStyle = 'rgba(2, 18, 30, 0.88)';
+        ctx.strokeStyle = '#00d4ff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(r, 0); ctx.lineTo(W - r, 0); ctx.quadraticCurveTo(W, 0, W, r);
+        ctx.lineTo(W, H - r); ctx.quadraticCurveTo(W, H, W - r, H);
+        ctx.lineTo(r, H); ctx.quadraticCurveTo(0, H, 0, H - r);
+        ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        // テキスト（長い名前は省略）
+        ctx.fillStyle = '#e0f4ff';
+        ctx.font = 'bold 26px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        let displayText = text;
+        if (ctx.measureText(text).width > W - pad * 2) {
+            while (ctx.measureText(displayText + '…').width > W - pad * 2 && displayText.length > 1)
+                displayText = displayText.slice(0, -1);
+            displayText += '…';
+        }
+        ctx.fillText(displayText, W / 2, H / 2);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.minFilter = THREE.LinearFilter;
+        const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+        const sprite = new THREE.Sprite(mat);
+        sprite.scale.set(10, 2, 1); // ワールド単位（10ブロック幅 × 2高）
+        return sprite;
+    }
+
+    /**
+     * Alt+ドラッグ中に操作対象の建造物を目立たせるワイヤーフレームボックスを描画。
+     * @param {{minX,minY,minZ,maxX,maxY,maxZ}} bounds  表示座標系での AABB
+     * @param {string} [label]  建造物名
+     */
+    setStructureHighlight(bounds, label = '') {
+        this.clearStructureHighlight();
+        if (!this.scene) return;
+        const THREE = window.THREE;
+        if (!THREE) return;
+
+        const pad = 0.3; // ブロック表面より少し外側
+        const w = bounds.maxX - bounds.minX + 1 + pad * 2;
+        const h = bounds.maxY - bounds.minY + 1 + pad * 2;
+        const d = bounds.maxZ - bounds.minZ + 1 + pad * 2;
+        const cx = (bounds.minX + bounds.maxX) / 2;
+        const cy = (bounds.minY + bounds.maxY) / 2;
+        const cz = (bounds.minZ + bounds.maxZ) / 2;
+
+        const boxGeo = new THREE.BoxGeometry(w, h, d);
+
+        // ① 半透明フィル（薄いシアン）
+        const fillMat = new THREE.MeshBasicMaterial({
+            color: 0x00d4ff,
+            transparent: true,
+            opacity: 0.07,
+            depthWrite: false,
+            side: THREE.BackSide,  // 内側から見えるように
+        });
+        const fillMesh = new THREE.Mesh(boxGeo, fillMat);
+        fillMesh.position.set(cx, cy, cz);
+        fillMesh.renderOrder = 990;
+        this.scene.add(fillMesh);
+        this._structureHighlightMeshes.push(fillMesh);
+
+        // ② エッジワイヤーフレーム（くっきりしたシアン、depthTest OFF で常に見える）
+        const edges = new THREE.EdgesGeometry(boxGeo);
+        const lineMat = new THREE.LineBasicMaterial({
+            color: 0x00d4ff,
+            linewidth: 1,
+            depthTest: false,
+        });
+        const lineMesh = new THREE.LineSegments(edges, lineMat);
+        lineMesh.position.set(cx, cy, cz);
+        lineMesh.renderOrder = 991;
+        this.scene.add(lineMesh);
+        this._structureHighlightMeshes.push(lineMesh);
+
+        // ③ ラベルスプライト（建造物名）
+        if (label) {
+            const sprite = this._createLabelSprite(label);
+            sprite.position.set(cx, bounds.maxY + 2.0, cz);
+            sprite.renderOrder = 992;
+            this.scene.add(sprite);
+            this._structureHighlightMeshes.push(sprite);
+        }
+    }
+
+    /** ハイライト全体（枠+ラベル）を相対移動。Alt+ドラッグ中に呼んで追従させる */
+    translateStructureHighlight(axis, delta) {
+        for (const m of this._structureHighlightMeshes) {
+            m.position[axis] += delta;
+        }
+    }
+
+    /** 建造物ハイライトを解除 */
+    clearStructureHighlight() {
+        for (const m of this._structureHighlightMeshes) {
+            this.scene?.remove(m);
+            m.geometry?.dispose();
+            if (Array.isArray(m.material)) m.material.forEach(x => x.dispose());
+            else m.material?.dispose();
+        }
+        this._structureHighlightMeshes = [];
     }
 
     resetCamera() {

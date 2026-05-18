@@ -388,7 +388,13 @@ export const UIMixin = {
         const btnReload3d = $('btn-reload-3d');
         if (btnReload3d) btnReload3d.onclick = () => this._load3DView();
         const btnResetCam = $('btn-reset-camera');
-        if (btnResetCam) btnResetCam.onclick = () => this.viewer3d?.resetCamera();
+        if (btnResetCam) btnResetCam.onclick = () => {
+            this._allModeOrigin = null; // 原点もリセットして次回再描画で再フィット
+            this.viewer3d?.resetCamera();
+            // __ALL__ モードなら即再ロードして原点再計算
+            const sel = document.getElementById('viewer3d-structure-select');
+            if (sel?.value === '__ALL__') this._scheduleViewer3DRefresh();
+        };
 
         $('floor-type-select').addEventListener('change', (e) => {
             if (this.viewer3d) this.viewer3d.setFloorType(e.target.value);
@@ -484,7 +490,21 @@ export const UIMixin = {
 
         $('viewer3d-structure-select').addEventListener('change', () => {
             this._resetReplacePickers();
-            this._renderReplaceList($('viewer3d-structure-select').value);
+            const v = $('viewer3d-structure-select').value;
+            this._renderReplaceList(v);
+            // __ALL__ 選択時は即座に「合体・ツール」サブタブへ切り替え + 位置調整UI描画
+            if (v === '__ALL__') {
+                const project = this._currentProject();
+                if (project) {
+                    this._switchV3dSubtab('advanced');
+                    this._renderV3dOffsetPanel(project);
+                }
+            } else {
+                const op = document.getElementById('v3d-offset-panel');
+                if (op) op.classList.add('hidden');
+                // __ALL__ から離れたら次回 __ALL__ で autoFocus を再実行
+                this._viewer3dAllAutofocused = false;
+            }
         });
 
         this._setupBlockSelectorModal();
