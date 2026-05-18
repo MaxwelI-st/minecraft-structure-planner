@@ -3240,3 +3240,14 @@ body.fonts-default .header-main h3 {
 :root[data-theme^="light"] .v3d-replace-list {
     background: var(--bg2, rgba(0,0,0,0.05));
 }
+
+/* ── ライトテーマ: 入力・セレクト・ステータスボックスのグレー除去 ── */
+:root[data-theme^="light"] .mc-input,
+:root[data-theme^="light"] .control-select {
+    background: var(--card, rgba(255,255,255,0.8));
+    border-color: var(--border2);
+}
+:root[data-theme^="light"] .v3d-status-box {
+    background: var(--bg2, rgba(0,0,0,0.04));
+    border-color: var(--border);
+}
