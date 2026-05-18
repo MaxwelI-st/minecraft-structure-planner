@@ -26,6 +26,11 @@ import { ProjectManager, uid } from './core/project-manager.js';
 import { exportCsv, copyAsMarkdown, exportAllProjects, exportMcStructure } from './io/export-utils.js';
 import { UIMixin } from './ui/ui_events.js';
 import { convertToLitematic, mergeAndConvertToLitematic, downloadBuffer } from './main.js';
+import { inject } from '@vercel/analytics';
+
+// Initialize Vercel Web Analytics
+inject();
+
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 class App {
