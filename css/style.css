@@ -3261,3 +3261,24 @@ body.fonts-default .header-main h3 {
 :root[data-theme^="light"] .tool-result {
     background: var(--bg2, rgba(0,0,0,0.04));
 }
+
+/* ── ライトテーマ: 素材検索・ドット絵パネルのグレー除去 ── */
+:root[data-theme^="light"] .search-input {
+    background: var(--card, rgba(255,255,255,0.8));
+    border-color: var(--border2);
+    color: var(--text);
+}
+:root[data-theme^="light"] .size-input {
+    background: var(--card, rgba(255,255,255,0.8));
+    border-color: var(--border2);
+    color: var(--text);
+}
+:root[data-theme^="light"] #dotart-map-size-controls {
+    background: var(--bg2, rgba(0,0,0,0.04));
+}
+:root[data-theme^="light"] .block-palette {
+    background: var(--card, rgba(255,255,255,0.6));
+}
+:root[data-theme^="light"] .check-vis {
+    background: rgba(0, 0, 0, 0.12) !important;
+}
