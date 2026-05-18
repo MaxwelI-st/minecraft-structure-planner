@@ -3256,6 +3256,7 @@ body.fonts-default .header-main h3 {
 :root[data-theme^="light"] .picker-display {
     background: var(--card, rgba(255,255,255,0.8));
     border-color: var(--border2);
+    color: var(--text);
 }
 :root[data-theme^="light"] .tool-result {
     background: var(--bg2, rgba(0,0,0,0.04));
