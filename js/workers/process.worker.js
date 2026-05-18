@@ -23,6 +23,7 @@ import { invertStructure, hollowOut,
          applyLightPatch }                       from '../modules/logic/invert.js';
 import { planScaffolding }                       from '../modules/logic/scaffold.js';
 import { mergeStructures }                       from '../modules/logic/merge.js';
+import { ProjectManager }                         from '../core/project-manager.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response helpers
@@ -374,6 +375,73 @@ function _parseMcStructureBuffer(buffer, taskId) {
 }
 
 /**
+ * パースされた構造に Y軸 90°×rot 回転を適用して新しい parsed を返す。
+ * - 座標インデックス（layer0/layer1）を再構築
+ * - パレットの states を rotateBlockStates で書き換え
+ * - dimensions を回転に合わせてスワップ（奇数 step で x↔z）
+ * - worldOrigin はそのまま（ユーザー offset）
+ *
+ * Bedrock ZYX index: idx = SZ * SY * x + SZ * y + z
+ *
+ * @param {{layer0, layer1, palette, dimensions, worldOrigin}} parsed
+ * @param {1|2|3} rot
+ */
+function _rotateParsedStructure(parsed, rot) {
+  const [SX, SY, SZ] = parsed.dimensions;
+  const oldLayer0 = parsed.layer0;
+  const oldLayer1 = parsed.layer1;
+
+  const RSX = (rot % 2 === 1) ? SZ : SX;
+  const RSY = SY;
+  const RSZ = (rot % 2 === 1) ? SX : SZ;
+
+  const Ctor = oldLayer0.constructor;
+  const newLayer0 = new Ctor(RSX * RSY * RSZ);
+  const newLayer1 = oldLayer1 ? new Ctor(RSX * RSY * RSZ) : null;
+  // layer1 のデフォルト値は通常 -1 (Bedrock の "no waterlog")
+  if (newLayer1 && oldLayer1.length > 0) {
+    // Int32Array のデフォルトは 0 だが、layer1 の "なし" は -1 が一般的なので
+    // 最初に元データ未到達セルを -1 で埋める
+    if (Ctor === Int32Array) newLayer1.fill(-1);
+  }
+
+  const oldIdx = (x, y, z) => SZ * SY * x + SZ * y + z;
+  const newIdx = (x, y, z) => RSZ * RSY * x + RSZ * y + z;
+
+  for (let lx = 0; lx < SX; lx++) {
+    for (let lz = 0; lz < SZ; lz++) {
+      // 回転後座標 (rx, rz) を計算（ProjectManager.applyRotation と同じ）
+      let rx, rz;
+      switch (rot) {
+        case 1: rx = SZ - 1 - lz; rz = lx;             break;
+        case 2: rx = SX - 1 - lx; rz = SZ - 1 - lz;    break;
+        case 3: rx = lz;          rz = SX - 1 - lx;    break;
+        default: rx = lx;         rz = lz;
+      }
+      for (let ly = 0; ly < SY; ly++) {
+        newLayer0[newIdx(rx, ly, rz)] = oldLayer0[oldIdx(lx, ly, lz)];
+        if (newLayer1) newLayer1[newIdx(rx, ly, rz)] = oldLayer1[oldIdx(lx, ly, lz)];
+      }
+    }
+  }
+
+  // パレット states を回転
+  const newPalette = parsed.palette.map(entry => ({
+    name:    entry.name,
+    states:  ProjectManager.rotateBlockStates(entry.states, rot, entry.name),
+    version: entry.version,
+  }));
+
+  return {
+    layer0:      newLayer0,
+    layer1:      newLayer1,
+    palette:     newPalette,
+    dimensions:  [RSX, RSY, RSZ],
+    worldOrigin: parsed.worldOrigin,
+  };
+}
+
+/**
  * 共通の変換パイプライン（Step 2-8）。
  * 単一構造の変換でも、合体後の構造でも、ここを共有する。
  *
@@ -467,16 +535,17 @@ async function _convertParsedToLitematic(taskId, parsed, config = {}) {
 
 async function handleMergeAndConvertLitematic(taskId, payload) {
   const { structures: buffers = [], config = {} } = payload;
+  const { worldOrigins, rotations } = config;
   if (buffers.length === 0) {
     throw new Error('MERGE_AND_CONVERT_LITEMATIC: no structure buffers provided.');
   }
 
-  // 単一の場合は通常変換に流す
-  if (buffers.length === 1) {
+  // 単一の場合: rotation がなければ通常変換、ある場合は parse→rotate→convert
+  if (buffers.length === 1 && (!rotations || !rotations[0])) {
     return handleConvertLitematic(taskId, { buffer: buffers[0], config });
   }
 
-  // ── Step 1: 各構造をパース ────────────────────────────────────────────
+  // ── Step 1: 各構造をパース（worldOrigin / rotation オーバーライド適用） ──
   sendProgress(taskId, 0.05, `Parsing ${buffers.length} structures…`);
   const parsedList = [];
   for (let i = 0; i < buffers.length; i++) {
@@ -486,13 +555,35 @@ async function handleMergeAndConvertLitematic(taskId, payload) {
     if (!p.dimensions || !p.layer0Indices) {
       throw new Error(`MERGE_AND_CONVERT_LITEMATIC: structure ${i + 1} の解析に失敗`);
     }
-    parsedList.push({
+    // worldOrigin オーバーライド（ユーザー設定 offset）
+    const wo = worldOrigins?.[i] ?? p.worldOrigin;
+    // rotation オーバーライド（ユーザー設定 Y軸回転 0|1|2|3）
+    const rot = ((rotations?.[i] | 0) % 4 + 4) % 4;
+
+    let parsed = {
       layer0:      p.layer0Indices,
       layer1:      p.layer1Indices,
       palette:     p.bedrockPalette,
       dimensions:  p.dimensions,
-      worldOrigin: p.worldOrigin,
-    });
+      worldOrigin: wo,
+    };
+    if (rot !== 0) {
+      parsed = _rotateParsedStructure(parsed, rot);
+    }
+    parsedList.push(parsed);
+  }
+
+  // 単一構造かつ回転のみの場合: 通常変換パイプラインへ
+  if (parsedList.length === 1) {
+    const p = parsedList[0];
+    await _convertParsedToLitematic(taskId, {
+      dimensions:     p.dimensions,
+      worldOrigin:    p.worldOrigin,
+      bedrockPalette: p.palette,
+      layer0Indices:  p.layer0,
+      layer1Indices:  p.layer1,
+    }, config);
+    return;
   }
 
   // ── Step 2: マージ ────────────────────────────────────────────────────

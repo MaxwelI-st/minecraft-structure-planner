@@ -370,6 +370,14 @@ export async function convertToLitematic(mcstructureBuffer, config = {}) {
  * @param {object}        [config]
  * @param {number}        [config.minecraftDataVersion=3700]
  * @param {string}        [config.name='merged']
+ * @param {Array<[number,number,number]>} [config.worldOrigins]
+ *   各構造に割り当てる絶対ワールド原点 (buffers と同順)。省略時は各 .mcstructure
+ *   の structure_world_origin NBT タグが使われる。
+ * @param {Array<number>} [config.rotations]
+ *   各構造の Y軸 90°ステップ回転 (0|1|2|3、buffers と同順)。省略時は 0。
+ *   座標とブロックstate（facing/axis/direction等）の両方に適用される。
+ * @param {boolean}       [config.airOverwrites=false]
+ *   true なら後勝ち（空気でも上書き）。デフォルト false（非空気優先）。
  * @returns {Promise<ArrayBuffer>} GZip 圧縮済み Litematic ArrayBuffer
  */
 export async function mergeAndConvertToLitematic(buffers, config = {}) {
@@ -390,6 +398,11 @@ export async function mergeAndConvertToLitematic(buffers, config = {}) {
         config: {
           minecraftDataVersion: config.minecraftDataVersion ?? 3700,
           name: config.name ?? 'merged',
+          // ユーザー設定の絶対オフセット（[ [ox,oy,oz], ... ]）。
+          // 省略時は各 .mcstructure の structure_world_origin が使われる。
+          worldOrigins: config.worldOrigins,
+          rotations: config.rotations,
+          airOverwrites: config.airOverwrites,
         },
       },
       buffers, // Transfer all
