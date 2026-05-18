@@ -38,7 +38,7 @@ self.onmessage = async (e) => {
             normalized = parseBedrock(root);
         }
 
-        const { coords, counts, totalCount, sx, sy, sz, edition } = normalized;
+        const { coords, counts, totalCount, sx, sy, sz, edition, worldOrigin } = normalized;
         const results = Array.from(counts.entries()).map(([id, count]) => {
             const stacks    = Math.floor(count / 64);
             const remainder = count % 64;
@@ -50,6 +50,7 @@ self.onmessage = async (e) => {
             taskId,
             success: true, results, coords, edition,
             size: { x: sx, y: sy, z: sz },
+            worldOrigin: worldOrigin ?? [0, 0, 0],
             totalCount, uniqueCount: counts.size,
             totalSlots: results.reduce((acc, r) => acc + r.slots, 0)
         });
@@ -154,7 +155,7 @@ async function parseLitematic(rawBuffer) {
         coords.push({ x, y, z, blockId, rawId: blockId, states: entry.states ?? {} });
     }
 
-    return { coords, counts, totalCount: Array.from(counts.values()).reduce((a,b)=>a+b,0), sx, sy, sz, edition: 'java' };
+    return { coords, counts, totalCount: Array.from(counts.values()).reduce((a,b)=>a+b,0), sx, sy, sz, edition: 'java', worldOrigin: [0, 0, 0] };
 }
 
 // ─── .nbt (Java Structure Block) パーサー ────────────────────────────────
@@ -187,7 +188,7 @@ async function parseJavaNbt(rawBuffer) {
         coords.push({ x, y, z, blockId, rawId: blockId, states: entry.Properties ?? entry.states ?? {} });
     }
 
-    return { coords, counts, totalCount: Array.from(counts.values()).reduce((a,b)=>a+b,0), sx, sy, sz, edition: 'java' };
+    return { coords, counts, totalCount: Array.from(counts.values()).reduce((a,b)=>a+b,0), sx, sy, sz, edition: 'java', worldOrigin: [0, 0, 0] };
 }
 
 /* ─── Bedrock パーサー（既存） ───────────────────────────────────────── */
@@ -195,6 +196,12 @@ function parseBedrock(root) {
     const sizeArr = root.size || root.structure?.size;
     if (!sizeArr || sizeArr.length < 3) throw new Error('size missing');
     const [sx, sy, sz] = sizeArr;
+
+    // structure_world_origin: ゲーム内ワールド座標。マルチ構造合体時のオフセット起点。
+    const woArr = root.structure_world_origin;
+    const worldOrigin = (Array.isArray(woArr) && woArr.length >= 3)
+        ? [Number(woArr[0]) || 0, Number(woArr[1]) || 0, Number(woArr[2]) || 0]
+        : [0, 0, 0];
 
     const layers  = root.structure.block_indices || [];
     const palette = root.structure.palette?.default?.block_palette;
@@ -253,7 +260,7 @@ function parseBedrock(root) {
 
     const coords     = Array.from(totalMap.values());
     const totalCount = Array.from(counts.values()).reduce((a, b) => a + b, 0);
-    return { coords, counts, totalCount, sx, sy, sz, edition: 'bedrock' };
+    return { coords, counts, totalCount, sx, sy, sz, edition: 'bedrock', worldOrigin };
 }
 
 /* ─── カテゴリ分類 ────────────────────────────────────────────── */

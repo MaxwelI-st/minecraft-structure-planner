@@ -75,7 +75,14 @@ export class NBTReader {
 
   readIntArray(offset) {
     const { value: count, next: start } = this.readInt(offset);
-    return { value: new Int32Array(this._buffer, start, count), count, next: start + count * 4 };
+    // Int32Array をバッファビューとして直に作るとアラインメント(4の倍数)とエンディアン
+    // (プラットフォーム依存)の両方で破綻するため、ヒープに新規確保して DataView 経由で
+    // 明示的に this.le フラグでデコードする。readLongArray と同じパターン。
+    const out = new Int32Array(count);
+    for (let i = 0; i < count; i++) {
+      out[i] = this._view.getInt32(start + i * 4, this.le);
+    }
+    return { value: out, count, next: start + count * 4 };
   }
 
   readLongArray(offset) {
