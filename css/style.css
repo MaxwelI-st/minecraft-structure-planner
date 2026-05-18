@@ -1271,7 +1271,9 @@ body::before {
     width: 320px;
     background: rgba(255,255,255,0.03);
     border-left: 1px solid var(--border, rgba(255,255,255,0.1));
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     transition: margin-right 0.25s, opacity 0.25s;
 }
 /* .v3d-side-panel.collapsed は使用しないため削除 */
@@ -3242,4 +3244,279 @@ body.fonts-default .header-main h3 {
 /* ── ライトテーマ: チェックボックスを薄くする（ダーク系は濃いまま） ── */
 :root[data-theme^="light"] .check-vis {
     background: rgba(0, 0, 0, 0.12) !important;
+}
+
+/* ── 構造カード: 位置調整行 ────────────────────────────────────────── */
+.structure-card { flex-direction: column; align-items: stretch; gap: 0.4rem; }
+.sc-row-main {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+}
+.sc-offset-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    padding: 0.4rem 0.6rem;
+    background: var(--bg2);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-size: 0.72rem;
+}
+.sc-offset-label {
+    color: var(--muted2);
+    font-weight: 600;
+    margin-right: 0.2rem;
+}
+.sc-off-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--muted2);
+    font-size: 0.72rem;
+}
+.sc-off-input {
+    width: 48px !important;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.sc-off-step {
+    width: 20px;
+    height: 20px;
+    padding: 0 !important;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted2);
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, color 0.12s;
+    flex-shrink: 0;
+}
+.sc-off-step:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+.sc-snap-btn {
+    padding: 0.25rem 0.55rem !important;
+    font-size: 0.7rem !important;
+}
+.sc-offset-reset {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+.sc-offset-reset:hover:not(:disabled) {
+    background: var(--hover-bg);
+    border-color: var(--border2);
+}
+.sc-offset-reset:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* ── 整列ポップオーバー ────────────────────────────────────────────── */
+/* ── 3Dビュー右パネル: サブタブ ────────────────────────── */
+.v3d-subtab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+}
+.v3d-subtab {
+    flex: 1;
+    padding: 0.45rem 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    color: var(--muted2);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+.v3d-subtab:hover { color: var(--text); }
+.v3d-subtab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+.v3d-subtab-panel {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+.v3d-subtab-panel.hidden { display: none; }
+
+/* ── 3Dビュー右パネル: 全構造位置調整 ─────────────────── */
+.v3d-offset-panel {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg2);
+    padding: 0.45rem 0.55rem;
+    margin-bottom: 0.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.v3d-offset-panel.hidden { display: none; }
+.v3dp-header {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted2);
+    letter-spacing: 0.04em;
+    padding-bottom: 0.2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+}
+.v3dp-header .mc-btn {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+}
+.v3dp-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.v3dp-name {
+    font-size: 0.7rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+}
+.v3dp-axes {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+}
+.v3dp-axis {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    font-size: 0.7rem;
+}
+.v3dp-ax-label {
+    color: var(--muted2);
+    font-weight: 700;
+    font-size: 0.68rem;
+    min-width: 10px;
+}
+.v3dp-inp {
+    width: 44px !important;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.72rem !important;
+    padding: 0.15rem 0.2rem !important;
+}
+.v3dp-reset {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted2);
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin-left: 0.1rem;
+    flex-shrink: 0;
+}
+.v3dp-reset:not(:disabled):hover { color: var(--accent); border-color: var(--accent); }
+.v3dp-reset:disabled { opacity: 0.35; cursor: default; }
+.v3dp-rot-row {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding-top: 0.2rem;
+    border-top: 1px solid var(--border);
+    margin-top: 0.15rem;
+}
+.v3dp-rot-btn {
+    width: 22px;
+    height: 22px;
+    padding: 0 !important;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted2);
+    font-size: 1rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.12s, color 0.12s;
+}
+.v3dp-rot-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.sc-snap-popover {
+    z-index: 1000;
+    width: 260px;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    box-shadow: var(--shadow-lg);
+}
+.snap-pop-header {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text);
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border);
+}
+.snap-pop-base {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.75rem;
+    color: var(--muted2);
+}
+.snap-pop-base .control-select {
+    font-size: 0.8rem !important;
+    padding: 0.35rem 0.5rem !important;
+}
+.snap-pop-dirs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+}
+.snap-dir-btn {
+    font-size: 0.72rem !important;
+    padding: 0.4rem 0.3rem !important;
+}
+.snap-pop-footer {
+    display: flex;
+    justify-content: flex-end;
+}
+.snap-pop-close {
+    font-size: 0.72rem !important;
+    padding: 0.3rem 0.7rem !important;
 }

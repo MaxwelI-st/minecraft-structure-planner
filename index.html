@@ -424,221 +424,248 @@
               </div>
             </div>
 
-            <!-- 右サイド: 固定パネル -->
+            <!-- 右サイド: 固定パネル (サブタブ式) -->
             <aside class="v3d-side-panel" id="viewer3d-side-panel">
-              <header class="v3d-panel-header">
-                <span>⚙️ 設定パネル</span>
-              </header>
 
-              <details class="v3d-section" data-section="display" open>
-                <summary>📺 表示設定</summary>
-                <div class="v3d-section-body">
-                  <label class="v3d-field">
-                    <span>表示する構造</span>
-                    <select id="viewer3d-structure-select" class="control-select"></select>
-                  </label>
-                  <!-- 断面スライダー -->
-                  <div class="v3d-field" style="gap:0.15rem">
-                    <span style="font-size:0.72rem;color:var(--muted2)">✂️ 断面フィルター</span>
-                    <div style="display:grid;grid-template-columns:1.2rem 1fr 1fr;gap:0.2rem 0.4rem;align-items:center;font-size:0.7rem;">
-                      <span style="color:#fc8181;font-weight:bold">X</span>
-                      <label style="display:flex;flex-direction:column;gap:1px">
-                        <span style="font-size:0.62rem;color:var(--muted2)">左 <code id="layer-xmin-val">0</code></span>
-                        <input type="range" id="layer-xmin" min="0" max="255" value="0" class="range-input">
-                      </label>
-                      <label style="display:flex;flex-direction:column;gap:1px">
-                        <span style="font-size:0.62rem;color:var(--muted2)">右 <code id="layer-xmax-val">255</code></span>
-                        <input type="range" id="layer-xmax" min="0" max="255" value="255" class="range-input">
-                      </label>
-                      <span style="color:#68d391;font-weight:bold">Y</span>
-                      <label style="display:flex;flex-direction:column;gap:1px">
-                        <span style="font-size:0.62rem;color:var(--muted2)">下 <code id="layer-min-val">0</code></span>
-                        <input type="range" id="layer-min" min="0" max="255" value="0" class="range-input">
-                      </label>
-                      <label style="display:flex;flex-direction:column;gap:1px">
-                        <span style="font-size:0.62rem;color:var(--muted2)">上 <code id="layer-max-val">255</code></span>
-                        <input type="range" id="layer-max" min="0" max="255" value="255" class="range-input">
-                      </label>
-                      <span style="color:#63b3ed;font-weight:bold">Z</span>
-                      <label style="display:flex;flex-direction:column;gap:1px">
-                        <span style="font-size:0.62rem;color:var(--muted2)">手前 <code id="layer-zmin-val">0</code></span>
-                        <input type="range" id="layer-zmin" min="0" max="255" value="0" class="range-input">
-                      </label>
-                      <label style="display:flex;flex-direction:column;gap:1px">
-                        <span style="font-size:0.62rem;color:var(--muted2)">奥 <code id="layer-zmax-val">255</code></span>
-                        <input type="range" id="layer-zmax" min="0" max="255" value="255" class="range-input">
-                      </label>
+              <!-- サブタブバー -->
+              <div class="v3d-subtab-bar">
+                <button class="v3d-subtab active" data-subtab="basic">📺 表示・編集</button>
+                <button class="v3d-subtab" data-subtab="advanced">🔧 合体・ツール</button>
+              </div>
+
+              <!-- ─── サブタブ: 表示・編集 ──────────────────────────── -->
+              <div class="v3d-subtab-panel" id="v3d-subtab-basic">
+
+                <details class="v3d-section" data-section="display" open>
+                  <summary>📺 表示設定</summary>
+                  <div class="v3d-section-body">
+                    <label class="v3d-field">
+                      <span>表示する構造</span>
+                      <select id="viewer3d-structure-select" class="control-select"></select>
+                    </label>
+                    <!-- 断面スライダー -->
+                    <div class="v3d-field" style="gap:0.15rem">
+                      <span style="font-size:0.72rem;color:var(--muted2)">✂️ 断面フィルター</span>
+                      <div style="display:grid;grid-template-columns:1.2rem 1fr 1fr;gap:0.2rem 0.4rem;align-items:center;font-size:0.7rem;">
+                        <span style="color:#fc8181;font-weight:bold">X</span>
+                        <label style="display:flex;flex-direction:column;gap:1px">
+                          <span style="font-size:0.62rem;color:var(--muted2)">左 <code id="layer-xmin-val">0</code></span>
+                          <input type="range" id="layer-xmin" min="0" max="255" value="0" class="range-input">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:1px">
+                          <span style="font-size:0.62rem;color:var(--muted2)">右 <code id="layer-xmax-val">255</code></span>
+                          <input type="range" id="layer-xmax" min="0" max="255" value="255" class="range-input">
+                        </label>
+                        <span style="color:#68d391;font-weight:bold">Y</span>
+                        <label style="display:flex;flex-direction:column;gap:1px">
+                          <span style="font-size:0.62rem;color:var(--muted2)">下 <code id="layer-min-val">0</code></span>
+                          <input type="range" id="layer-min" min="0" max="255" value="0" class="range-input">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:1px">
+                          <span style="font-size:0.62rem;color:var(--muted2)">上 <code id="layer-max-val">255</code></span>
+                          <input type="range" id="layer-max" min="0" max="255" value="255" class="range-input">
+                        </label>
+                        <span style="color:#63b3ed;font-weight:bold">Z</span>
+                        <label style="display:flex;flex-direction:column;gap:1px">
+                          <span style="font-size:0.62rem;color:var(--muted2)">手前 <code id="layer-zmin-val">0</code></span>
+                          <input type="range" id="layer-zmin" min="0" max="255" value="0" class="range-input">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:1px">
+                          <span style="font-size:0.62rem;color:var(--muted2)">奥 <code id="layer-zmax-val">255</code></span>
+                          <input type="range" id="layer-zmax" min="0" max="255" value="255" class="range-input">
+                        </label>
+                      </div>
+                      <button id="btn-slice-reset" class="mc-btn small" style="font-size:0.68rem;background:var(--surface3);margin-top:0.2rem">↺ リセット</button>
                     </div>
-                    <button id="btn-slice-reset" class="mc-btn small" style="font-size:0.68rem;background:var(--surface3);margin-top:0.2rem">↺ リセット</button>
+                    <div class="v3d-field">
+                      <span>表示色モード</span>
+                      <div class="color-mode-toggle">
+                        <label class="toggle-item">
+                          <input type="radio" name="viewer3d-colormode" value="material" checked>
+                          <span class="toggle-label">マテリアル色</span>
+                        </label>
+                        <label class="toggle-item" id="opt-realtexture-label">
+                          <input type="radio" name="viewer3d-colormode" value="realtexture">
+                          <span class="toggle-label">リアル</span>
+                        </label>
+                      </div>
+                    </div>
+                    <label class="v3d-field" style="flex-direction:row;align-items:center;gap:0.4rem">
+                      <input type="checkbox" id="opt-pulse-highlight">
+                      <span>💡 ハイライトを点滅させる</span>
+                    </label>
+                    <label class="v3d-field">
+                      <span>床のタイプ</span>
+                      <select id="floor-type-select" class="control-select">
+                        <option value="grid" selected>グリッド（透過）</option>
+                        <option value="grass">草原</option>
+                        <option value="sand">砂浜</option>
+                        <option value="snow">雪原</option>
+                        <option value="stone">石</option>
+                        <option value="nether">ネザー</option>
+                        <option value="end">エンド</option>
+                        <option value="water">水面</option>
+                        <option value="none">なし</option>
+                      </select>
+                    </label>
                   </div>
-                  <div class="v3d-field">
-                    <span>表示色モード</span>
-                    <div class="color-mode-toggle">
-                      <label class="toggle-item">
-                        <input type="radio" name="viewer3d-colormode" value="material" checked>
-                        <span class="toggle-label">マテリアル色</span>
-                      </label>
-                      <label class="toggle-item" id="opt-realtexture-label">
-                        <input type="radio" name="viewer3d-colormode" value="realtexture">
-                        <span class="toggle-label">リアル</span>
-                      </label>
+                </details>
+
+                <details class="v3d-section" data-section="textures" open>
+                  <summary>🎨 テクスチャ</summary>
+                  <div class="v3d-section-body">
+                    <div class="v3d-field" style="flex-direction:row;gap:0.4rem;align-items:center;flex-wrap:wrap">
+                      <button class="mc-btn secondary small" id="btn-upload-pack">📦 アップロード</button>
+                      <button class="mc-btn small" id="btn-clear-pack">🗑️ 忘れる</button>
+                      <input type="file" id="pack-file-input" accept=".zip,.jar,.mcpack" hidden>
+                    </div>
+                    <label class="toggle-item" style="font-size:0.72rem">
+                      <input type="checkbox" id="pack-save-checkbox" checked>
+                      <span class="toggle-label">このブラウザに保存（1つまで）</span>
+                    </label>
+                    <div id="pack-status" class="v3d-status">未読込</div>
+                    <div class="v3d-hint">
+                      💡 おすすめ: <strong>Java Edition のリソースパック (.zip) が最も充実しています。</strong>
+                      公式サイト等でダウンロードした .zip のままアップロード可能です（解凍不要）。<br>
+                      ・<a href="https://github.com/Mojang/bedrock-samples/releases/latest" target="_blank" rel="noopener">Mojang 公式 (統合版)</a>
+                      ・<a href="https://github.com/Faithful-Resource-Pack/Faithful-Java-32x/releases" target="_blank" rel="noopener">Faithful 32x (Java版)</a>
                     </div>
                   </div>
-                  <label class="v3d-field" style="flex-direction:row;align-items:center;gap:0.4rem">
-                    <input type="checkbox" id="opt-pulse-highlight">
-                    <span>💡 ハイライトを点滅させる</span>
-                  </label>
-                  <label class="v3d-field">
-                    <span>床のタイプ</span>
-                    <select id="floor-type-select" class="control-select">
-                      <option value="grid" selected>グリッド（透過）</option>
-                      <option value="grass">草原</option>
-                      <option value="sand">砂浜</option>
-                      <option value="snow">雪原</option>
-                      <option value="stone">石</option>
-                      <option value="nether">ネザー</option>
-                      <option value="end">エンド</option>
-                      <option value="water">水面</option>
-                      <option value="none">なし</option>
-                    </select>
-                  </label>
-                </div>
-              </details>
+                </details>
 
-              <details class="v3d-section" data-section="textures" open>
-                <summary>🎨 テクスチャ</summary>
-                <div class="v3d-section-body">
-                  <div class="v3d-field" style="flex-direction:row;gap:0.4rem;align-items:center;flex-wrap:wrap">
-                    <button class="mc-btn secondary small" id="btn-upload-pack">📦 アップロード</button>
-                    <button class="mc-btn small" id="btn-clear-pack">🗑️ 忘れる</button>
-                    <input type="file" id="pack-file-input" accept=".zip,.jar,.mcpack" hidden>
-                  </div>
-                  <label class="toggle-item" style="font-size:0.72rem">
-                    <input type="checkbox" id="pack-save-checkbox" checked>
-                    <span class="toggle-label">このブラウザに保存（1つまで）</span>
-                  </label>
-                  <div id="pack-status" class="v3d-status">未読込</div>
-                  <div class="v3d-hint">
-                    💡 おすすめ: <strong>Java Edition のリソースパック (.zip) が最も充実しています。</strong>
-                    公式サイト等でダウンロードした .zip のままアップロード可能です（解凍不要）。<br>
-                    ・<a href="https://github.com/Mojang/bedrock-samples/releases/latest" target="_blank" rel="noopener">Mojang 公式 (統合版)</a>
-                    ・<a href="https://github.com/Faithful-Resource-Pack/Faithful-Java-32x/releases" target="_blank" rel="noopener">Faithful 32x (Java版)</a>
-                  </div>
-                </div>
-              </details>
-
-              <details class="v3d-section" data-section="survival-tools">
-                <summary>🔧 サバイバルツール</summary>
-                <div class="v3d-section-body">
-                  <div class="v3d-field">
-                    <span style="font-size:0.72rem;color:var(--muted2)">対象構造</span>
-                    <select id="tools-structure-select" class="control-select"></select>
-                  </div>
-
-                  <div class="v3d-field">
-                    <span>🏗️ 足場生成</span>
-                    <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem">
-                      <span style="color:var(--muted2)">地面Y</span>
-                      <input type="number" id="tools-scaffold-groundy" value="0" min="-64" max="320" class="mc-input" style="width:56px">
-                      <button class="mc-btn secondary" id="btn-scaffold-autoground" style="font-size:0.65rem;padding:0.18rem 0.5rem;line-height:1.4" title="構造の最低Y座標を自動検出">⚡ 自動</button>
+                <details class="v3d-section" data-section="replace" open>
+                  <summary>🔁 ブロック編集・ダウンロード</summary>
+                  <div class="v3d-section-body">
+                    <div class="v3d-field">
+                      <span>素材A → 素材B</span>
+                      <div class="v3d-field-row" style="margin-bottom: 0.3rem;">
+                        <button type="button" id="replace-from-btn" class="picker-display" style="width:100%;text-align:left;">
+                          <span id="replace-from-icon-wrap" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">📦</span>
+                          <span id="replace-from-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;">現在の構造から選択...</span>
+                          <span style="color:var(--muted2);font-size:0.65rem;flex-shrink:0;">▾</span>
+                        </button>
+                        <input type="hidden" id="replace-from" value="">
+                      </div>
+                      <div class="v3d-field-row" style="margin-bottom: 0.4rem;">
+                        <button type="button" id="replace-to-btn" class="picker-display" style="width:100%;text-align:left;">
+                          <span id="replace-to-icon-wrap" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">📦</span>
+                          <span id="replace-to-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;">置換先を選択...</span>
+                          <span style="color:var(--muted2);font-size:0.65rem;flex-shrink:0;">▾</span>
+                        </button>
+                        <input type="hidden" id="replace-to" value="">
+                      </div>
+                      <div style="display:flex;gap:0.3rem">
+                        <button class="mc-btn primary small" id="btn-replace-add">追加</button>
+                        <button class="mc-btn secondary small" id="btn-replace-reset">リセット</button>
+                      </div>
+                      <div id="replace-list" class="v3d-replace-list"></div>
                     </div>
-                    <button class="mc-btn secondary small full-width" id="btn-tool-scaffold">🏗️ 足場を計算してプレビュー</button>
-                    <div class="tool-result hidden" id="tool-scaffold-result"></div>
-                  </div>
-
-                  <div class="v3d-field">
-                    <span>🫙 ハリボテ化（中抜き）</span>
-                    <div style="font-size:0.72rem;color:var(--muted2)">6面囲まれた内部ブロックを格安素材に置換</div>
-                    <button class="mc-btn secondary small full-width" id="btn-tool-hollow">🫙 ハリボテ化を実行</button>
-                    <div class="tool-result hidden" id="tool-hollow-result"></div>
-                  </div>
-
-                  <div class="v3d-field">
-                    <span>🪓 掘削ガイド（反転）</span>
-                    <div style="font-size:0.72rem;color:var(--muted2)">ソリッド↔エア反転。掘る場所をグロウストーンで可視化</div>
-                    <button class="mc-btn secondary small full-width" id="btn-tool-invert">🪓 掘削ガイドを生成</button>
-                    <div class="tool-result hidden" id="tool-invert-result"></div>
-                  </div>
-
-                  <div class="v3d-field">
-                    <span>💡 湧き潰しパッチ</span>
-                    <div style="font-size:0.72rem;color:var(--muted2)">カーペット・下付きスラブをシュルームライトに置換</div>
-                    <button class="mc-btn secondary small full-width" id="btn-tool-lightpatch">💡 湧き潰しを適用</button>
-                    <div class="tool-result hidden" id="tool-lightpatch-result"></div>
-                  </div>
-
-                  <div class="v3d-field">
-                    <span>🛡️ 置換クイックプリセット</span>
-                    <button class="mc-btn secondary small" id="btn-preset-wax" title="置換元の銅ブロックを錆止め(waxed)版にセット">🛡️ 銅を錆止め版にセット</button>
-                  </div>
-                </div>
-              </details>
-
-              <details class="v3d-section" data-section="replace" open>
-                <summary>🔁 ブロック編集</summary>
-                <div class="v3d-section-body">
-                  <div class="v3d-field">
-                    <span>素材A → 素材B</span>
-                    <div class="v3d-field-row" style="margin-bottom: 0.3rem;">
-                      <button type="button" id="replace-from-btn" class="picker-display" style="width:100%;text-align:left;">
-                        <span id="replace-from-icon-wrap" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">📦</span>
-                        <span id="replace-from-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;">現在の構造から選択...</span>
-                        <span style="color:var(--muted2);font-size:0.65rem;flex-shrink:0;">▾</span>
+                    <div class="v3d-field">
+                      <span>🖼️ テクスチャ読み込み状態</span>
+                      <div id="v3d-texture-status" class="v3d-status-box">
+                        <div class="status-summary">— / —</div>
+                        <div class="status-detail">パックが読み込まれていません</div>
+                      </div>
+                    </div>
+                    <hr class="v3d-sep">
+                    <div class="v3d-field">
+                      <span>💰 コストダウン一括置換</span>
+                      <select id="downgrade-preset" class="control-select">
+                        <option value="">プリセット選択...</option>
+                        <option value="realism_full">現実主義（一括）</option>
+                        <option value="dark_only">黒系のみ</option>
+                        <option value="light_only">白系のみ</option>
+                        <option value="gold_only">金/黄系のみ</option>
+                        <option value="teal_only">宝石系のみ</option>
+                        <option value="gray_only">鉄/銅系のみ</option>
+                        <option value="leaves_unify">葉を統一</option>
+                      </select>
+                      <button class="mc-btn primary small" id="btn-apply-downgrade">⚡ 適用</button>
+                    </div>
+                    <hr class="v3d-sep">
+                    <div class="v3d-field">
+                      <span>⬇️ ダウンロード</span>
+                      <button class="mc-btn secondary small" id="btn-export-mcstructure" style="width:100%"><img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> .mcstructure ダウンロード</button>
+                      <button class="mc-btn primary small" id="convert-litematic-btn"
+                        title="選択中の構造を .litematic に変換"
+                        style="background:linear-gradient(135deg,#6b46c1,#4c1d95);border-color:#7c3aed;margin-top:0.3rem;width:100%"
+                        disabled>
+                        <img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> .litematic 変換（単体）
                       </button>
-                      <input type="hidden" id="replace-from" value="">
-                    </div>
-                    <div class="v3d-field-row" style="margin-bottom: 0.4rem;">
-                      <button type="button" id="replace-to-btn" class="picker-display" style="width:100%;text-align:left;">
-                        <span id="replace-to-icon-wrap" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem;">📦</span>
-                        <span id="replace-to-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;">置換先を選択...</span>
-                        <span style="color:var(--muted2);font-size:0.65rem;flex-shrink:0;">▾</span>
-                      </button>
-                      <input type="hidden" id="replace-to" value="">
-                    </div>
-                    <div style="display:flex;gap:0.3rem">
-                      <button class="mc-btn primary small" id="btn-replace-add">追加</button>
-                      <button class="mc-btn secondary small" id="btn-replace-reset">リセット</button>
-                    </div>
-                    <div id="replace-list" class="v3d-replace-list"></div>
-                  </div>
-                  <div class="v3d-field">
-                    <span>🖼️ テクスチャ読み込み状態</span>
-                    <div id="v3d-texture-status" class="v3d-status-box">
-                      <div class="status-summary">— / —</div>
-                      <div class="status-detail">パックが読み込まれていません</div>
+                      <div id="litematic-status" style="font-size:0.68rem;color:var(--muted2);margin-top:0.2rem;text-align:center"></div>
                     </div>
                   </div>
-                  <hr class="v3d-sep">
-                  <div class="v3d-field">
-                    <span>💰 コストダウン一括置換</span>
-                    <select id="downgrade-preset" class="control-select">
-                      <option value="">プリセット選択...</option>
-                      <option value="realism_full">現実主義（一括）</option>
-                      <option value="dark_only">黒系のみ</option>
-                      <option value="light_only">白系のみ</option>
-                      <option value="gold_only">金/黄系のみ</option>
-                      <option value="teal_only">宝石系のみ</option>
-                      <option value="gray_only">鉄/銅系のみ</option>
-                      <option value="leaves_unify">葉を統一</option>
-                    </select>
-                    <button class="mc-btn primary small" id="btn-apply-downgrade">⚡ 適用</button>
-                    <button class="mc-btn secondary small" id="btn-export-mcstructure"><img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> .mcstructure ダウンロード</button>
-                    <button class="mc-btn primary small" id="convert-litematic-btn"
-                      title="選択中の構造を .litematic に変換"
-                      style="background:linear-gradient(135deg,#6b46c1,#4c1d95);border-color:#7c3aed;margin-top:0.3rem;width:100%"
-                      disabled>
-                      <img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> .litematic 変換
-                    </button>
-                    <button class="mc-btn primary small" id="merge-convert-litematic-btn"
-                      title="プロジェクト内の全構造を合体して .litematic に変換"
-                      style="background:linear-gradient(135deg,#0e7490,#155e75);border-color:#0891b2;margin-top:0.3rem;width:100%"
-                      disabled>
-                      <img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> 全構造を合体して .litematic 変換
-                    </button>
-                    <div id="litematic-status" style="font-size:0.68rem;color:var(--muted2);margin-top:0.2rem;text-align:center"></div>
+                </details>
 
-                </div>
-              </details>
+              </div><!-- /v3d-subtab-basic -->
+
+              <!-- ─── サブタブ: 合体・ツール ────────────────────────── -->
+              <div class="v3d-subtab-panel hidden" id="v3d-subtab-advanced">
+
+                <!-- 全構造モード: 位置・回転調整パネル (動的生成) -->
+                <div id="v3d-offset-panel" class="v3d-offset-panel hidden"></div>
+
+                <!-- 合体エクスポート -->
+                <details class="v3d-section" data-section="merge-export" open>
+                  <summary>🔗 合体・エクスポート</summary>
+                  <div class="v3d-section-body">
+                    <div class="v3d-field">
+                      <div style="font-size:0.72rem;color:var(--muted2);margin-bottom:0.3rem">全構造を現在の位置・回転設定で合体</div>
+                      <button class="mc-btn primary small" id="merge-convert-litematic-btn"
+                        title="プロジェクト内の全構造を合体して .litematic に変換"
+                        style="background:linear-gradient(135deg,#0e7490,#155e75);border-color:#0891b2;width:100%"
+                        disabled>
+                        <img class="btn-icon" data-theme-icon="btn-download" src="/icons/dark-1/btn-download.png" alt=""> 全構造を合体して .litematic 変換
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- サバイバルツール -->
+                <details class="v3d-section" data-section="survival-tools">
+                  <summary>🔧 サバイバルツール</summary>
+                  <div class="v3d-section-body">
+                    <div class="v3d-field">
+                      <span style="font-size:0.72rem;color:var(--muted2)">対象構造</span>
+                      <select id="tools-structure-select" class="control-select"></select>
+                    </div>
+                    <div class="v3d-field">
+                      <span>🏗️ 足場生成</span>
+                      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem">
+                        <span style="color:var(--muted2)">地面Y</span>
+                        <input type="number" id="tools-scaffold-groundy" value="0" min="-64" max="320" class="mc-input" style="width:56px">
+                        <button class="mc-btn secondary" id="btn-scaffold-autoground" style="font-size:0.65rem;padding:0.18rem 0.5rem;line-height:1.4" title="構造の最低Y座標を自動検出">⚡ 自動</button>
+                      </div>
+                      <button class="mc-btn secondary small full-width" id="btn-tool-scaffold">🏗️ 足場を計算してプレビュー</button>
+                      <div class="tool-result hidden" id="tool-scaffold-result"></div>
+                    </div>
+                    <div class="v3d-field">
+                      <span>🫙 ハリボテ化（中抜き）</span>
+                      <div style="font-size:0.72rem;color:var(--muted2)">6面囲まれた内部ブロックを格安素材に置換</div>
+                      <button class="mc-btn secondary small full-width" id="btn-tool-hollow">🫙 ハリボテ化を実行</button>
+                      <div class="tool-result hidden" id="tool-hollow-result"></div>
+                    </div>
+                    <div class="v3d-field">
+                      <span>🪓 掘削ガイド（反転）</span>
+                      <div style="font-size:0.72rem;color:var(--muted2)">ソリッド↔エア反転。掘る場所をグロウストーンで可視化</div>
+                      <button class="mc-btn secondary small full-width" id="btn-tool-invert">🪓 掘削ガイドを生成</button>
+                      <div class="tool-result hidden" id="tool-invert-result"></div>
+                    </div>
+                    <div class="v3d-field">
+                      <span>💡 湧き潰しパッチ</span>
+                      <div style="font-size:0.72rem;color:var(--muted2)">カーペット・下付きスラブをシュルームライトに置換</div>
+                      <button class="mc-btn secondary small full-width" id="btn-tool-lightpatch">💡 湧き潰しを適用</button>
+                      <div class="tool-result hidden" id="tool-lightpatch-result"></div>
+                    </div>
+                    <div class="v3d-field">
+                      <span>🛡️ 置換クイックプリセット</span>
+                      <button class="mc-btn secondary small" id="btn-preset-wax" title="置換元の銅ブロックを錆止め(waxed)版にセット">🛡️ 銅を錆止め版にセット</button>
+                    </div>
+                  </div>
+                </details>
+
+              </div><!-- /v3d-subtab-advanced -->
+
             </aside>
           </div>
         </div><!-- /panel-viewer3d -->

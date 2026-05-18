@@ -26,6 +26,7 @@ import { ProjectManager, uid } from './core/project-manager.js';
 import { exportCsv, copyAsMarkdown, exportAllProjects, exportMcStructure } from './io/export-utils.js';
 import { UIMixin } from './ui/ui_events.js';
 import { convertToLitematic, mergeAndConvertToLitematic, downloadBuffer } from './main.js';
+import { snapStructure, DIRECTION_LABELS } from './modules/logic/snap.js';
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 class App {
@@ -36,6 +37,9 @@ class App {
     constructor() {
         this.projects = ProjectManager.load();
         this.currentProjectId = null;
+        // __ALL__ モード表示の固定原点（ドラッグで再正規化させないため）
+        this._allModeOrigin = null;          // {x, y, z} | null
+        this._allModeOriginProjectId = null; // どのプロジェクト用か
         this.currentTab = 'materials';
         this.langData = {};
         this.coordsCache = new Map();     // structureId → coords[]
@@ -351,6 +355,7 @@ class App {
 
     _selectProject(id) {
         this.currentProjectId = id;
+        this._allModeOrigin = null; // プロジェクト切替で原点リセット
         localStorage.setItem('mc_planner_last', id);
         const currentProject = this._currentProject();
         if (currentProject) {
@@ -773,26 +778,55 @@ class App {
             return;
         }
         const themeId = document.documentElement.getAttribute('data-theme') || 'dark-1';
+        const showOffsetUI = project.structures.length >= 2;  // 単一構造ではノイズになるので隠す
         project.structures.forEach(s => {
             const card = document.createElement('div');
             card.className = 'structure-card glass-card';
             const hasCoords = this.coordsCache.has(s.id);
+            const off = ProjectManager.getOffset(s);
+            const init = ProjectManager.getInitialOffset(s);
+            const isInit = off.x === init.x && off.y === init.y && off.z === init.z;
+            const offsetRow = showOffsetUI ? `
+                <div class="sc-offset-row" data-sid="${s.id}">
+                    <span class="sc-offset-label">📐 位置</span>
+                    <span class="sc-off-label">X
+                        <button class="sc-off-step icon-btn" data-axis="x" data-delta="-1" title="-1">−</button>
+                        <input type="number" class="size-input sc-off-input sc-off-x" data-axis="x" step="1" value="${off.x}">
+                        <button class="sc-off-step icon-btn" data-axis="x" data-delta="1" title="+1">+</button>
+                    </span>
+                    <span class="sc-off-label">Y
+                        <button class="sc-off-step icon-btn" data-axis="y" data-delta="-1" title="-1">−</button>
+                        <input type="number" class="size-input sc-off-input sc-off-y" data-axis="y" step="1" value="${off.y}">
+                        <button class="sc-off-step icon-btn" data-axis="y" data-delta="1" title="+1">+</button>
+                    </span>
+                    <span class="sc-off-label">Z
+                        <button class="sc-off-step icon-btn" data-axis="z" data-delta="-1" title="-1">−</button>
+                        <input type="number" class="size-input sc-off-input sc-off-z" data-axis="z" step="1" value="${off.z}">
+                        <button class="sc-off-step icon-btn" data-axis="z" data-delta="1" title="+1">+</button>
+                    </span>
+                    <button class="sc-snap-btn mc-btn secondary small" title="他の構造の面に合わせる">↔ 整列</button>
+                    <button class="sc-offset-reset icon-btn" title="初期値に戻す" ${isInit ? 'disabled' : ''}>↺</button>
+                </div>
+            ` : '';
             card.innerHTML = `
-                <div class="sc-icon"><img class="sc-icon-img" data-theme-icon="logo" src="/icons/${themeId}/logo.png" alt=""></div>
-                <div class="sc-info">
-                    <div class="sc-name">${this._escape(s.name)}</div>
-                    <div class="sc-meta">
-                        ${s.totalCount?.toLocaleString() || '?'}ブロック · ${s.uniqueCount || '?'}種類 ·
-                        ${s.size ? `${s.size.x}×${s.size.y}×${s.size.z}` : ''}
-                        ${hasCoords ? '<span class="badge-3d">3D対応</span>' : ''}
+                <div class="sc-row-main">
+                    <div class="sc-icon"><img class="sc-icon-img" data-theme-icon="logo" src="/icons/${themeId}/logo.png" alt=""></div>
+                    <div class="sc-info">
+                        <div class="sc-name">${this._escape(s.name)}</div>
+                        <div class="sc-meta">
+                            ${s.totalCount?.toLocaleString() || '?'}ブロック · ${s.uniqueCount || '?'}種類 ·
+                            ${s.size ? `${s.size.x}×${s.size.y}×${s.size.z}` : ''}
+                            ${hasCoords ? '<span class="badge-3d">3D対応</span>' : ''}
+                        </div>
+                    </div>
+                    <div class="sc-actions">
+                        <button class="mult-display mc-btn secondary small" data-sid="${s.id}">
+                            ×${s.multiplier || 1}
+                        </button>
+                        <button class="sc-remove icon-btn" data-sid="${s.id}" title="削除">✕</button>
                     </div>
                 </div>
-                <div class="sc-actions">
-                    <button class="mult-display mc-btn secondary small" data-sid="${s.id}">
-                        ×${s.multiplier || 1}
-                    </button>
-                    <button class="sc-remove icon-btn" data-sid="${s.id}" title="削除">✕</button>
-                </div>
+                ${offsetRow}
             `;
             card.querySelector('.mult-display').onclick = () => {
                 this._openMultiplierModal(s.id, s.multiplier || 1);
@@ -803,12 +837,195 @@ class App {
                     this.coordsCache.delete(s.id);
                     this.bufferCache.delete(s.id);
                     ResourcePack.deleteStructureBuffer(s.id).catch(()=>{});
+                    this._allModeOrigin = null; // 構造削除で原点リセット
                     ProjectManager.save(this.projects);
                     this._renderMaterialsTab();
                 }
             };
+            if (showOffsetUI) {
+                card.querySelectorAll('.sc-off-input').forEach(inp => {
+                    inp.addEventListener('change', () => {
+                        this._setStructureOffset(s.id, inp.dataset.axis, parseInt(inp.value, 10) || 0);
+                    });
+                });
+                card.querySelectorAll('.sc-off-step').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const axis = btn.dataset.axis;
+                        const delta = parseInt(btn.dataset.delta, 10);
+                        const inp = card.querySelector(`.sc-off-${axis}`);
+                        const newVal = (parseInt(inp.value, 10) || 0) + delta;
+                        inp.value = newVal;
+                        this._setStructureOffset(s.id, axis, newVal);
+                    });
+                });
+                card.querySelector('.sc-offset-reset').onclick = () => {
+                    this._resetStructureOffset(s.id);
+                };
+                card.querySelector('.sc-snap-btn').onclick = (ev) => {
+                    this._openSnapPopover(s.id, ev.currentTarget);
+                };
+            }
             list.appendChild(card);
         });
+    }
+
+    /** 1軸だけ更新して永続化＋3D再描画スケジュール */
+    _setStructureOffset(structureId, axis, value) {
+        const project = this._currentProject();
+        if (!project) return;
+        const s = project.structures.find(x => x.id === structureId);
+        if (!s) return;
+        if (!s.offset) s.offset = { x: 0, y: 0, z: 0 };
+        s.offset[axis] = value | 0;
+        ProjectManager.save(this.projects);
+        // リセットボタンの disabled 状態を更新するためにカードを再描画
+        // ただし入力中のフォーカスを失いたくないので軽量更新だけ
+        this._refreshOffsetResetState(structureId);
+        this._scheduleViewer3DRefresh();
+    }
+
+    _resetStructureOffset(structureId) {
+        const project = this._currentProject();
+        if (!project) return;
+        const s = project.structures.find(x => x.id === structureId);
+        if (!s) return;
+        const init = ProjectManager.getInitialOffset(s);
+        s.offset = { x: init.x, y: init.y, z: init.z };
+        ProjectManager.save(this.projects);
+        this._renderStructureCards(project);
+        this._scheduleViewer3DRefresh();
+    }
+
+    _refreshOffsetResetState(structureId) {
+        const card = document.querySelector(`.sc-offset-row[data-sid="${structureId}"]`);
+        if (!card) return;
+        const project = this._currentProject();
+        const s = project?.structures.find(x => x.id === structureId);
+        if (!s) return;
+        const off = ProjectManager.getOffset(s);
+        const init = ProjectManager.getInitialOffset(s);
+        const isInit = off.x === init.x && off.y === init.y && off.z === init.z;
+        const btn = card.querySelector('.sc-offset-reset');
+        if (btn) btn.disabled = isInit;
+    }
+
+    /** __ALL__ モード時のみ、デバウンスして 3D 再描画。
+     *  ドロップダウン値で判定するので、まだ「3D表示を開始」を押していなくても
+     *  初回回転/移動クリックでロード＆描画が走る。 */
+    _scheduleViewer3DRefresh() {
+        const sel = document.getElementById('viewer3d-structure-select');
+        if (sel?.value !== '__ALL__') return;
+        clearTimeout(this._viewer3dRefreshTimer);
+        this._viewer3dRefreshTimer = setTimeout(() => this._load3DView(), 150);
+    }
+
+    /** 整列ポップオーバー：B (= structureId) を別構造 A の指定面に貼り付ける。 */
+    _openSnapPopover(structureId, anchorBtn) {
+        this._closeSnapPopover();
+        const project = this._currentProject();
+        if (!project) return;
+        const target = project.structures.find(s => s.id === structureId);
+        if (!target) return;
+        const others = project.structures.filter(s => s.id !== structureId);
+        if (others.length === 0) {
+            this._toast('整列の基準にする別の構造がありません', 'info');
+            return;
+        }
+
+        const pop = document.createElement('div');
+        pop.className = 'sc-snap-popover glass-card';
+        pop.setAttribute('role', 'dialog');
+        const optionsHtml = others.map(s => `<option value="${s.id}">${this._escape(s.name)}</option>`).join('');
+        pop.innerHTML = `
+            <div class="snap-pop-header">「${this._escape(target.name)}」を整列</div>
+            <label class="snap-pop-base">
+                基準:
+                <select class="control-select snap-pop-base-sel">${optionsHtml}</select>
+            </label>
+            <div class="snap-pop-dirs">
+                <button class="mc-btn secondary small snap-dir-btn" data-dir="+y">⬆ 上 (+Y)</button>
+                <button class="mc-btn secondary small snap-dir-btn" data-dir="-y">⬇ 下 (-Y)</button>
+                <button class="mc-btn secondary small snap-dir-btn" data-dir="+x">➡ 東 (+X)</button>
+                <button class="mc-btn secondary small snap-dir-btn" data-dir="-x">⬅ 西 (-X)</button>
+                <button class="mc-btn secondary small snap-dir-btn" data-dir="+z">⬇ 南 (+Z)</button>
+                <button class="mc-btn secondary small snap-dir-btn" data-dir="-z">⬆ 北 (-Z)</button>
+            </div>
+            <div class="snap-pop-footer">
+                <button class="mc-btn secondary small snap-pop-close">閉じる</button>
+            </div>
+        `;
+        document.body.appendChild(pop);
+
+        // 位置: アンカー直下に表示。画面外にはみ出すなら左に寄せる。
+        const rect = anchorBtn.getBoundingClientRect();
+        const popRect = pop.getBoundingClientRect();
+        let left = rect.left;
+        if (left + popRect.width > window.innerWidth - 8) {
+            left = Math.max(8, window.innerWidth - popRect.width - 8);
+        }
+        let top = rect.bottom + 4;
+        if (top + popRect.height > window.innerHeight - 8) {
+            top = Math.max(8, rect.top - popRect.height - 4);
+        }
+        pop.style.position = 'fixed';
+        pop.style.left = left + 'px';
+        pop.style.top = top + 'px';
+
+        const baseSel = pop.querySelector('.snap-pop-base-sel');
+        pop.querySelectorAll('.snap-dir-btn').forEach(btn => {
+            btn.onclick = () => {
+                const baseId = baseSel.value;
+                const baseStruct = project.structures.find(s => s.id === baseId);
+                if (!baseStruct) return;
+                const newOffset = snapStructure(
+                    { offset: ProjectManager.getOffset(baseStruct), size: baseStruct.size },
+                    { offset: ProjectManager.getOffset(target),     size: target.size },
+                    btn.dataset.dir,
+                );
+                target.offset = newOffset;
+                ProjectManager.save(this.projects);
+                // 入力欄の値も更新
+                const card = document.querySelector(`.sc-offset-row[data-sid="${structureId}"]`);
+                if (card) {
+                    card.querySelector('.sc-off-x').value = newOffset.x;
+                    card.querySelector('.sc-off-y').value = newOffset.y;
+                    card.querySelector('.sc-off-z').value = newOffset.z;
+                }
+                this._refreshOffsetResetState(structureId);
+                this._scheduleViewer3DRefresh();
+                this._toast(`「${target.name}」を ${DIRECTION_LABELS[btn.dataset.dir]} に整列`, 'success');
+            };
+        });
+        pop.querySelector('.snap-pop-close').onclick = () => this._closeSnapPopover();
+
+        // 外側クリック・Esc で閉じる
+        this._snapPopover = pop;
+        this._snapPopoverHandler = (ev) => {
+            if (pop.contains(ev.target) || anchorBtn.contains(ev.target)) return;
+            this._closeSnapPopover();
+        };
+        this._snapPopoverKeyHandler = (ev) => {
+            if (ev.key === 'Escape') this._closeSnapPopover();
+        };
+        setTimeout(() => {
+            document.addEventListener('pointerdown', this._snapPopoverHandler);
+            document.addEventListener('keydown', this._snapPopoverKeyHandler);
+        }, 0);
+    }
+
+    _closeSnapPopover() {
+        if (this._snapPopover) {
+            this._snapPopover.remove();
+            this._snapPopover = null;
+        }
+        if (this._snapPopoverHandler) {
+            document.removeEventListener('pointerdown', this._snapPopoverHandler);
+            this._snapPopoverHandler = null;
+        }
+        if (this._snapPopoverKeyHandler) {
+            document.removeEventListener('keydown', this._snapPopoverKeyHandler);
+            this._snapPopoverKeyHandler = null;
+        }
     }
 
     _renderIntegratedStats(project) {
@@ -886,13 +1103,21 @@ class App {
             return;
         }
 
-        // すべての構造のバッファを bufferCache から取得
+        // すべての構造のバッファ + ユーザー設定 offset + 回転 を取得
         const buffers = [];
+        const offsets = [];
+        const rotations = [];
         const missing = [];
         for (const s of project.structures) {
             const buf = this.bufferCache.get(s.id);
-            if (buf) buffers.push(buf.slice(0));
-            else missing.push(s.name);
+            if (buf) {
+                buffers.push(buf.slice(0));
+                const o = ProjectManager.getOffset(s);
+                offsets.push([o.x | 0, o.y | 0, o.z | 0]);
+                rotations.push(ProjectManager.getRotation(s) | 0);
+            } else {
+                missing.push(s.name);
+            }
         }
 
         if (missing.length > 0) {
@@ -910,6 +1135,8 @@ class App {
             const litemBuf  = await mergeAndConvertToLitematic(buffers, {
                 minecraftDataVersion: 3700,
                 name: baseName,
+                worldOrigins: offsets,
+                rotations,
             });
             downloadBuffer(litemBuf, `${baseName}.litematic`);
             if (statusEl) { statusEl.textContent = `✅ ${baseName}.litematic (${buffers.length}構造合体) をダウンロード`; statusEl.style.color = 'var(--primary)'; }
@@ -1533,11 +1760,15 @@ class App {
     _initViewer3DTab() {
         const panel = document.getElementById('viewer3d-side-panel');
         if (panel) panel.classList.remove('collapsed');
-        const replaceSection = document.querySelector('.v3d-section[data-section="replace"]');
-        if (replaceSection) {
-            replaceSection.open = true;
-            try { localStorage.setItem('v3d_sec_replace', '1'); } catch (_) {}
+
+        // ── サブタブ切り替え配線（初回のみ） ──
+        if (!this._v3dSubtabsInited) {
+            this._v3dSubtabsInited = true;
+            document.querySelectorAll('.v3d-subtab').forEach(btn => {
+                btn.addEventListener('click', () => this._switchV3dSubtab(btn.dataset.subtab));
+            });
         }
+
         const project = this._currentProject();
         if (project) {
             this._updateViewer3DSelect(project);
@@ -1548,19 +1779,46 @@ class App {
         }
     }
 
+    _switchV3dSubtab(name) {
+        document.querySelectorAll('.v3d-subtab').forEach(b => b.classList.toggle('active', b.dataset.subtab === name));
+        document.querySelectorAll('.v3d-subtab-panel').forEach(p => p.classList.toggle('hidden', p.id !== `v3d-subtab-${name}`));
+    }
+
     _updateViewer3DSelect(project) {
         const sel = document.getElementById('viewer3d-structure-select');
         const prev = sel.value;
         sel.innerHTML = '';
+        // 2構造以上なら先頭に「全構造」モードを追加
+        if (project.structures.length >= 2) {
+            const optAll = document.createElement('option');
+            optAll.value = '__ALL__';
+            optAll.textContent = '▼ 全構造（位置調整プレビュー）';
+            sel.appendChild(optAll);
+        }
         project.structures.forEach(s => {
             const opt = document.createElement('option');
             opt.value = s.id;
             opt.textContent = `${s.name} (${s.size ? `${s.size.x}×${s.size.y}×${s.size.z}` : '?'})`;
             sel.appendChild(opt);
         });
-        if (prev && sel.querySelector(`option[value="${prev}"]`)) sel.value = prev;
+        // 直前の選択を維持。初回かつ 2+ 構造なら __ALL__ を自動選択。
+        if (prev && sel.querySelector(`option[value="${prev}"]`)) {
+            sel.value = prev;
+        } else if (project.structures.length >= 2) {
+            sel.value = '__ALL__';
+        }
         this.refreshToolsStructureSelect?.();
-        this._renderReplaceList(sel.value);
+        if (sel.value !== '__ALL__') {
+            this._renderReplaceList(sel.value);
+            const op = document.getElementById('v3d-offset-panel');
+            if (op) op.classList.add('hidden');
+            // __ALL__ から離れたら、次回 __ALL__ ロード時に autoFocus を再実行
+            this._viewer3dAllAutofocused = false;
+        } else {
+            // __ALL__ 選択時は即座に位置調整UIを表示（3D描画ボタン押下不要）
+            this._switchV3dSubtab('advanced');
+            this._renderV3dOffsetPanel(project);
+        }
         const selected = project.structures.find(s => s.id === sel.value);
         if (selected?.size) {
             const maxY = selected.size.y - 1;
@@ -1569,7 +1827,7 @@ class App {
             document.getElementById('layer-max-val').textContent = maxY;
         }
         const convertBtn = document.getElementById('convert-litematic-btn');
-        if (convertBtn) convertBtn.disabled = !this.bufferCache.has(sel.value);
+        if (convertBtn) convertBtn.disabled = sel.value === '__ALL__' || !this.bufferCache.has(sel.value);
 
         // 合体変換ボタン: プロジェクトに 2+ 構造がありかつ全 buffer が取得済みなら有効化
         const mergeBtn = document.getElementById('merge-convert-litematic-btn');
@@ -1848,6 +2106,12 @@ class App {
         const sel = document.getElementById('viewer3d-structure-select');
         const project = this._currentProject();
         if (!project || !sel.value) { this._toast('構造が選択されていません', 'error'); return; }
+        if (sel.value === '__ALL__') {
+            this._viewer3dMode = 'all';
+            this._switchV3dSubtab('advanced');
+            return this._load3DViewAll(project, container);
+        }
+        this._viewer3dMode = 'single';
         const structure = project.structures.find(s => s.id === sel.value);
         if (!structure) return;
         let coords = this.coordsCache.get(sel.value);
@@ -1876,6 +2140,7 @@ class App {
                 this.viewer3d = new Viewer3D(container);
                 this.viewer3d.onBlockClick = (info) => this._onViewer3DClick(info);
                 this.viewer3d.onBlockRightClick = (info) => this._onViewer3DRangeClick(info);
+                this._attachAltDragCallbacks();
             }
             await this.viewer3d.init();
             const undoBtn = document.getElementById('btn-v3d-undo');
@@ -1918,6 +2183,342 @@ class App {
             this._toast('3D表示に失敗しました: ' + err.message, 'error');
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = '🧊 3D表示を開始'; }
+        }
+    }
+
+    /**
+     * 全構造を一度に表示（位置調整プレビュー用）。
+     * 各構造の (offset, coords) を合成 AABB に正規化して flat 配列を作り、
+     * 既存 viewer3d.loadStructure に渡す（パイプライン側は単一構造扱い）。
+     */
+    async _load3DViewAll(project, container) {
+        const btn = document.getElementById('btn-load-3d');
+        if (btn) { btn.disabled = true; btn.textContent = '読み込み中...'; }
+        try {
+            // 1. 全構造の coords を保証
+            for (const s of project.structures) {
+                if (!this.coordsCache.has(s.id)) {
+                    await this._ensureCoordsForStructure(s.id);
+                }
+            }
+
+            // 2. 合体 AABB を計算（各構造の offset と size から）
+            let minX = Infinity, minY = Infinity, minZ = Infinity;
+            let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+            const usableStructures = [];
+            for (const s of project.structures) {
+                if (!this.coordsCache.has(s.id)) continue;
+                if (!s.size) continue;
+                const off = ProjectManager.getOffset(s);
+                const rot = ProjectManager.getRotation(s);
+                const rs  = ProjectManager.rotatedSize(s.size, rot);
+                minX = Math.min(minX, off.x);
+                minY = Math.min(minY, off.y);
+                minZ = Math.min(minZ, off.z);
+                maxX = Math.max(maxX, off.x + rs.x - 1);
+                maxY = Math.max(maxY, off.y + rs.y - 1);
+                maxZ = Math.max(maxZ, off.z + rs.z - 1);
+                usableStructures.push(s);
+            }
+            if (usableStructures.length === 0) {
+                this._toast('表示できる構造がありません', 'error');
+                return;
+            }
+            // ★ 表示原点を初回のみ確定（ドラッグでの再正規化を防ぐ）
+            if (!this._allModeOrigin || this._allModeOriginProjectId !== project.id) {
+                this._allModeOrigin = { x: minX, y: minY, z: minZ };
+                this._allModeOriginProjectId = project.id;
+            }
+            const origin = this._allModeOrigin;
+            const mergedSize = {
+                x: Math.max(maxX - origin.x + 1, 1),
+                y: Math.max(maxY - origin.y + 1, 1),
+                z: Math.max(maxZ - origin.z + 1, 1),
+            };
+
+            // 3. 全構造の coords を offset + 回転 反映してフラット化（state も回転）
+            const combined = [];
+            for (const s of usableStructures) {
+                const off = ProjectManager.getOffset(s);
+                const rot = ProjectManager.getRotation(s);
+                const dx = off.x - origin.x, dy = off.y - origin.y, dz = off.z - origin.z;
+                const raw = this.coordsCache.get(s.id) || [];
+                const replaced = this._applyReplacements(s.id, raw);
+                for (const c of replaced) {
+                    const { rx, rz } = ProjectManager.applyRotation(c.x, c.z, s.size, rot);
+                    const rStates = rot === 0
+                        ? c.states
+                        : ProjectManager.rotateBlockStates(c.states, rot, c.blockId);
+                    combined.push({
+                        x: rx + dx, y: c.y + dy, z: rz + dz,
+                        blockId: c.blockId, states: rStates, rawId: c.rawId,
+                        structureId: s.id,
+                    });
+                }
+            }
+
+            // 3b. 構造ごとの表示AABB（ハイライト用）
+            this._structureBounds = new Map();
+            for (const c of combined) {
+                if (!c.structureId) continue;
+                let b = this._structureBounds.get(c.structureId);
+                if (!b) { b = { minX: c.x, minY: c.y, minZ: c.z, maxX: c.x, maxY: c.y, maxZ: c.z }; this._structureBounds.set(c.structureId, b); }
+                if (c.x < b.minX) b.minX = c.x; if (c.x > b.maxX) b.maxX = c.x;
+                if (c.y < b.minY) b.minY = c.y; if (c.y > b.maxY) b.maxY = c.y;
+                if (c.z < b.minZ) b.minZ = c.z; if (c.z > b.maxZ) b.maxZ = c.z;
+            }
+
+            // 4. viewer3d を初期化（既存と同じ手順）
+            const containerDetached = this.viewer3d?.container && !document.body.contains(this.viewer3d.container);
+            if (!this.viewer3d || this.viewer3d.container !== container || containerDetached) {
+                if (this.viewer3d) this.viewer3d.destroy();
+                this.viewer3d = new Viewer3D(container);
+                this.viewer3d.onBlockClick = (info) => this._onViewer3DClick(info);
+                this.viewer3d.onBlockRightClick = (info) => this._onViewer3DRangeClick(info);
+                this._attachAltDragCallbacks();
+            }
+            await this.viewer3d.init();
+            const undoBtn = document.getElementById('btn-v3d-undo');
+            if (undoBtn) undoBtn.onclick = () => this._undoLastAction();
+            const floorType = document.getElementById('floor-type-select')?.value || 'grass';
+            this.viewer3d.setFloorType(floorType);
+
+            // 5. スライダーを合成サイズ基準に
+            const setSlider = (id, valId, max, val) => {
+                const el = document.getElementById(id);
+                const vl = document.getElementById(valId);
+                if (el) { el.max = max; el.value = val; }
+                if (vl) vl.textContent = val;
+            };
+            setSlider('layer-min',  'layer-min-val',  mergedSize.y - 1, 0);
+            setSlider('layer-max',  'layer-max-val',  mergedSize.y - 1, mergedSize.y - 1);
+            setSlider('layer-xmin', 'layer-xmin-val', mergedSize.x - 1, 0);
+            setSlider('layer-xmax', 'layer-xmax-val', mergedSize.x - 1, mergedSize.x - 1);
+            setSlider('layer-zmin', 'layer-zmin-val', mergedSize.z - 1, 0);
+            setSlider('layer-zmax', 'layer-zmax-val', mergedSize.z - 1, mergedSize.z - 1);
+
+            const cmRadio = document.querySelector('input[name="viewer3d-colormode"]:checked');
+            const colorMode = cmRadio ? cmRadio.value : 'material';
+            this.viewer3d._matCache?.clear();
+            const { yMin, yMax, xMin, xMax, zMin, zMax } = this._getSliceValues();
+            const filtered = this._deletedPositions.size > 0
+                ? combined.filter(c => !this._deletedPositions.has(`${c.x},${c.y},${c.z}`))
+                : combined;
+            // 初回 __ALL__ ロード時のみ autoFocus。以降のオフセット/回転変更ではカメラを保持。
+            const isFirstAllRender = !this._viewer3dAllAutofocused;
+            this._viewer3dAllAutofocused = true;
+            this.viewer3d.loadStructure(filtered, mergedSize, {
+                yMin, yMax, xMin, xMax, zMin, zMax, colorMode,
+                autoFocus: isFirstAllRender,
+            });
+            this._updateTextureStatusUI();
+            this._renderV3dOffsetPanel(project);
+            const infoEl = document.getElementById('viewer3d-info');
+            if (infoEl) {
+                infoEl.innerHTML = `<p class="info-text">✅ 全構造表示中（${usableStructures.length}個・${combined.length.toLocaleString()}ブロック）</p>`;
+            }
+            // ★ ドラッグ継続中なら新 bounds でハイライトを復元
+            if (this._altDragStructureId && this._structureBounds) {
+                const hb = this._structureBounds.get(this._altDragStructureId);
+                const hs = project.structures.find(st => st.id === this._altDragStructureId);
+                if (hb && hs) this.viewer3d.setStructureHighlight(hb, hs.name);
+            }
+        } catch (err) {
+            console.error('_load3DViewAll failed:', err);
+            this._toast('全構造表示に失敗しました: ' + err.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🧊 3D表示を開始'; }
+        }
+    }
+
+    /**
+     * viewer3d に Alt+ドラッグ（建造物移動）コールバックを設定する。
+     * __ALL__ モード時のみ有効（structureId が coord に含まれる場合のみ動作）。
+     */
+    _attachAltDragCallbacks() {
+        if (!this.viewer3d) return;
+
+        // ドラッグ開始: どの建造物か特定してハイライト（ラベル付き）
+        this.viewer3d.onAltDragStart = ({ coord, axis }) => {
+            this._altDragStructureId = coord?.structureId ?? null;
+            this._altDragAccum = 0;
+            this.viewer3d.clearStructureHighlight();
+            if (this._altDragStructureId && this._structureBounds) {
+                const bounds = this._structureBounds.get(this._altDragStructureId);
+                if (bounds) {
+                    const project = this._currentProject();
+                    const s = project?.structures.find(st => st.id === this._altDragStructureId);
+                    this.viewer3d.setStructureHighlight(bounds, s?.name || '');
+                }
+            }
+        };
+
+        // ドラッグ終了: ハイライト解除
+        this.viewer3d.onAltDragEnd = () => {
+            this.viewer3d.clearStructureHighlight();
+            this._altDragStructureId = null;
+        };
+
+        // ドラッグ中: ピクセル累積 → ブロック単位で offset を更新 + ハイライト追従
+        this.viewer3d.onAltDragMove = ({ axis, dx }) => {
+            if (!this._altDragStructureId) return;
+            this._altDragAccum = (this._altDragAccum || 0) + dx;
+            // 距離に比例したスケール（ズームアウト時は大きく動く）
+            const radius = this.viewer3d?.spherical?.radius || 50;
+            const pixelsPerBlock = Math.max(4, radius * 0.12);
+            const blocks = Math.trunc(this._altDragAccum / pixelsPerBlock);
+            if (blocks === 0) return;
+            this._altDragAccum -= blocks * pixelsPerBlock;
+
+            const project = this._currentProject();
+            if (!project) return;
+            const s = project.structures.find(st => st.id === this._altDragStructureId);
+            if (!s) return;
+            const off = ProjectManager.getOffset(s);
+            s.offset = { ...off, [axis]: off[axis] + blocks };
+            ProjectManager.save(this.projects);
+            // offset パネルの数値も即時更新
+            const inp = document.querySelector(`.v3dp-inp[data-sid="${s.id}"][data-axis="${axis}"]`);
+            if (inp) inp.value = s.offset[axis];
+            // ★ ハイライト枠+ラベルをそのまま追従（再描画前でも動く）
+            this.viewer3d.translateStructureHighlight(axis, blocks);
+            this._scheduleViewer3DRefresh();
+        };
+    }
+
+    /**
+     * 全構造を X 軸方向に順番に並べる。
+     * - 1番目の構造の offset を基準（y, z は固定）
+     * - 2番目以降は前の構造の右端 + 1 ブロック隙間に配置
+     * - 回転後サイズを考慮（rotatedSize.x）
+     */
+    _arrangeAllInX() {
+        const project = this._currentProject();
+        if (!project || project.structures.length === 0) return;
+        const arr = project.structures;
+        if (arr.length < 2) {
+            this._toast('構造が2つ以上必要です');
+            return;
+        }
+
+        const base = ProjectManager.getOffset(arr[0]);
+        const baseY = base.y, baseZ = base.z;
+        let cursor = base.x + ProjectManager.rotatedSize(arr[0].size, ProjectManager.getRotation(arr[0])).x;
+
+        for (let i = 1; i < arr.length; i++) {
+            const s = arr[i];
+            s.offset = { x: cursor + 1, y: baseY, z: baseZ };
+            const rs = ProjectManager.rotatedSize(s.size, ProjectManager.getRotation(s));
+            cursor = s.offset.x + rs.x;
+        }
+
+        ProjectManager.save(this.projects);
+        // 表示座標が大きく変わるので原点もリセット → 再フィット
+        this._allModeOrigin = null;
+        this._viewer3dAllAutofocused = false;
+        this._renderV3dOffsetPanel(project);
+        this._scheduleViewer3DRefresh();
+        this._toast(`✨ ${arr.length} 個の構造を X 軸に整列しました`);
+    }
+
+    /** __ALL__ モード用: 右パネルに各構造のオフセット調整UIを描画 */
+    _renderV3dOffsetPanel(project) {
+        const panel = document.getElementById('v3d-offset-panel');
+        if (!panel) return;
+        panel.innerHTML = '';
+        panel.classList.remove('hidden');
+
+        const header = document.createElement('div');
+        header.className = 'v3dp-header';
+        header.innerHTML = `
+            <span>📐 位置調整</span>
+            <button id="btn-arrange-x" class="mc-btn secondary small" title="全構造を +X 方向に 1 ブロック隙間で順に並べる">
+                ✨ X軸に並べる
+            </button>
+        `;
+        panel.appendChild(header);
+        const arrangeBtn = header.querySelector('#btn-arrange-x');
+        if (arrangeBtn) arrangeBtn.onclick = () => this._arrangeAllInX();
+
+        for (const s of project.structures) {
+            const off = ProjectManager.getOffset(s);
+            const init = ProjectManager.getInitialOffset(s);
+            const isInit = off.x === init.x && off.y === init.y && off.z === init.z;
+
+            const rot = ProjectManager.getRotation(s);
+            const rotLabels = ['0°', '90°', '180°', '270°'];
+
+            const row = document.createElement('div');
+            row.className = 'v3dp-row';
+            row.dataset.sid = s.id;
+            row.innerHTML = `
+                <div class="v3dp-name" title="${this._escape(s.name)}">${this._escape(s.name)}</div>
+                <div class="v3dp-axes">
+                    ${['x','y','z'].map(ax => `
+                    <span class="v3dp-axis">
+                        <span class="v3dp-ax-label">${ax.toUpperCase()}</span>
+                        <button class="sc-off-step icon-btn" data-axis="${ax}" data-delta="-1">−</button>
+                        <input type="number" class="size-input v3dp-inp v3dp-inp-${ax}" data-axis="${ax}" data-sid="${s.id}" step="1" value="${off[ax]}">
+                        <button class="sc-off-step icon-btn" data-axis="${ax}" data-delta="1">+</button>
+                    </span>`).join('')}
+                    <button class="sc-offset-reset icon-btn v3dp-reset" title="初期値に戻す" ${isInit ? 'disabled' : ''}>↺</button>
+                </div>
+                <div class="v3dp-rot-row">
+                    <span class="v3dp-ax-label" style="margin-right:0.3rem">🔄 Y軸回転</span>
+                    <button class="v3dp-rot-btn icon-btn" data-delta="-1" title="90° 反時計回り">↺</button>
+                    <span class="v3dp-rot-val" style="min-width:2.8rem;text-align:center;font-size:0.72rem;color:var(--text)">${rotLabels[rot]}</span>
+                    <button class="v3dp-rot-btn icon-btn" data-delta="1" title="90° 時計回り">↻</button>
+                </div>
+            `;
+            panel.appendChild(row);
+
+            // +/- ボタン
+            row.querySelectorAll('.sc-off-step').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const axis = btn.dataset.axis;
+                    const delta = parseInt(btn.dataset.delta, 10);
+                    const inp = row.querySelector(`.v3dp-inp-${axis}`);
+                    const newVal = (parseInt(inp.value, 10) || 0) + delta;
+                    inp.value = newVal;
+                    this._setStructureOffset(s.id, axis, newVal);
+                    // リセットボタンの活性制御
+                    const o = ProjectManager.getOffset(s);
+                    const i2 = ProjectManager.getInitialOffset(s);
+                    const resetBtn = row.querySelector('.v3dp-reset');
+                    if (resetBtn) resetBtn.disabled = (o.x===i2.x && o.y===i2.y && o.z===i2.z);
+                });
+            });
+            // 手入力
+            row.querySelectorAll('.v3dp-inp').forEach(inp => {
+                inp.addEventListener('change', () => {
+                    this._setStructureOffset(s.id, inp.dataset.axis, parseInt(inp.value, 10) || 0);
+                    const o = ProjectManager.getOffset(s);
+                    const i2 = ProjectManager.getInitialOffset(s);
+                    const resetBtn = row.querySelector('.v3dp-reset');
+                    if (resetBtn) resetBtn.disabled = (o.x===i2.x && o.y===i2.y && o.z===i2.z);
+                });
+            });
+            // リセット
+            row.querySelector('.v3dp-reset').onclick = () => {
+                this._resetStructureOffset(s.id);
+                const i2 = ProjectManager.getInitialOffset(s);
+                row.querySelector('.v3dp-inp-x').value = i2.x;
+                row.querySelector('.v3dp-inp-y').value = i2.y;
+                row.querySelector('.v3dp-inp-z').value = i2.z;
+                row.querySelector('.v3dp-reset').disabled = true;
+            };
+            // 回転ボタン
+            const rotLabels2 = ['0°', '90°', '180°', '270°'];
+            row.querySelectorAll('.v3dp-rot-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const delta = parseInt(btn.dataset.delta, 10);
+                    const cur = ProjectManager.getRotation(s);
+                    s.rotation = ((cur + delta) % 4 + 4) % 4;
+                    ProjectManager.save(this.projects);
+                    row.querySelector('.v3dp-rot-val').textContent = rotLabels2[s.rotation];
+                    this._scheduleViewer3DRefresh();
+                });
+            });
         }
     }
 
