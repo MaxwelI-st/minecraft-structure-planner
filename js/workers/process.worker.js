@@ -382,7 +382,7 @@ function _parseMcStructureBuffer(buffer, taskId) {
  * @param {object} config - { minecraftDataVersion, name }
  */
 async function _convertParsedToLitematic(taskId, parsed, config = {}) {
-  const dataVersion   = config.minecraftDataVersion ?? 3700;
+  const dataVersion   = config.minecraftDataVersion ?? 4440;
   const structureName = config.name ?? 'converted';
   const { dimensions, worldOrigin, bedrockPalette, layer0Indices, layer1Indices } = parsed;
 
@@ -427,6 +427,9 @@ async function _convertParsedToLitematic(taskId, parsed, config = {}) {
 
   // ── Step 7: Assemble Litematic NBT ───────────────────────────────────────
   sendProgress(taskId, 0.78, 'Assembling Litematic NBT…');
+  // airIndex = 0 in javaPalette (after convertPalette, air is always index 0)
+  const airIndex = javaPalette.findIndex(e => e.Name === 'minecraft:air');
+  const nonAirCount = yzxIndices.reduce((n, v) => n + (v !== airIndex ? 1 : 0), 0);
   const nbtBuffer = buildLitematic({
     name:        structureName,
     author:      'Minecraft Structure Planner',
@@ -434,6 +437,7 @@ async function _convertParsedToLitematic(taskId, parsed, config = {}) {
     dimensions,
     palette:     javaPalette,
     blockStates: longArray,
+    totalBlocks: nonAirCount,
   });
 
   // ── Step 8: GZip compress ────────────────────────────────────────────────

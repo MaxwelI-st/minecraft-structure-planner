@@ -123,10 +123,11 @@ export class NBTWriter {
  * }} opts
  * @returns {ArrayBuffer}
  */
-export function buildLitematic({ name, author, dataVersion, dimensions, palette, blockStates }) {
+export function buildLitematic({ name, author, dataVersion, dimensions, palette, blockStates, totalBlocks }) {
   const [SX, SY, SZ] = dimensions;
   const now = BigInt(Date.now());
   const regionName = name.replace(/\s/g, '_');
+  const nonAirCount = totalBlocks ?? (SX * SY * SZ);
 
   // BlockStatePalette — TAG_List<TAG_Compound>
   const paletteItems = palette.map(e => {
@@ -144,11 +145,13 @@ export function buildLitematic({ name, author, dataVersion, dimensions, palette,
 
   const root = [
     { type: T.INT,    name: 'MinecraftDataVersion', value: dataVersion },
-    { type: T.INT,    name: 'Version',              value: 6 },
+    { type: T.INT,    name: 'Version',              value: 7 },
+    { type: T.INT,    name: 'SubVersion',           value: 1 },
     {
       type: T.COMPOUND, name: 'Metadata', value: [
         { type: T.STRING, name: 'Name',         value: name   },
         { type: T.STRING, name: 'Author',       value: author },
+        { type: T.STRING, name: 'Description',  value: ''     },
         { type: T.LONG,   name: 'TimeCreated',  value: now },
         { type: T.LONG,   name: 'TimeModified', value: now },
         {
@@ -159,7 +162,7 @@ export function buildLitematic({ name, author, dataVersion, dimensions, palette,
           ],
         },
         { type: T.INT, name: 'RegionCount', value: 1 },
-        { type: T.INT, name: 'TotalBlocks', value: SX * SY * SZ },
+        { type: T.INT, name: 'TotalBlocks', value: nonAirCount },
         { type: T.INT, name: 'TotalVolume', value: SX * SY * SZ },
       ],
     },
