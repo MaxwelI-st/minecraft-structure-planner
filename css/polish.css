@@ -81,12 +81,45 @@
 
 /* ツアー ? ボタン */
 #btn-tour {
-  opacity: 0.6;
-  transition: opacity 0.2s, transform 0.2s;
+  opacity: 0.72;
+  transition: opacity 0.2s, transform 0.2s, background 0.2s;
 }
 #btn-tour:hover {
   opacity: 1;
   transform: scale(1.1);
+}
+/* ライトテーマ: アクセント色が薄くなりがちなので常に視認性を確保 */
+:root[data-theme^="light"] #btn-tour {
+  opacity: 1;
+  background: rgba(255,255,255,0.55) !important;
+}
+:root[data-theme^="light"] #btn-tour:hover {
+  background: rgba(255,255,255,0.85) !important;
+}
+
+/* ─── ツアーカード テーマ別スタイル ─────────────────── */
+
+/* ライトテーマ: カード背景を白系に、テキストを濃くする
+   (specificity 0,1,1,1 > injected #id 0,1,0,0 なので !important 不要) */
+:root[data-theme^="light"] #tour-card,
+:root[data-theme^="light"] #tour-nav-bar {
+  background: var(--card, #ffffff);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.13), 0 2px 6px rgba(0,0,0,0.07);
+}
+:root[data-theme^="light"] #tour-title {
+  color: var(--text, #1a202c);
+}
+:root[data-theme^="light"] #tour-body {
+  color: var(--muted2, #4a5568);
+}
+:root[data-theme^="light"] #tour-close-btn {
+  background: var(--card-hover, #f3f4f6) !important;
+  color: var(--muted2, #4a5568) !important;
+  border: 1px solid var(--border2, rgba(0,0,0,0.15)) !important;
+}
+/* ライトテーマ: スポットライトの暗幕を少し薄く（白背景に濃すぎない） */
+:root[data-theme^="light"] #tour-spotlight {
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.42);
 }
 
 /* welcome-icon を控えめに */

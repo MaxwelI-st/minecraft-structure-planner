@@ -1171,14 +1171,19 @@ export const UIMixin = {
                 '#tour-overlay.active{display:block}',
                 '#tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.01);z-index:9001;pointer-events:none}',
                 '#tour-spotlight{position:fixed;z-index:9002;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.65);border-radius:6px}',
-                '#tour-card{position:fixed;z-index:9003;pointer-events:all;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:12px;padding:1rem 1.2rem;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.65)}',
+                '#tour-ring{position:fixed;z-index:9003;pointer-events:none;border:2.5px solid var(--accent,#63b3ed);border-radius:8px;opacity:0}',
+                '@keyframes _tour_ring_in{0%{opacity:1;transform:scale(1.0);box-shadow:0 0 0 0 var(--accent,#63b3ed)}50%{opacity:0.9;transform:scale(1.1);box-shadow:0 0 14px 4px rgba(99,179,237,0.35)}100%{opacity:0;transform:scale(1.24);box-shadow:0 0 0 0 rgba(99,179,237,0)}}',
+                '#tour-ring.pulse{animation:_tour_ring_in 0.62s ease-out forwards}',
+                '@keyframes _tour_card_in{0%{opacity:0;transform:translateY(14px) scale(0.86)}65%{opacity:1;transform:translateY(-4px) scale(1.04)}82%{transform:translateY(2px) scale(0.99)}100%{opacity:1;transform:none}}',
+                '#tour-card.entering{animation:_tour_card_in 0.52s cubic-bezier(0.22,0.68,0,1.2) 0.18s both}',
+                '#tour-card{position:fixed;z-index:9004;pointer-events:all;background:var(--bg2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:12px;padding:1rem 1.2rem;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.65)}',
                 '#tour-title{font-size:1rem;font-weight:700;margin:0 0 0.5rem;color:var(--text,#e2e8f0)}',
-                '#tour-body{font-size:0.86rem;color:var(--muted,#c8d4e8);margin:0;line-height:1.65;white-space:pre-line}',
-                '#tour-nav-bar{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:9004;display:flex;gap:0.6rem;align-items:center;background:var(--surface2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:16px;padding:0.7rem 1.2rem;box-shadow:0 4px 28px rgba(0,0,0,0.65);pointer-events:all;white-space:nowrap}',
+                '#tour-body{font-size:0.86rem;color:var(--muted,#9ab0c8);margin:0;line-height:1.65;white-space:pre-line}',
+                '#tour-nav-bar{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:9005;display:flex;gap:0.6rem;align-items:center;background:var(--bg2,#1e2840);border:1.5px solid var(--accent,#63b3ed);border-radius:16px;padding:0.7rem 1.2rem;box-shadow:0 4px 28px rgba(0,0,0,0.65);pointer-events:all;white-space:nowrap}',
                 '#tour-step-ind{font-size:0.9rem;color:var(--accent,#63b3ed);font-family:monospace;padding:0 0.6rem;min-width:54px;text-align:center;letter-spacing:.04em}',
                 '#tour-prev-btn,#tour-next-btn{font-size:0.9rem!important;padding:0.48rem 1.1rem!important;min-width:84px}',
-                '#tour-close-btn{font-size:0.82rem!important;padding:0.4rem 0.75rem!important;background:var(--surface3,#2d3748)!important;margin-left:0.4rem}',
-                '#btn-tour:hover{background:rgba(99,179,237,0.15)!important}'
+                '#tour-close-btn{font-size:0.82rem!important;padding:0.4rem 0.75rem!important;background:var(--card-hover,#2d3748)!important;margin-left:0.4rem}',
+                '#btn-tour:hover{background:var(--hover-bg,rgba(99,179,237,0.15))!important}'
             ].join('\n');
             document.head.appendChild(s);
         }
@@ -1186,7 +1191,7 @@ export const UIMixin = {
         if (!$('tour-overlay')) {
             const el = document.createElement('div');
             el.id = 'tour-overlay';
-            el.innerHTML = '<div id="tour-backdrop"></div><div id="tour-spotlight"></div>'
+            el.innerHTML = '<div id="tour-backdrop"></div><div id="tour-spotlight"></div><div id="tour-ring"></div>'
                 + '<div id="tour-card">'
                 + '<h4 id="tour-title"></h4>'
                 + '<p id="tour-body"></p>'
@@ -1218,58 +1223,183 @@ export const UIMixin = {
         if (btn) btn.onclick = () => this._startTour();
     },
 
+    // ツアー中だけ 3Dビューのサブタブを切り替えるヘルパ（'basic' or 'advanced'）
+    _tourSwitchV3dSubtab(subtab) {
+        const btn = document.querySelector(`.v3d-subtab[data-subtab="${subtab}"]`);
+        if (btn && !btn.classList.contains('active')) btn.click();
+    },
+
+    // ツアー中だけ __ALL__ モードに切り替えるヘルパ（_closeTour で復元される）
+    _tourSwitchToAllMode() {
+        const sel = $('viewer3d-structure-select');
+        if (!sel) return;
+        const hasAll = Array.from(sel.options).some(o => o.value === '__ALL__');
+        if (hasAll && sel.value !== '__ALL__') {
+            sel.value = '__ALL__';
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    },
+
     _startTour() {
         const nl = '\n';
         const TOURS = {
+            home: [
+                { target: '.welcome-icon', pos: 'bottom', title: '👋 Structure Planner へようこそ',
+                  body: 'Minecraft の構造ファイル (.mcstructure / .litematic / .nbt) を読み込んで、' + nl +
+                        '素材集計・3D表示・複数構造の合体・ドット絵化までできるツールです。' },
+                { target: '#btn-drop-file', pos: 'bottom', title: '① ファイルを開く',
+                  body: 'ボタンから選ぶか、画面のどこかへドラッグ＆ドロップでも追加できます。' + nl +
+                        '複数ファイルを一度にドロップすると、まとめて新規プロジェクトになります。' },
+                { target: '#btn-create-project-welcome', pos: 'bottom', title: '② 空のプロジェクトから始める',
+                  body: 'ファイル無しで先にプロジェクトを作って、あとから足していくこともできます。' },
+                { target: '#sidebar-drop-hint', pos: 'right', title: '③ サイドバーへドロップでも OK',
+                  body: '左のプロジェクト一覧エリアへの D&D は、既存プロジェクトに追加する操作。' + nl +
+                        '画面全体への D&D は、新規プロジェクトとして開きます。' },
+                { target: '#project-list', pos: 'right', title: '④ プロジェクト管理',
+                  body: 'クリックで開く・右クリックで削除/名前変更。' + nl +
+                        'プロジェクト単位で素材・配置・3D表示が独立しています。' },
+                { target: '#btn-new-project', pos: 'bottom', title: '⑤ 新規プロジェクト',
+                  body: 'いつでも新しいプロジェクトを作れます。' },
+            ],
             materials: [
-                { target: '#btn-add-structure',          pos: 'bottom', title: '① 構造ファイルを追加',    body: '「＋ 構造を追加」ボタンで .mcstructure ファイルを読み込みます。' + nl + 'ウェルカム画面へのドラッグ＆ドロップも使えます。' },
-                { target: '#structures-list',            pos: 'bottom', title: '② 構造一覧',             body: '追加した構造ファイルがここに並びます。' + nl + '複数追加すると素材が自動的に合算されます。倍数設定も可能です。' },
-                { target: '.stats-grid',                 pos: 'top',    title: '③ 合計素材',             body: '全構造のブロック数・種類・スタック数・シュルカー箱数が自動計算されます。' },
-                { target: '#structure-breakdown-details',pos: 'top',    title: '④ 構造別の内訳',          body: 'クリックで展開すると、構造ごとの素材内訳を確認できます。' },
-                { target: '#btn-copy-md',                pos: 'top',    title: '⑤ エクスポート',          body: 'Markdown形式でコピーしたり CSVとして書き出せます。' + nl + 'チェックリストや在庫管理表として使えます。' },
-                { target: '#search-input',               pos: 'top',    title: '⑥ 検索とフィルター',       body: 'ブロック名で絞り込んだり、建築・装飾などカテゴリ別にフィルターをかけられます。' }
+                { tab: 'materials', target: '#btn-add-structure', pos: 'bottom', title: '① 構造ファイルを追加',
+                  body: '「＋ 構造を追加」で .mcstructure / .litematic / .nbt を読み込みます。' + nl +
+                        '複数選択も D&D も可。' },
+                { tab: 'materials', target: '#structures-list', pos: 'bottom', title: '② 構造カード',
+                  body: '読み込んだ構造がカードで並びます。複数あると素材が自動合算されます。' },
+                { tab: 'materials', target: '.mult-display', pos: 'top', title: '③ 個数倍率 (× N)',
+                  body: '「×1」のボタンを押すと倍率を変更できます。' + nl +
+                        '例: 同じ柱を 8 本建てるなら × 8。素材集計にそのまま反映。' },
+                { tab: 'materials', target: '.sc-offset-row', pos: 'top', title: '④ 位置を調整（2構造以上）',
+                  body: '構造が 2 つ以上あるとここに X/Y/Z 入力が出ます。' + nl +
+                        '値を変えるとリアルタイムで 3D に反映。↺ で初期位置に戻せます。' },
+                { tab: 'materials', target: '.sc-snap-btn', pos: 'top', title: '⑤ ↔ 整列でスナップ',
+                  body: '他の構造の指定面（上下/東西/南北 6方向）にピタッと貼り付けます。' + nl +
+                        '足し算しなくても隣接配置が一発。' },
+                { tab: 'materials', target: '.stats-grid', pos: 'top', title: '⑥ 合計素材',
+                  body: 'ブロック数・種類・スタック数・シュルカー箱数を自動計算。' },
+                { tab: 'materials', target: '#structure-breakdown-details', pos: 'top', title: '⑦ 構造別の内訳',
+                  body: '展開すると、構造ごとの素材分けも見られます。' },
+                { tab: 'materials', target: '#shulker-pack-details', pos: 'top', title: '📦 シュルカーボックスパッキング',
+                  body: '素材の合計数を、シュルカーボックス（27スロット×64個）単位で' + nl +
+                        '自動的に詰め込み計算します。' + nl +
+                        '運搬計画・購入計画の目安として使えます。' + nl +
+                        '展開すると箱ごとの詳細が見られます。' },
+                { tab: 'materials', target: '#btn-copy-md', pos: 'top', title: '⑧ エクスポート（Markdown / CSV）',
+                  body: 'チェックリスト形式や表形式で書き出せます。サバイバル建築の在庫表に。' },
+                { tab: 'materials', target: '#search-input', pos: 'top', title: '⑨ 検索とフィルター',
+                  body: '名前で絞り込み + 建築 / 装飾 / 自然 などカテゴリ別フィルタもあり。' },
             ],
             viewer3d: [
-                { target: '#btn-load-3d',                pos: 'bottom', title: '① 3D表示を開始',         body: 'このボタンを押すと構造が3Dでレンダリングされます。' + nl + 'はじめに必ず押してください。' },
-                { target: '#viewer3d-structure-select',  pos: 'bottom', title: '② 構造を選択',           body: '複数の構造がある場合、ここで表示したいものを切り替えられます。' },
-                { target: '#viewer3d-container',         pos: 'right',  title: '③ 3Dビューの操作',       body: '【回転】左ドラッグ' + nl + '【パン】右ドラッグ' + nl + '【ズーム】マウスホイール' + nl + '【単体選択】Shift + 左クリック' + nl + '【範囲選択】Shift + 右クリック (2回)' },
-                { target: '#viewer3d-container',         pos: 'right',  title: '④ 範囲選択と一括編集',    body: 'Shift + 右クリックで始点と終点を選ぶと、' + nl + '範囲内のブロックを「一括削除」したり、' + nl + '「準備済み」に設定したりできます。履歴からUndoも可能です。' },
-                { target: '[data-section="replace"]',    pos: 'left',   title: '⑤ ブロック置換',          body: '素材Aを素材Bに一括置換できます。' + nl + 'コスト削減やデザイン変更に便利です。' },
-                { target: '[data-section="textures"]',   pos: 'left',   title: '⑥ テクスチャパック',      body: '公式リソースパック（zip）をアップロードすると' + nl + 'リアルなテクスチャになります。' },
-                { target: '#btn-export-mcstructure',     pos: 'left',   title: '⑦ 構造をエクスポート',    body: '置換後の構造を .mcstructure でダウンロードできます。' + nl + 'そのままMinecraftでインポートして使えます。' },
-                { target: '#layer-min',                  pos: 'left',   title: '⑧ 断面フィルター',          body: 'Y/X/Z 各軸の最小・最大スライダーを動かすと' + nl + 'その範囲だけを切り出して3D表示できます。' + nl + '内部構造の確認に便利です。↺ リセットで全体に戻ります。' }
+                { tab: 'viewer3d', target: '#btn-load-3d', pos: 'bottom', title: '① 3D表示を開始',
+                  body: '最初に押す必要あり。構造を Three.js でレンダリングします。' },
+                { tab: 'viewer3d', target: '#viewer3d-structure-select', pos: 'bottom', title: '② 表示する構造',
+                  body: '個別の構造を選んで表示できます。' + nl +
+                        '「__ALL__」を選ぶと、すべての構造を同時表示できます（次のステップで体験）。',
+                  before: (app) => app._tourSwitchV3dSubtab('basic') },
+                { tab: 'viewer3d', target: '#viewer3d-container', pos: 'right', title: '③ マウス基本操作',
+                  body: '【回転】左ドラッグ' + nl +
+                        '【パン】右ドラッグ' + nl +
+                        '【ズーム】マウスホイール' },
+                { tab: 'viewer3d', target: '#viewer3d-container', pos: 'right', title: '④ ブロック選択',
+                  body: '【単体選択】Shift + 左クリック' + nl +
+                        '【範囲選択】Shift + 右クリックを2回（始点・終点）' + nl +
+                        '範囲内のブロックを一括削除 / 「準備済み」マークなどができます。Undo 可。' },
+                { tab: 'viewer3d', target: '#viewer3d-container', pos: 'right',
+                  title: '⑤ Alt + ドラッグで構造を移動 ✨',
+                  body: '構造が複数あるときは Alt キーを押しながらドラッグで、' + nl +
+                        'クリックした構造そのものを動かせます。' + nl +
+                        '【Alt + 左ドラッグ】X軸方向' + nl +
+                        '【Alt + 右ドラッグ】Z軸方向' + nl +
+                        '掴んだ構造はシアン色の枠 + 名前ラベルでハイライトされます。',
+                  before: (app) => app._tourSwitchToAllMode() },
+                { tab: 'viewer3d', target: '#v3d-offset-panel', pos: 'left',
+                  title: '⑥ 位置調整パネル（ALL モード）',
+                  body: 'ALL モード時、ここで各構造の X/Y/Z オフセットと Y軸回転を' + nl +
+                        'スピンボタンで細かく調整できます。Alt+ドラッグの結果もここに反映。',
+                  before: (app) => { app._tourSwitchV3dSubtab('advanced'); app._tourSwitchToAllMode(); } },
+                { tab: 'viewer3d', target: '#btn-arrange-x', pos: 'left',
+                  title: '⑦ ✨ X軸に並べる（自動整列）',
+                  body: '1クリックで全構造を、回転後の幅 + 1ブロック隙間で東西に並べます。' + nl +
+                        '構造が重なってどこにあるか分からなくなったとき便利。',
+                  before: (app) => { app._tourSwitchV3dSubtab('advanced'); app._tourSwitchToAllMode(); } },
+                { tab: 'viewer3d', target: '[data-section="replace"]', pos: 'left', title: '⑧ ブロック置換',
+                  body: '素材 A を素材 B に一括置換。コスト削減やデザイン変更に。',
+                  before: (app) => app._tourSwitchV3dSubtab('basic') },
+                { tab: 'viewer3d', target: '[data-section="textures"]', pos: 'left', title: '⑨ テクスチャパック',
+                  body: '公式リソースパック (.zip) をアップロードすると、リアルなテクスチャに切り替わります。',
+                  before: (app) => app._tourSwitchV3dSubtab('basic') },
+                { tab: 'viewer3d', target: '#layer-min', pos: 'left', title: '⑩ 断面フィルター（Y/X/Z軸）',
+                  body: '【Y軸】下／上 のスライダー（縦の切り出し）' + nl +
+                        '【X軸】左／右 のスライダー（横の切り出し）' + nl +
+                        '【Z軸】手前／奥 のスライダー（奥行きの切り出し）' + nl +
+                        '↺ リセットで全体に戻ります。内部構造の確認に便利。',
+                  before: (app) => app._tourSwitchV3dSubtab('basic') },
+                { tab: 'viewer3d', target: '#btn-export-mcstructure', pos: 'left', title: '⑪ 構造をエクスポート',
+                  body: '編集後の構造を .mcstructure / .litematic でダウンロードできます。' + nl +
+                        'ALL モード時は「全構造を合体して 1 ファイル」も可能。',
+                  before: (app) => app._tourSwitchV3dSubtab('basic') },
             ],
             dotart: [
-                { target: '#btn-img2dot-pick',           pos: 'bottom', title: '① 画像を選んで自動変換',  body: 'まずはこのボタンで画像を選びましょう。' + nl + '一瞬でマイクラのドット絵に変換されます！' },
-                { target: '#dotart-size-mode',           pos: 'bottom', title: '② サイズを微調整する',  body: '思ったより大きい/小さい時はここで。' + nl + '設定を変えて「✨ 再生成」を押せば即座に反映されます。' },
-                { target: '#dotart-canvas',              pos: 'right',  title: '③ 変換されたドット絵',  body: 'ここに結果が表示されます。' + nl + '細かい部分はペンや消しゴムで直接直せます。' },
-                { target: '.tool-buttons',               pos: 'right',  title: '④ 便利な「一括置換」',   body: '魔法の杖 (🪄) ツールを使うと、' + nl + '特定の色を別のブロックに一気に置き換えられます。' },
-                { target: '#btn-palette-change',         pos: 'left',   title: '⑤ パレットを自由に増やす',body: 'カタログから好きなブロックを選んで、' + nl + '自分だけのパレットを組み立てましょう。' },
-                { target: '#dotart-materials',           pos: 'left',   title: '⑥ 必要なブロックを確認',  body: '最後はここで合計数を確認。' + nl + '「構造として追加」すれば、建築リストに合算されます！' }
+                { tab: 'dotart', target: '#btn-img2dot-pick', pos: 'bottom', title: '① 画像を選んで自動変換',
+                  body: '画像を選ぶと一瞬で Minecraft のドット絵に変換されます。' },
+                { tab: 'dotart', target: '#dotart-size-mode', pos: 'bottom', title: '② サイズを微調整',
+                  body: '思ったより大きい/小さい時は設定を変えて「✨ 再生成」。即座に反映されます。' },
+                { tab: 'dotart', target: '#dotart-canvas', pos: 'right', title: '③ ドット絵キャンバス',
+                  body: 'ここに結果が表示されます。ペン / 消しゴム / スポイトで直接編集可。' + nl +
+                        'Ctrl+Z で undo、Ctrl+Shift+Z で redo。' },
+                { tab: 'dotart', target: '.tool-buttons', pos: 'right', title: '④ 魔法の杖（一括置換）',
+                  body: '🪄 ツールでクリックすると、その色のブロック全部を別ブロックに一括置換。' },
+                { tab: 'dotart', target: '#btn-palette-change', pos: 'left', title: '⑤ パレットを編集',
+                  body: 'カタログから好きなブロックを選んで自分だけのパレットを作れます。' + nl +
+                        '透過 / 半透過ブロックも選択可。' },
+                { tab: 'dotart', target: '#dotart-materials', pos: 'left', title: '⑥ 必要素材を確認',
+                  body: '合計数と種類が一覧で確認できます。' + nl +
+                        '「構造として追加」すれば 3D 表示・合体・エクスポートにそのまま乗ります。' },
+                { tab: 'dotart', target: '#btn-dotart-pdf', pos: 'top', title: '⑦ IKEA 風 PDF も出せる',
+                  body: '「IKEA風 PDF 印刷」で組み立て手順書風の印刷物を生成。' + nl +
+                        '紙に出してマイクラ内で見ながら作るスタイルにどうぞ。' },
+            ],
+            themes: [
+                { tab: 'themes', target: '#themes-grid', pos: 'top', title: '🎨 26種のデザインテーマ',
+                  body: 'ダーク 13 + ライト 13 = 全 26 テーマから選べます。' + nl +
+                        'クリックで即座に切り替わり、フォント・アイコン・配色がすべて変わります。' },
+                { tab: 'themes', target: '.theme-card-preview', pos: 'right', title: '🖼 テーマプレビュー',
+                  body: '各カードのミニプレビューで UI の雰囲気・フォント・配色を確認できます。' + nl +
+                        'テーマごとに専用フォントとアイコンが自動切替されます。' },
+                { tab: 'themes', target: '.theme-tag', pos: 'bottom', title: '🏷 タグで雰囲気を確認',
+                  body: 'Pastel / Cyber / Fantasy / Zen など雰囲気のタグが付いています。' + nl +
+                        '建築スタイルや気分に合ったテーマを見つけてください。' },
             ],
             settings: [
-                { target: '#panel-settings', pos: 'top', title: '⚙️ 設定',
-                  body: 'アプリの外観・データ管理・初期化などが行えます。' + nl + '設定はブラウザに自動保存されます。' }
+                { tab: 'settings', target: '#panel-settings', pos: 'top', title: '⚙️ 設定の概要',
+                  body: 'データ管理・初期化など、アプリの裏側まわりの操作がまとまっています。' + nl +
+                        '設定はブラウザに自動保存されます。' },
+                { tab: 'settings', target: '#btn-export-all', pos: 'top', title: '📤 全プロジェクトをバックアップ',
+                  body: 'プロジェクト設定 (JSON) を書き出せます。' + nl +
+                        '※ .mcstructure や リソースパックは含まれない点に注意。別 PC への移行や念のためのバックアップに。' },
+                { tab: 'settings', target: '#btn-import-data', pos: 'top', title: '📥 バックアップから復元',
+                  body: '上で書き出した JSON を読み込んで復元できます。' },
+                { tab: 'settings', target: '#btn-clear-all-data', pos: 'top', title: '⚠️ 全データ削除（取り消し不可）',
+                  body: 'すべてのプロジェクトと設定を消去します。' + nl +
+                        'バックアップを取ってから実行してください。' },
+                { tab: 'settings', target: '#btn-reset-idb', pos: 'top', title: '⚡ IndexedDB 完全リセット',
+                  body: '古い DB バージョンが残って動作が変なときの最終手段。' + nl +
+                        'プロジェクト・テクスチャパック・構造バッファすべて消えます。' },
+                { tab: 'settings', target: '#btn-clear-struct-cache', pos: 'top', title: '🧹 構造解析キャッシュのみ削除',
+                  body: 'プロジェクト情報は残し、構造ファイルだけ再解析させたいときに。' + nl +
+                        'スラブ合体ルール変更後の再計算などに使います。' },
             ],
-            home: [
-                { target: '.welcome-icon',                pos: 'bottom', title: '👋 Structure Planner へようこそ',
-                  body: '.mcstructure ファイルを読み込んで' + nl + '素材管理・3D表示・ドット絵作成ができるツールです。' },
-                { target: '#btn-drop-file',               pos: 'bottom', title: '① ファイルを開く',
-                  body: 'ボタンを押してファイル選択するか、' + nl + 'ファイルをこの画面にドラッグ＆ドロップで追加できます。' },
-                { target: '#btn-create-project-welcome',  pos: 'bottom', title: '② 新規プロジェクト',
-                  body: '空のプロジェクトを作って、後からファイルを追加していくこともできます。' },
-                { target: '#sidebar-drop-hint',           pos: 'right',  title: '③ サイドバーにもドロップ',
-                  body: '左のプロジェクト一覧エリアにもドラッグ＆ドロップできます。' + nl + 'ファイルを素早く追加したいときに便利です。' },
-                { target: '#project-list',                pos: 'right',  title: '④ プロジェクト一覧',
-                  body: '追加したプロジェクトがここに並びます。' + nl + 'クリックで開き、右クリックで削除・名前変更ができます。' },
-                { target: '#btn-new-project',             pos: 'bottom', title: '⑤ 新規プロジェクト',
-                  body: '新しいプロジェクトを作成します。' + nl + '作成後に構造ファイルを追加してください。' }
-            ]
         };
 
         const isWelcome = !$('welcome-screen').classList.contains('hidden');
         this._tourSteps = isWelcome ? TOURS.home : (TOURS[this.currentTab] || TOURS.materials);
         this._tourStep  = 0;
+        // ツアー開始時の状態をスナップショットし、_closeTour で復元する
+        this._tourSavedState = {
+            v3dSelect: $('viewer3d-structure-select')?.value ?? null,
+            tab: this.currentTab,
+        };
         $('tour-overlay').classList.add('active');
         this._showTourStep(0);
     },
@@ -1345,12 +1475,42 @@ export const UIMixin = {
         if (!steps || idx < 0 || idx >= steps.length) return;
         this._tourStep = idx;
         const step = steps[idx];
-        const el = document.querySelector(step.target);
-        if (!el) {
-            if (idx < steps.length - 1) { this._showTourStep(idx + 1); return; }
-            else { this._closeTour(); return; }
+
+        // 要素を探して表示。display:none など実質非表示の要素は自動スキップ。
+        const proceed = () => {
+            const el = document.querySelector(step.target);
+            if (!el) {
+                // 要素が DOM に存在しない → スキップ
+                if (idx < steps.length - 1) { this._showTourStep(idx + 1); return; }
+                else { this._closeTour(); return; }
+            }
+            const rect = el.getBoundingClientRect();
+            if (!rect.width && !rect.height) {
+                // 要素は存在するが非表示（display:none など） → スキップ
+                if (idx < steps.length - 1) { this._showTourStep(idx + 1); return; }
+                else { this._closeTour(); return; }
+            }
+            this._showTourStepWithElement(idx, step, el);
+        };
+
+        // タブ切替 or before フックがある場合は先に実行し、2フレーム待ってから proceed
+        const tabSwitchNeeded = step.tab && step.tab !== this.currentTab;
+        if (tabSwitchNeeded || step.before) {
+            if (tabSwitchNeeded) this._switchTab(step.tab, false);
+            if (step.before) {
+                try { step.before(this); } catch (err) { console.warn('tour.before error', err); }
+            }
+            requestAnimationFrame(() => requestAnimationFrame(proceed));
+        } else {
+            proceed();
         }
-        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    },
+
+    _showTourStepWithElement(idx, step, el) {
+        const steps = this._tourSteps;
+        // 即時スクロール（smooth だと getBoundingClientRect の値がズレる）
+        el.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' });
+
         const computeTargets = () => {
             const rect = el.getBoundingClientRect();
             const pad  = 8;
@@ -1367,13 +1527,49 @@ export const UIMixin = {
             else if (pos === 'left') { cx = Math.max(rect.left-cw-pad-8, 8);           cy = Math.min(Math.max(rect.top, 8), vh-ch-8); }
             else                     { cx = Math.min(rect.right+pad+8, vw-cw-8);       cy = Math.min(Math.max(rect.top, 8), vh-ch-8); }
             s.tcx = cx; s.tcy = cy;
-            if (!s.init) {
-                s.x=s.tx; s.y=s.ty; s.w=s.tw; s.h=s.th;
-                s.cx=cx; s.cy=cy; s.init = true;
-            }
         };
+
         if (!this._tourSpring) this._tourSpring = this._initTourSpring();
         computeTargets();
+
+        // スプリング状態をターゲットに即時スナップ（ステップ間のスライド移動を廃止）
+        const s = this._tourSpring;
+        s.x = s.tx; s.y = s.ty; s.w = s.tw; s.h = s.th;
+        s.cx = s.tcx; s.cy = s.tcy;
+        s.vx = s.vy = s.vw = s.vh = s.vcx = s.vcy = 0;
+        s.init = true;
+
+        // DOM に即時反映
+        const sp = $('tour-spotlight');
+        if (sp) {
+            sp.style.left = s.x + 'px'; sp.style.top    = s.y + 'px';
+            sp.style.width = s.w + 'px'; sp.style.height = s.h + 'px';
+        }
+        const cardEl = $('tour-card');
+        if (cardEl) {
+            cardEl.style.left = s.cx + 'px';
+            cardEl.style.top  = s.cy + 'px';
+        }
+
+        // リングパルス（同位置から膨張してフェードアウト）
+        const ring = $('tour-ring');
+        if (ring) {
+            ring.style.left = s.x + 'px'; ring.style.top    = s.y + 'px';
+            ring.style.width = s.w + 'px'; ring.style.height = s.h + 'px';
+            ring.classList.remove('pulse');
+            void ring.offsetWidth; // animation リセット用 reflow
+            ring.classList.add('pulse');
+        }
+
+        // カードフェードイン
+        if (cardEl) {
+            cardEl.classList.remove('entering');
+            void cardEl.offsetWidth;
+            cardEl.classList.add('entering');
+            setTimeout(() => cardEl.classList.remove('entering'), 720);
+        }
+
+        // スクロール追従インターバル（200ms ごとにターゲット座標を更新）
         this._startTourSpringRaf();
         if (this._tourTargetTimer) clearInterval(this._tourTargetTimer);
         this._tourTargetTimer = setInterval(() => {
@@ -1383,6 +1579,8 @@ export const UIMixin = {
             computeTargets();
             if (!this._tourRafId) this._startTourSpringRaf();
         }, 200);
+
+        // テキスト更新
         const titleEl = $('tour-title');
         if (titleEl) titleEl.textContent = step.title || '';
         const bodyEl = $('tour-body');
@@ -1400,6 +1598,24 @@ export const UIMixin = {
         clearInterval(this._tourTargetTimer);
         this._tourSpring = null;
         $('tour-overlay')?.classList.remove('active');
+        // ツアー開始前の状態を復元（タブ + 3D構造セレクタ）
+        const saved = this._tourSavedState;
+        if (saved) {
+            // タブを元に戻す
+            if (saved.tab && this.currentTab !== saved.tab) {
+                this._switchTab(saved.tab, false);
+            }
+            // __ALL__ へ自動切替していた場合は元の構造セレクタに戻す
+            const sel = $('viewer3d-structure-select');
+            if (sel && saved.v3dSelect != null && sel.value !== saved.v3dSelect) {
+                const stillExists = Array.from(sel.options).some(o => o.value === saved.v3dSelect);
+                if (stillExists) {
+                    sel.value = saved.v3dSelect;
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+            this._tourSavedState = null;
+        }
     },
 
 };

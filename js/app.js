@@ -1810,10 +1810,16 @@ class App {
         this.refreshToolsStructureSelect?.();
         if (sel.value !== '__ALL__') {
             this._renderReplaceList(sel.value);
-            const op = document.getElementById('v3d-offset-panel');
-            if (op) op.classList.add('hidden');
             // __ALL__ から離れたら、次回 __ALL__ ロード時に autoFocus を再実行
             this._viewer3dAllAutofocused = false;
+            // 個別構造でも位置調整パネルを表示（その1構造のみ）
+            const targetStruct = project.structures.find(s => s.id === sel.value);
+            if (targetStruct) {
+                this._renderV3dOffsetPanel(project, [targetStruct]);
+            } else {
+                const op = document.getElementById('v3d-offset-panel');
+                if (op) op.classList.add('hidden');
+            }
         } else {
             // __ALL__ 選択時は即座に位置調整UIを表示（3D描画ボタン押下不要）
             this._switchV3dSubtab('advanced');
@@ -2174,6 +2180,7 @@ class App {
             this.viewer3d.loadStructure(filteredCoords, structure.size, { yMin, yMax, xMin, xMax, zMin, zMax, colorMode });
             this.viewer3d.onBlockClick = (info) => this._onViewer3DClick(info);
             this._updateTextureStatusUI();
+            this._renderV3dOffsetPanel(project, [structure]);
             const infoEl = document.getElementById('viewer3d-info');
             if (infoEl) {
                 infoEl.innerHTML = `<p class="info-text">✅ ${coords.length.toLocaleString()}ブロック表示中 | ドラッグ:回転 / 右ドラッグ:パン / スクロール:ズーム</p>`;
@@ -2422,25 +2429,32 @@ class App {
     }
 
     /** __ALL__ モード用: 右パネルに各構造のオフセット調整UIを描画 */
-    _renderV3dOffsetPanel(project) {
+    _renderV3dOffsetPanel(project, structuresToShow = null) {
         const panel = document.getElementById('v3d-offset-panel');
         if (!panel) return;
         panel.innerHTML = '';
         panel.classList.remove('hidden');
 
+        const isAllMode = structuresToShow === null;
+        const structures = isAllMode ? project.structures : structuresToShow;
+
         const header = document.createElement('div');
         header.className = 'v3dp-header';
-        header.innerHTML = `
-            <span>📐 位置調整</span>
-            <button id="btn-arrange-x" class="mc-btn secondary small" title="全構造を +X 方向に 1 ブロック隙間で順に並べる">
-                ✨ X軸に並べる
-            </button>
-        `;
+        if (isAllMode) {
+            header.innerHTML = `
+                <span>📐 位置調整</span>
+                <button id="btn-arrange-x" class="mc-btn secondary small" title="全構造を +X 方向に 1 ブロック隙間で順に並べる">
+                    ✨ X軸に並べる
+                </button>
+            `;
+        } else {
+            header.innerHTML = `<span>📐 位置調整</span>`;
+        }
         panel.appendChild(header);
         const arrangeBtn = header.querySelector('#btn-arrange-x');
         if (arrangeBtn) arrangeBtn.onclick = () => this._arrangeAllInX();
 
-        for (const s of project.structures) {
+        for (const s of structures) {
             const off = ProjectManager.getOffset(s);
             const init = ProjectManager.getInitialOffset(s);
             const isInit = off.x === init.x && off.y === init.y && off.z === init.z;
