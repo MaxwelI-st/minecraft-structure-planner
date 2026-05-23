@@ -116,36 +116,45 @@ export function invertStructure(indices, palette, SX, SY, SZ, opts = {}) {
   // ── Build inverted index array ────────────────────────────────────────────
   const out = new Uint16Array(SX * SY * SZ);
   let solidCount = 0, airCount = 0, markerCount = 0;
+  const stride_x = SY * SZ; // _zyx(x,y,z) = SY*SZ*x + SZ*y + z
 
-  for (let x = 0; x < SX; x++)
-  for (let y = 0; y < SY; y++)
-  for (let z = 0; z < SZ; z++) {
-    const flat = _zyx(x, y, z, SY, SZ);
-    const orig = indices[flat];
+  for (let x = 0; x < SX; x++) {
+    const insideX = hasSolid && x >= minX && x <= maxX;
+    const flatX = stride_x * x;
+    for (let y = 0; y < SY; y++) {
+      const insideXY = insideX && y >= minY && y <= maxY;
+      const flatXY = flatX + SZ * y;
+      for (let z = 0; z < SZ; z++) {
+        const flat = flatXY + z;
+        const orig = indices[flat];
 
-    if (isSolid[orig]) {
-      // Solid → air
-      out[flat] = airIdx;
-      solidCount++;
-    } else {
-      // Air — mark if inside bbox OR adjacent to a solid block
-      const insideBBox = hasSolid
-        && x >= minX && x <= maxX
-        && y >= minY && y <= maxY
-        && z >= minZ && z <= maxZ;
+        if (isSolid[orig]) {
+          out[flat] = airIdx;
+          solidCount++;
+          continue;
+        }
 
-      const adjSolid = hasSolid && FACE_OFFSETS.some(([dx, dy, dz]) => {
-        const nx = x + dx, ny = y + dy, nz = z + dz;
-        if (nx < 0 || nx >= SX || ny < 0 || ny >= SY || nz < 0 || nz >= SZ) return false;
-        return isSolid[indices[_zyx(nx, ny, nz, SY, SZ)]];
-      });
+        // Air — mark if inside bbox OR adjacent to a solid block
+        const insideBBox = insideXY && z >= minZ && z <= maxZ;
 
-      if (insideBBox || adjSolid) {
-        out[flat] = markerIdx;
-        markerCount++;
-      } else {
-        out[flat] = airIdx;
-        airCount++;
+        let adjSolid = false;
+        if (hasSolid && !insideBBox) {
+          // unrolled neighbour check (+X, -X, +Y, -Y, +Z, -Z)
+          if (x + 1 < SX && isSolid[indices[flat + stride_x]]) adjSolid = true;
+          else if (x - 1 >= 0 && isSolid[indices[flat - stride_x]]) adjSolid = true;
+          else if (y + 1 < SY && isSolid[indices[flat + SZ]]) adjSolid = true;
+          else if (y - 1 >= 0 && isSolid[indices[flat - SZ]]) adjSolid = true;
+          else if (z + 1 < SZ && isSolid[indices[flat + 1]]) adjSolid = true;
+          else if (z - 1 >= 0 && isSolid[indices[flat - 1]]) adjSolid = true;
+        }
+
+        if (insideBBox || adjSolid) {
+          out[flat] = markerIdx;
+          markerCount++;
+        } else {
+          out[flat] = airIdx;
+          airCount++;
+        }
       }
     }
   }
@@ -206,45 +215,46 @@ export function hollowOut(indices, palette, SX, SY, SZ, opts = {}) {
   }
 
   // ── Main pass: mark blocks eligible for replacement ───────────────────────
+  // 外側1層は必ず境界 → 走査範囲を [1..SX-2] 等に縮小 + 隣接判定は unroll
   const out          = new Uint16Array(indices);
   const savedBlocks  = new Map();
   let   replacedCount = 0;
+  const stride_x = SY * SZ;
 
-  for (let x = 0; x < SX; x++)
-  for (let y = 0; y < SY; y++)
-  for (let z = 0; z < SZ; z++) {
-    const flat = _zyx(x, y, z, SY, SZ);
-    const orig = indices[flat];
+  // Pre-compute name lookup table (avoid hash lookups per cell)
+  const paletteName = new Array(workPalette.length);
+  for (let i = 0; i < workPalette.length; i++) {
+    paletteName[i] = workPalette[i]?.name ?? workPalette[i]?.Name ?? '';
+  }
 
-    // Skip air and already-cheap blocks
-    const name = workPalette[orig]?.name ?? workPalette[orig]?.Name ?? '';
-    if (!isOpaque[orig]) continue;
-    if (name === fillName) continue;
+  // 1層以下なら処理不能（境界のみ）
+  if (SX >= 3 && SY >= 3 && SZ >= 3) {
+    for (let x = 1; x < SX - 1; x++) {
+      const flatX = stride_x * x;
+      for (let y = 1; y < SY - 1; y++) {
+        const flatXY = flatX + SZ * y;
+        for (let z = 1; z < SZ - 1; z++) {
+          const flat = flatXY + z;
+          const orig = indices[flat];
 
-    // Never hollow blocks with special data (chests, spawners, etc.)
-    if (preserveBlockEntities && isBlockEntity[orig]) continue;
+          if (!isOpaque[orig]) continue;
+          if (preserveBlockEntities && isBlockEntity[orig]) continue;
+          const name = paletteName[orig];
+          if (name === fillName) continue;
 
-    // Never hollow boundary blocks (any neighbour is out-of-bounds)
-    let onBoundary = false;
-    for (const [dx, dy, dz] of FACE_OFFSETS) {
-      const nx = x + dx, ny = y + dy, nz = z + dz;
-      if (nx < 0 || nx >= SX || ny < 0 || ny >= SY || nz < 0 || nz >= SZ) {
-        onBoundary = true;
-        break;
+          // 6 隣接の opaque 判定 (内部セルなので境界チェック不要)
+          if (!isOpaque[indices[flat + stride_x]]) continue;
+          if (!isOpaque[indices[flat - stride_x]]) continue;
+          if (!isOpaque[indices[flat + SZ]]) continue;
+          if (!isOpaque[indices[flat - SZ]]) continue;
+          if (!isOpaque[indices[flat + 1]]) continue;
+          if (!isOpaque[indices[flat - 1]]) continue;
+
+          out[flat] = fillIdx;
+          replacedCount++;
+          savedBlocks.set(name, (savedBlocks.get(name) ?? 0) + 1);
+        }
       }
-    }
-    if (onBoundary) continue;
-
-    // Fully enclosed = all 6 neighbours are opaque
-    const allOpaque = FACE_OFFSETS.every(([dx, dy, dz]) => {
-      const ni = _zyx(x + dx, y + dy, z + dz, SY, SZ);
-      return isOpaque[indices[ni]];
-    });
-
-    if (allOpaque) {
-      out[flat] = fillIdx;
-      replacedCount++;
-      savedBlocks.set(name, (savedBlocks.get(name) ?? 0) + 1);
     }
   }
 

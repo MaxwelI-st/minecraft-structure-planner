@@ -44,6 +44,7 @@ class App {
         this.langData = {};
         this.coordsCache = new Map();     // structureId → coords[]
         this.bufferCache = new Map();     // structureId → ArrayBuffer (再パース用)
+        this.bufferFileNameCache = new Map(); // structureId → 元ファイル名 (再パース時のフォーマット判定用)
         this.replacements = new Map();    // structureId → Map<fromId, toId>
         this.preparedItems = new Map();   // structureId → Set<blockId>
         this.currentFilter = 'all';
@@ -122,11 +123,27 @@ class App {
     // ─── Worker ────────────────────────────────────────────────────────────────
     _setupWorker() {
         this.worker.onmessage = (e) => {
-            const { taskId, success, error, results, coords, size, totalCount, uniqueCount, totalSlots } = e.data;
+            const { taskId, success, error, results, coordsTA, size, totalCount, uniqueCount, totalSlots, warnings } = e.data;
+            // M-P-03: typed-array で受信した coords を消費者向けにオブジェクト配列に復元
+            let coords;
+            if (coordsTA) {
+                const { xs, ys, zs, blockIdIdx, rawIdIdx, blockIdPalette, statesArr } = coordsTA;
+                const N = xs.length;
+                coords = new Array(N);
+                for (let i = 0; i < N; i++) {
+                    const bId = blockIdPalette[blockIdIdx[i]];
+                    coords[i] = {
+                        x: xs[i], y: ys[i], z: zs[i],
+                        blockId: bId,
+                        rawId:   blockIdPalette[rawIdIdx[i]] ?? bId,
+                        states:  statesArr[i] ?? {},
+                    };
+                }
+            }
             this._hideLoading();
             const resolve = this.pendingParses.get(taskId);
             if (resolve) {
-                resolve({ success, error, results, coords, size, totalCount, uniqueCount, totalSlots });
+                resolve({ success, error, results, coords, size, totalCount, uniqueCount, totalSlots, warnings });
                 this.pendingParses.delete(taskId);
             }
         };
@@ -146,12 +163,12 @@ class App {
         });
     }
 
-    _parseBuffer(buffer) {
+    _parseBuffer(buffer, fileName) {
         return new Promise((resolve) => {
             const taskId = uid();
             this.pendingParses.set(taskId, resolve);
             this._showLoading('再解析中...');
-            this.worker.postMessage({ taskId, buffer });
+            this.worker.postMessage({ taskId, buffer, fileName });
         });
     }
 
@@ -310,6 +327,7 @@ class App {
         for (const file of mcFiles) {
             const data = await this._parseFile(file);
             if (!data.success) { this._toast(`❌ ${file.name}: ${data.error}`, 'error'); continue; }
+            for (const w of data.warnings ?? []) this._toast(w, 'warning');
             const project = this._currentProject();
             const name = file.name.replace(/\.(mcstructure|litematic|nbt)$/i, '');
             const existing = project.structures.find(s => s.name === name);
@@ -323,6 +341,7 @@ class App {
                 });
                 this.coordsCache.set(existing.id, data.coords);
                 if (buf) this.bufferCache.set(existing.id, buf);
+                this.bufferFileNameCache.set(existing.id, file.name);
                 savedId = existing.id;
                 // 既存構造の再アップロード → viewer の mesh cache を invalidate
                 if (this.viewer3d) {
@@ -331,12 +350,24 @@ class App {
                 }
             } else {
                 const s = ProjectManager.addStructure(project, { name, ...data });
+                // 既存構造があり、かつ新構造の初期 offset が 0,0,0 の場合は右端に自動配置
+                const others = project.structures.filter(st => st.id !== s.id && st.size);
+                if (others.length > 0 && s.offset.x === 0 && s.offset.y === 0 && s.offset.z === 0) {
+                    let rightEdge = 0;
+                    for (const other of others) {
+                        const off = ProjectManager.getOffset(other);
+                        const rs  = ProjectManager.rotatedSize(other.size, ProjectManager.getRotation(other));
+                        rightEdge = Math.max(rightEdge, off.x + rs.x + 1);
+                    }
+                    s.offset = { x: rightEdge, y: 0, z: 0 };
+                }
                 this.coordsCache.set(s.id, data.coords);
                 if (buf) this.bufferCache.set(s.id, buf);
+                this.bufferFileNameCache.set(s.id, file.name);
                 savedId = s.id;
             }
             if (buf && savedId) {
-                ResourcePack.saveStructureBuffer(savedId, buf, name, data.edition || 'bedrock')
+                ResourcePack.saveStructureBuffer(savedId, buf, name, data.edition || 'bedrock', file.name)
                     .catch(err => console.warn('IDB save structure failed:', err));
             }
             successCount++;
@@ -345,6 +376,8 @@ class App {
             ProjectManager.save(this.projects);
             this._toast(`🎉 ${successCount}件の解析完了！`);
             this._renderProjectView();
+        } else if (mcFiles.length > 0) {
+            this._toast('❌ すべてのファイルが失敗しました', 'error');
         }
     }
 
@@ -355,7 +388,8 @@ class App {
 
     _selectProject(id) {
         this.currentProjectId = id;
-        this._allModeOrigin = null; // プロジェクト切替で原点リセット
+        this._allModeOrigin = null;
+        this._allModeOriginProjectId = null;
         localStorage.setItem('mc_planner_last', id);
         const currentProject = this._currentProject();
         if (currentProject) {
@@ -779,94 +813,123 @@ class App {
         }
         const themeId = document.documentElement.getAttribute('data-theme') || 'dark-1';
         const showOffsetUI = project.structures.length >= 2;  // 単一構造ではノイズになるので隠す
-        project.structures.forEach(s => {
-            const card = document.createElement('div');
-            card.className = 'structure-card glass-card';
-            const hasCoords = this.coordsCache.has(s.id);
-            const off = ProjectManager.getOffset(s);
-            const init = ProjectManager.getInitialOffset(s);
-            const isInit = off.x === init.x && off.y === init.y && off.z === init.z;
-            const offsetRow = showOffsetUI ? `
-                <div class="sc-offset-row" data-sid="${s.id}">
-                    <span class="sc-offset-label">📐 位置</span>
-                    <span class="sc-off-label">X
-                        <button class="sc-off-step icon-btn" data-axis="x" data-delta="-1" title="-1">−</button>
-                        <input type="number" class="size-input sc-off-input sc-off-x" data-axis="x" step="1" value="${off.x}">
-                        <button class="sc-off-step icon-btn" data-axis="x" data-delta="1" title="+1">+</button>
-                    </span>
-                    <span class="sc-off-label">Y
-                        <button class="sc-off-step icon-btn" data-axis="y" data-delta="-1" title="-1">−</button>
-                        <input type="number" class="size-input sc-off-input sc-off-y" data-axis="y" step="1" value="${off.y}">
-                        <button class="sc-off-step icon-btn" data-axis="y" data-delta="1" title="+1">+</button>
-                    </span>
-                    <span class="sc-off-label">Z
-                        <button class="sc-off-step icon-btn" data-axis="z" data-delta="-1" title="-1">−</button>
-                        <input type="number" class="size-input sc-off-input sc-off-z" data-axis="z" step="1" value="${off.z}">
-                        <button class="sc-off-step icon-btn" data-axis="z" data-delta="1" title="+1">+</button>
-                    </span>
-                    <button class="sc-snap-btn mc-btn secondary small" title="他の構造の面に合わせる">↔ 整列</button>
-                    <button class="sc-offset-reset icon-btn" title="初期値に戻す" ${isInit ? 'disabled' : ''}>↺</button>
-                </div>
-            ` : '';
-            card.innerHTML = `
-                <div class="sc-row-main">
-                    <div class="sc-icon"><img class="sc-icon-img" data-theme-icon="logo" src="/icons/${themeId}/logo.png" alt=""></div>
-                    <div class="sc-info">
-                        <div class="sc-name">${this._escape(s.name)}</div>
-                        <div class="sc-meta">
-                            ${s.totalCount?.toLocaleString() || '?'}ブロック · ${s.uniqueCount || '?'}種類 ·
-                            ${s.size ? `${s.size.x}×${s.size.y}×${s.size.z}` : ''}
-                            ${hasCoords ? '<span class="badge-3d">3D対応</span>' : ''}
-                        </div>
+        for (const s of project.structures) {
+            list.appendChild(this._buildStructureCard(s, project, showOffsetUI, themeId));
+        }
+    }
+
+    /**
+     * 1 構造分の DOM (card 要素) を生成。ハンドラ紐付け済み。
+     * M-P-01: 単独カード更新で全カード再生成を回避するため抽出。
+     */
+    _buildStructureCard(s, project, showOffsetUI, themeId) {
+        const card = document.createElement('div');
+        card.className = 'structure-card glass-card';
+        card.dataset.sid = s.id;
+        const hasCoords = this.coordsCache.has(s.id);
+        const off = ProjectManager.getOffset(s);
+        const init = ProjectManager.getInitialOffset(s);
+        const isInit = off.x === init.x && off.y === init.y && off.z === init.z;
+        const offsetRow = showOffsetUI ? `
+            <div class="sc-offset-row" data-sid="${s.id}">
+                <span class="sc-offset-label">📐 位置</span>
+                <span class="sc-off-label">X
+                    <button class="sc-off-step icon-btn" data-axis="x" data-delta="-1" title="-1">−</button>
+                    <input type="number" class="size-input sc-off-input sc-off-x" data-axis="x" step="1" value="${off.x}">
+                    <button class="sc-off-step icon-btn" data-axis="x" data-delta="1" title="+1">+</button>
+                </span>
+                <span class="sc-off-label">Y
+                    <button class="sc-off-step icon-btn" data-axis="y" data-delta="-1" title="-1">−</button>
+                    <input type="number" class="size-input sc-off-input sc-off-y" data-axis="y" step="1" value="${off.y}">
+                    <button class="sc-off-step icon-btn" data-axis="y" data-delta="1" title="+1">+</button>
+                </span>
+                <span class="sc-off-label">Z
+                    <button class="sc-off-step icon-btn" data-axis="z" data-delta="-1" title="-1">−</button>
+                    <input type="number" class="size-input sc-off-input sc-off-z" data-axis="z" step="1" value="${off.z}">
+                    <button class="sc-off-step icon-btn" data-axis="z" data-delta="1" title="+1">+</button>
+                </span>
+                <button class="sc-snap-btn mc-btn secondary small" title="他の構造の面に合わせる">↔ 整列</button>
+                <button class="sc-offset-reset icon-btn" title="初期値に戻す" ${isInit ? 'disabled' : ''}>↺</button>
+            </div>
+        ` : '';
+        card.innerHTML = `
+            <div class="sc-row-main">
+                <div class="sc-icon"><img class="sc-icon-img" data-theme-icon="logo" src="/icons/${themeId}/logo.png" alt=""></div>
+                <div class="sc-info">
+                    <div class="sc-name">${this._escape(s.name)}</div>
+                    <div class="sc-meta">
+                        ${s.totalCount?.toLocaleString() || '?'}ブロック · ${s.uniqueCount || '?'}種類 ·
+                        ${s.size ? `${s.size.x}×${s.size.y}×${s.size.z}` : ''}
+                        ${hasCoords ? '<span class="badge-3d">3D対応</span>' : ''}
                     </div>
-                    <div class="sc-actions">
-                        <button class="mult-display mc-btn secondary small" data-sid="${s.id}">
-                            ×${s.multiplier || 1}
-                        </button>
-                        <button class="sc-remove icon-btn" data-sid="${s.id}" title="削除">✕</button>
-                    </div>
                 </div>
-                ${offsetRow}
-            `;
-            card.querySelector('.mult-display').onclick = () => {
-                this._openMultiplierModal(s.id, s.multiplier || 1);
-            };
-            card.querySelector('.sc-remove').onclick = () => {
-                if (confirm(`「${s.name}」を削除しますか？`)) {
-                    project.structures = project.structures.filter(x => x.id !== s.id);
-                    this.coordsCache.delete(s.id);
-                    this.bufferCache.delete(s.id);
-                    ResourcePack.deleteStructureBuffer(s.id).catch(()=>{});
-                    this._allModeOrigin = null; // 構造削除で原点リセット
-                    ProjectManager.save(this.projects);
-                    this._renderMaterialsTab();
-                }
-            };
-            if (showOffsetUI) {
-                card.querySelectorAll('.sc-off-input').forEach(inp => {
-                    inp.addEventListener('change', () => {
-                        this._setStructureOffset(s.id, inp.dataset.axis, parseInt(inp.value, 10) || 0);
-                    });
-                });
-                card.querySelectorAll('.sc-off-step').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        const axis = btn.dataset.axis;
-                        const delta = parseInt(btn.dataset.delta, 10);
-                        const inp = card.querySelector(`.sc-off-${axis}`);
-                        const newVal = (parseInt(inp.value, 10) || 0) + delta;
-                        inp.value = newVal;
-                        this._setStructureOffset(s.id, axis, newVal);
-                    });
-                });
-                card.querySelector('.sc-offset-reset').onclick = () => {
-                    this._resetStructureOffset(s.id);
-                };
-                card.querySelector('.sc-snap-btn').onclick = (ev) => {
-                    this._openSnapPopover(s.id, ev.currentTarget);
-                };
+                <div class="sc-actions">
+                    <button class="mult-display mc-btn secondary small" data-sid="${s.id}">
+                        ×${s.multiplier || 1}
+                    </button>
+                    <button class="sc-remove icon-btn" data-sid="${s.id}" title="削除">✕</button>
+                </div>
+            </div>
+            ${offsetRow}
+        `;
+        card.querySelector('.mult-display').onclick = () => {
+            this._openMultiplierModal(s.id, s.multiplier || 1);
+        };
+        card.querySelector('.sc-remove').onclick = () => {
+            if (confirm(`「${s.name}」を削除しますか？`)) {
+                project.structures = project.structures.filter(x => x.id !== s.id);
+                this.coordsCache.delete(s.id);
+                this.bufferCache.delete(s.id);
+                ResourcePack.deleteStructureBuffer(s.id).catch(()=>{});
+                this._allModeOrigin = null; // 構造削除で原点リセット
+                ProjectManager.save(this.projects);
+                this._renderMaterialsTab();
             }
-            list.appendChild(card);
-        });
+        };
+        if (showOffsetUI) {
+            card.querySelectorAll('.sc-off-input').forEach(inp => {
+                inp.addEventListener('change', () => {
+                    this._setStructureOffset(s.id, inp.dataset.axis, parseInt(inp.value, 10) || 0);
+                });
+            });
+            card.querySelectorAll('.sc-off-step').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const axis = btn.dataset.axis;
+                    const delta = parseInt(btn.dataset.delta, 10);
+                    const inp = card.querySelector(`.sc-off-${axis}`);
+                    const newVal = (parseInt(inp.value, 10) || 0) + delta;
+                    inp.value = newVal;
+                    this._setStructureOffset(s.id, axis, newVal);
+                });
+            });
+            card.querySelector('.sc-offset-reset').onclick = () => {
+                this._resetStructureOffset(s.id);
+            };
+            card.querySelector('.sc-snap-btn').onclick = (ev) => {
+                this._openSnapPopover(s.id, ev.currentTarget);
+            };
+        }
+        return card;
+    }
+
+    /**
+     * 単独カードを差分更新 (M-P-01)。全カード再生成より大幅に軽い。
+     * 該当カードが見つからない場合はフォールバックで _renderStructureCards 全体を呼ぶ。
+     */
+    _updateStructureCard(structureId) {
+        const project = this._currentProject();
+        if (!project) return;
+        const s = project.structures.find(x => x.id === structureId);
+        const oldCard = document.querySelector(`.structure-card[data-sid="${structureId}"]`);
+        if (!s || !oldCard) {
+            // 構造数の増減や DOM 不在ならフル再生成にフォールバック
+            this._renderStructureCards(project);
+            return;
+        }
+        const themeId = document.documentElement.getAttribute('data-theme') || 'dark-1';
+        const showOffsetUI = project.structures.length >= 2;
+        const newCard = this._buildStructureCard(s, project, showOffsetUI, themeId);
+        oldCard.replaceWith(newCard);
     }
 
     /** 1軸だけ更新して永続化＋3D再描画スケジュール */
@@ -876,7 +939,11 @@ class App {
         const s = project.structures.find(x => x.id === structureId);
         if (!s) return;
         if (!s.offset) s.offset = { x: 0, y: 0, z: 0 };
-        s.offset[axis] = value | 0;
+        const prevOffset = { ...s.offset };
+        const newVal = value | 0;
+        if (prevOffset[axis] === newVal) return; // 変化なしなら履歴に積まない
+        this._pushHistory({ type: 'offset', structureId, prevOffset });
+        s.offset[axis] = newVal;
         ProjectManager.save(this.projects);
         // リセットボタンの disabled 状態を更新するためにカードを再描画
         // ただし入力中のフォーカスを失いたくないので軽量更新だけ
@@ -890,9 +957,12 @@ class App {
         const s = project.structures.find(x => x.id === structureId);
         if (!s) return;
         const init = ProjectManager.getInitialOffset(s);
+        const prevOffset = { ...(s.offset || { x: 0, y: 0, z: 0 }) };
+        if (prevOffset.x === init.x && prevOffset.y === init.y && prevOffset.z === init.z) return;
+        this._pushHistory({ type: 'offset', structureId, prevOffset });
         s.offset = { x: init.x, y: init.y, z: init.z };
         ProjectManager.save(this.projects);
-        this._renderStructureCards(project);
+        this._updateStructureCard(structureId);
         this._scheduleViewer3DRefresh();
     }
 
@@ -977,11 +1047,13 @@ class App {
                 const baseId = baseSel.value;
                 const baseStruct = project.structures.find(s => s.id === baseId);
                 if (!baseStruct) return;
+                const prevOffset = { ...ProjectManager.getOffset(target) };
                 const newOffset = snapStructure(
                     { offset: ProjectManager.getOffset(baseStruct), size: baseStruct.size },
-                    { offset: ProjectManager.getOffset(target),     size: target.size },
+                    { offset: prevOffset, size: target.size },
                     btn.dataset.dir,
                 );
+                this._pushHistory({ type: 'offset', structureId: target.id, prevOffset });
                 target.offset = newOffset;
                 ProjectManager.save(this.projects);
                 // 入力欄の値も更新
@@ -1623,6 +1695,7 @@ class App {
         ProjectManager.save(this.projects);
         this._toast(`➕ 「${name}」を構造リストに追加しました`);
         this._renderMaterialsTab();
+        this._scheduleViewer3DRefresh();
     }
 
     _addTempPaletteBlock(id, name) {
@@ -1709,6 +1782,10 @@ class App {
             for (const [id, entry] of all.entries()) {
                 if (!entry || !entry.buffer) continue;
                 this.bufferCache.set(id, entry.buffer);
+                // 旧データには fileName が無い場合がある → edition から推測でフォールバック
+                const fn = entry.fileName
+                    || (entry.edition === 'java' ? (entry.name || 'restored') + '.litematic' : (entry.name || 'restored') + '.mcstructure');
+                this.bufferFileNameCache.set(id, fn);
             }
         } catch (e) {
             console.warn('Auto-restore structure buffers failed:', e);
@@ -1721,8 +1798,9 @@ class App {
         if (this.coordsCache.has(structureId)) return true;
         const buf = this.bufferCache.get(structureId);
         if (!buf) return false;
+        const fileName = this.bufferFileNameCache.get(structureId);
         try {
-            const data = await this._parseBuffer(buf);
+            const data = await this._parseBuffer(buf, fileName);
             this._hideLoading();
             if (data.success) {
                 this.coordsCache.set(structureId, data.coords);
@@ -1904,7 +1982,7 @@ class App {
             if (coord) {
                 const pos = `${coord.x},${coord.y},${coord.z}`;
                 this._deletedPositions.add(pos);
-                this._editHistory.push({ type: 'delete', positions: [pos] });
+                this._pushHistory({ type: 'delete', positions: [pos] });
                 this._applySlice();
                 popup.remove();
                 this._toast(`🗑️ 1ブロック削除しました`);
@@ -2028,7 +2106,7 @@ class App {
                         }
                     }
                     if (deletedInThisAction.length > 0) {
-                        this._editHistory.push({ type: 'delete', positions: deletedInThisAction });
+                        this._pushHistory({ type: 'delete', positions: deletedInThisAction });
                     }
                     this._applySlice();
                     this._rangeStart = null;
@@ -2073,13 +2151,65 @@ class App {
         }
     }
 
+    /** Undo 履歴に1件追加。MAX_UNDO を超えたら古い方から捨てる。 */
+    _pushHistory(entry) {
+        const MAX_UNDO = 50;
+        this._editHistory.push(entry);
+        if (this._editHistory.length > MAX_UNDO) {
+            this._editHistory.splice(0, this._editHistory.length - MAX_UNDO);
+        }
+    }
+
     _undoLastAction() {
         if (this._editHistory.length === 0) { this._toast('履歴がありません', 'info'); return; }
         const last = this._editHistory.pop();
-        if (last.type === 'delete') {
-            last.positions.forEach(p => this._deletedPositions.delete(p));
-            this._applySlice();
-            this._toast(`↺ ${last.positions.length}ブロックの削除を取り消しました`);
+        const project = this._currentProject();
+        switch (last.type) {
+            case 'delete': {
+                last.positions.forEach(p => this._deletedPositions.delete(p));
+                this._applySlice();
+                this._toast(`↺ ${last.positions.length}ブロックの削除を取り消しました`);
+                break;
+            }
+            case 'offset': {
+                const s = project?.structures.find(st => st.id === last.structureId);
+                if (s) {
+                    s.offset = { ...last.prevOffset };
+                    ProjectManager.save(this.projects);
+                    this._renderV3dOffsetPanel(project);
+                    this._scheduleViewer3DRefresh();
+                    this._toast(`↺ ${s.name} の位置を戻しました`);
+                }
+                break;
+            }
+            case 'rotation': {
+                const s = project?.structures.find(st => st.id === last.structureId);
+                if (s) {
+                    s.rotation = last.prevRotation;
+                    ProjectManager.save(this.projects);
+                    this._renderV3dOffsetPanel(project);
+                    this._scheduleViewer3DRefresh();
+                    this._toast(`↺ ${s.name} の回転を戻しました`);
+                }
+                break;
+            }
+            case 'multi-offset': {
+                if (project && Array.isArray(last.entries)) {
+                    for (const e of last.entries) {
+                        const s = project.structures.find(st => st.id === e.structureId);
+                        if (!s) continue;
+                        if (e.prevOffset)   s.offset   = { ...e.prevOffset };
+                        if (e.prevRotation !== undefined) s.rotation = e.prevRotation;
+                    }
+                    ProjectManager.save(this.projects);
+                    this._renderV3dOffsetPanel(project);
+                    this._scheduleViewer3DRefresh();
+                    this._toast(`↺ ${last.entries.length}個の構造配置を戻しました`);
+                }
+                break;
+            }
+            default:
+                this._toast('対応していない履歴タイプ: ' + last.type, 'info');
         }
     }
 
@@ -2345,10 +2475,17 @@ class App {
     _attachAltDragCallbacks() {
         if (!this.viewer3d) return;
 
-        // ドラッグ開始: どの建造物か特定してハイライト（ラベル付き）
+        // ドラッグ開始: どの建造物か特定してハイライト（ラベル付き）+ 開始時 offset をスナップショット
         this.viewer3d.onAltDragStart = ({ coord, axis }) => {
             this._altDragStructureId = coord?.structureId ?? null;
             this._altDragAccum = 0;
+            this._altDragMoved = false;
+            // Undo 用に開始時オフセットを保存
+            if (this._altDragStructureId) {
+                const project = this._currentProject();
+                const s = project?.structures.find(st => st.id === this._altDragStructureId);
+                if (s) this._altDragOffsetSnapshot = { ...ProjectManager.getOffset(s) };
+            }
             this.viewer3d.clearStructureHighlight();
             if (this._altDragStructureId && this._structureBounds) {
                 const bounds = this._structureBounds.get(this._altDragStructureId);
@@ -2360,10 +2497,19 @@ class App {
             }
         };
 
-        // ドラッグ終了: ハイライト解除
+        // ドラッグ終了: ハイライト解除 + 移動があれば Undo 履歴へ push
         this.viewer3d.onAltDragEnd = () => {
             this.viewer3d.clearStructureHighlight();
+            if (this._altDragMoved && this._altDragStructureId && this._altDragOffsetSnapshot) {
+                this._pushHistory({
+                    type: 'offset',
+                    structureId: this._altDragStructureId,
+                    prevOffset: this._altDragOffsetSnapshot,
+                });
+            }
             this._altDragStructureId = null;
+            this._altDragOffsetSnapshot = null;
+            this._altDragMoved = false;
         };
 
         // ドラッグ中: ピクセル累積 → ブロック単位で offset を更新 + ハイライト追従
@@ -2383,6 +2529,7 @@ class App {
             if (!s) return;
             const off = ProjectManager.getOffset(s);
             s.offset = { ...off, [axis]: off[axis] + blocks };
+            this._altDragMoved = true;
             ProjectManager.save(this.projects);
             // offset パネルの数値も即時更新
             const inp = document.querySelector(`.v3dp-inp[data-sid="${s.id}"][data-axis="${axis}"]`);
@@ -2408,6 +2555,9 @@ class App {
             return;
         }
 
+        // Undo 用: 変更前の全構造 offset をスナップショット
+        const snapshot = arr.map(s => ({ structureId: s.id, prevOffset: { ...ProjectManager.getOffset(s) } }));
+
         const base = ProjectManager.getOffset(arr[0]);
         const baseY = base.y, baseZ = base.z;
         let cursor = base.x + ProjectManager.rotatedSize(arr[0].size, ProjectManager.getRotation(arr[0])).x;
@@ -2419,6 +2569,7 @@ class App {
             cursor = s.offset.x + rs.x;
         }
 
+        this._pushHistory({ type: 'multi-offset', entries: snapshot });
         ProjectManager.save(this.projects);
         // 表示座標が大きく変わるので原点もリセット → 再フィット
         this._allModeOrigin = null;
@@ -2527,6 +2678,7 @@ class App {
                 btn.addEventListener('click', () => {
                     const delta = parseInt(btn.dataset.delta, 10);
                     const cur = ProjectManager.getRotation(s);
+                    this._pushHistory({ type: 'rotation', structureId: s.id, prevRotation: cur });
                     s.rotation = ((cur + delta) % 4 + 4) % 4;
                     ProjectManager.save(this.projects);
                     row.querySelector('.v3dp-rot-val').textContent = rotLabels2[s.rotation];

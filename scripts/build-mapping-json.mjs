@@ -1,7 +1,7 @@
 /**
  * build-mapping-json.mjs
  *
- * test/block/ の各パートファイル（配列形式）を読み込み、
+ * data/be_to_je_mapping_source/ の各パートファイル（配列形式）を読み込み、
  * be-to-je.js が期待するフラットなキー形式の JSON に変換して
  * public/data/be_to_je_block_mapping.json として出力する。
  *
@@ -61,29 +61,30 @@ function convertArrayMap(arrayMap) {
 
 // ── パートファイル一覧 ────────────────────────────────────────────────────────
 
+const MAPPING_SRC_DIR = 'data/be_to_je_mapping_source';
 const PART_FILES = [
   // Part 1: stone, slabs, logs, planks (配列形式)
-  'test/block/be_to_je_block_mapping.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping.js`,
   // Part 2a: stairs, doors, oak/spruce/birch trapdoors
-  'test/block/be_to_je_block_mapping_part2a.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part2a.js`,
   // Part 2b: trapdoors (jungle-iron), fences, walls, panes, iron bars
-  'test/block/be_to_je_block_mapping_part2b.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part2b.js`,
   // Part 3: fence gates, buttons, levers, pressure plates, rails
-  'test/block/be_to_je_block_mapping_part3.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part3.js`,
   // Part 4: wool, concrete, concrete_powder, terracotta, carpet, stained glass
-  'test/block/be_to_je_block_mapping_part4.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part4.js`,
   // Part 5: glazed terracotta, shulker boxes, beds
-  'test/block/be_to_je_block_mapping_part5.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part5.js`,
   // Part 6: signs, containers (chest, barrel, furnace, hopper, dropper, dispenser)
-  'test/block/be_to_je_block_mapping_part6.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part6.js`,
   // Part 7: leaves, saplings, basic blocks, crops, wood variants
-  'test/block/be_to_je_block_mapping_part7.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part7.js`,
   // Part 8: redstone components (repeater, comparator, piston, torch, etc.)
-  'test/block/be_to_je_block_mapping_part8.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part8.js`,
   // Part 9: nether, deepslate, copper, end, stone variants
-  'test/block/be_to_je_block_mapping_part9.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part9.js`,
   // Part 10: flowers, plants, ores, misc building blocks, sculk, bamboo
-  'test/block/be_to_je_block_mapping_part10.js',
+  `${MAPPING_SRC_DIR}/be_to_je_block_mapping_part10.js`,
 ];
 
 // ── メイン処理 ────────────────────────────────────────────────────────────────

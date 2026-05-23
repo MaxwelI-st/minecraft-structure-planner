@@ -590,9 +590,13 @@ export class BeToJeConverter {
     const waterlogCache = new Map();
 
     for (let i = 0; i < total; i++) {
-      const be0 = layer0Indices[i];
-      const be1 = layer1Indices[i];
-      const jeIdx = beToJeIndexMap[be0 < 0 ? 0 : be0];
+      const be0Raw = layer0Indices[i];
+      // H-B-07: layer0 が負値 (Bedrock の "no block") の時は layer1 の waterlog 情報も
+      //         無効化して air を出力する。 layer0/layer1 の不整合を防ぐ明示的ガード。
+      const be0IsAir = be0Raw < 0;
+      const be0 = be0IsAir ? 0 : be0Raw;
+      const be1 = be0IsAir ? -1 : layer1Indices[i];
+      const jeIdx = beToJeIndexMap[be0];
 
       if (be1 !== -1) {
         if (!waterlogCache.has(jeIdx)) {

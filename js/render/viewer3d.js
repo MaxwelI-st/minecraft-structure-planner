@@ -8,6 +8,8 @@ import { resolveGeometry, classifyShape } from '../blockshapes.js';
 import { normalizeBedrockBlock } from '../bedrock_normalize.js';
 import { _getState, _isTrue } from '../blockshapes.js';
 import { BlockInstancingManager } from './BlockInstancingManager.js';
+import { getVisualHints } from '../modules/logic/bedrock_visual_state.js';
+import { computeWireConnections, encodeConnections } from '../modules/logic/redstone_wire_connect.js';
 
 // ─── バイオームカラー定数 ──────────────────────────────────────────────────
 // 平原バイオーム準拠（Minecraft 標準）
@@ -136,6 +138,7 @@ export class Viewer3D {
         this._lastCoords = null; this._lastSize = null; this._lastOptions = null;
         this._highlightedBlockId = null;
         this._highlightedBlockIds = new Set(); // マルチハイライト用
+        this._pulseTargetMeshes = null; // パルスアニメーション対象 mesh キャッシュ (_animate で構築)
         this.pulseHighlight = false; // パルス点滅をデフォルト無効（チカチカ防止）
         // 置換を再適用して再描画が必要な場合に呼び出すコールバック（app.js がセット）
         this.onNeedsReload = null;
@@ -161,7 +164,14 @@ export class Viewer3D {
     /** WebGL リソースとイベントの解放 */
     destroy() {
         if (!this.isInitialized) return;
-        
+
+        for (const mesh of this._structureHighlightMeshes ?? []) {
+            mesh.geometry?.dispose();
+            mesh.material?.dispose();
+            this.scene?.remove(mesh);
+        }
+        this._structureHighlightMeshes = [];
+
         if (this.blockManager) {
             this.blockManager.disposeAll();
             this.blockManager = null;
@@ -507,13 +517,25 @@ export class Viewer3D {
         requestAnimationFrame(() => this._animate());
         // マルチハイライトのパルスアニメーション (デフォルト無効 — pulseHighlight=true で有効化)
         if (this.pulseHighlight && this._highlightedBlockIds.size > 0 && this.meshes.length > 0) {
-            const pulse = 0.65 + 0.35 * Math.sin(Date.now() / 400);
-            const THREE = window.THREE;
-            const hlColor = new THREE.Color(0.1, pulse, pulse);
-            for (const mesh of this.meshes) {
-                if (!mesh.instanceColor || !mesh.userData.blockId) continue;
-                if (this._highlightedBlockIds.has(mesh.userData.blockId.toLowerCase())) {
-                    for (let i = 0; i < mesh.count; i++) mesh.setColorAt(i, hlColor);
+            // ハイライト対象 mesh は毎フレーム filter せずキャッシュ
+            // _highlightedBlockIds 変更 or mesh 再生成のたびに setHighlightBlocks() でリセットされる
+            if (!this._pulseTargetMeshes) {
+                this._pulseTargetMeshes = this.meshes.filter(m =>
+                    m.instanceColor && m.userData.blockId &&
+                    this._highlightedBlockIds.has(m.userData.blockId.toLowerCase())
+                );
+            }
+            if (this._pulseTargetMeshes.length > 0) {
+                const pulse = 0.65 + 0.35 * Math.sin(Date.now() / 400);
+                const r = 0.1, g = pulse, b = pulse;
+                // setColorAt のループは関数呼び出しオーバーヘッドが大きいため、
+                // 内部の typed array に直接書き込む (3要素/インスタンス、float32)
+                for (const mesh of this._pulseTargetMeshes) {
+                    const arr = mesh.instanceColor.array;
+                    const n = mesh.count * 3;
+                    for (let i = 0; i < n; i += 3) {
+                        arr[i] = r; arr[i + 1] = g; arr[i + 2] = b;
+                    }
                     mesh.instanceColor.needsUpdate = true;
                 }
             }
@@ -528,6 +550,19 @@ export class Viewer3D {
         const { yMin = 0, yMax = 999, xMin = 0, xMax = 9999, zMin = 0, zMax = 9999, colorMode, autoFocus = true } = options;
         if (colorMode) this.colorMode = colorMode;
         this._lastCoords = coords; this._lastSize = size; this._lastOptions = { yMin, yMax, xMin, xMax, zMin, zMax };
+        this._pulseTargetMeshes = null; // mesh 再生成のため、パルスキャッシュ無効化
+
+        // ─── near/far は size が変わるたびに常に更新（autoFocus 不問） ──────────
+        if (size && size.x !== undefined) {
+            const maxDim = Math.max(size.x, size.y, size.z);
+            // ドラッグ後に構造が far クリップ外に消えないよう十分な余裕を取る
+            const newFar = Math.max(500, maxDim * 12);
+            if (newFar !== this.camera.far) {
+                this.camera.near = Math.max(0.1, maxDim * 0.001);
+                this.camera.far  = newFar;
+                this.camera.updateProjectionMatrix();
+            }
+        }
 
         // ─── オートフォーカス（注視点と距離の自動調整） ───────────────────────
         if (autoFocus && size && size.x !== undefined) {
@@ -535,9 +570,12 @@ export class Viewer3D {
             this.target.x = size.x / 2;
             this.target.y = size.y / 2;
             this.target.z = size.z / 2;
-            // 最大辺の約1.5～2.0倍の距離を確保して全体を映す
+            // 最大辺の約1.5倍の距離を確保
             const maxDim = Math.max(size.x, size.y, size.z);
             this.spherical.radius = Math.max(10, maxDim * 1.5);
+            // 平面構造判定: y が x/z の 1/5 未満 → 上方視点に寄せる
+            const isFlat = size.y < size.x / 5 && size.y < size.z / 5;
+            this.spherical.phi = isFlat ? 0.22 : 0.8;
             this._updateCamera();
         }
 
@@ -559,42 +597,44 @@ export class Viewer3D {
         // 次の描画のために配置数をリセット
         this.blockManager.clearInstances();
 
-        // Yフィルタおよび Air 除去を適用
-        const filtered = coords.filter(c => {
-            if (c.y < yMin || c.y > yMax) return false;
-            if (c.x < xMin || c.x > xMax) return false;
-            if (c.z < zMin || c.z > zMax) return false;
+        // ─── 1-pass: filter + blockMap + visiblePosSet + opaquePosSet 同時構築 ─
+        // 数値キー (15 bit/axis = 32768 範囲、±16384) で string concat を排除
+        const POS_OFFSET = 16384, POS_RANGE = 32768, POS_RANGE2 = POS_RANGE * POS_RANGE;
+        const encodePos = (x, y, z) =>
+            (x + POS_OFFSET) * POS_RANGE2 + (y + POS_OFFSET) * POS_RANGE + (z + POS_OFFSET);
+
+        const filtered = [];
+        const blockMap = new Map();      // numeric key → coord
+        const visiblePosSet = new Set(); // numeric keys
+        const opaquePosSet = new Set();
+        for (const c of coords) {
+            const k = encodePos(c.x, c.y, c.z);
+            blockMap.set(k, c);
+            const inRange = c.y >= yMin && c.y <= yMax
+                         && c.x >= xMin && c.x <= xMax
+                         && c.z >= zMin && c.z <= zMax;
+            if (!inRange) continue;
             const bid = c.blockId.toLowerCase();
-            if (bid === 'minecraft:air' || bid === 'air') return false;
-            return true;
-        });
+            if (bid === 'minecraft:air' || bid === 'air') continue;
+            filtered.push(c);
+            visiblePosSet.add(k);
+            if (!_isTransparent(c.blockId)) opaquePosSet.add(k);
+        }
         if (filtered.length === 0) return;
 
-        // ─── 隣接ブロック検索用マップ ─────────────────────────────────────
-        // キー: "x,y,z" → ブロック情報 { blockId, states }
-        const blockMap = new Map();
-        for (const c of coords) blockMap.set(`${c.x},${c.y},${c.z}`, c);
-
-        /** 座標 (x,y,z) のブロックを取得する関数 */
-        const getBlock = (x, y, z) => blockMap.get(`${x},${y},${z}`) || null;
-
-        // ─── 断面表示（スライス）でも中身が詰まって見えるようにするための動的カリング ───
-        // 1. 現在のフィルタ（Y軸など）を通過したブロックのみを Set に入れる
-        const visiblePosSet = new Set();
-        const opaquePosSet = new Set();
-        for (const c of filtered) {
-            visiblePosSet.add(`${c.x},${c.y},${c.z}`);
-            if (!_isTransparent(c.blockId)) {
-                opaquePosSet.add(`${c.x},${c.y},${c.z}`);
-            }
-        }
+        /** 座標 (x,y,z) のブロックを取得 */
+        const getBlock = (x, y, z) => blockMap.get(encodePos(x, y, z)) || null;
 
         /** 周囲が不透過ブロックで囲まれているか判定（カリング用） */
-        const isOccluded = (x, y, z) => opaquePosSet.has(`${x},${y},${z}`);
+        const isOccluded = (x, y, z) => opaquePosSet.has(encodePos(x, y, z));
 
         // ─── 形状シグネチャでグループ化（同一形状をまとめて InstancedMesh へ）
         // 階段はコーナー形状が隣接依存なので、シグネチャに隣接情報も含める
+        // visualHints (facing/face) は per-instance Matrix4 で扱うため sig には含めない
+        // dust の接続パターンは形状が変わるので sig に含める
         const groups = new Map();
+        // visualHints は coord ごとに必要なので、Map<coord-ref, hints> でキャッシュ
+        const coordHints = new WeakMap();
         for (const c of filtered) {
             // 全方位が「現在表示されている不透過ブロック」に囲まれているなら、そのブロック自体を描画しない
             // （ただし透過ブロックは常に描画）
@@ -609,10 +649,10 @@ export class Viewer3D {
 
             // フェンス/壁/ペイン用の接続フラグ（これは「現在表示されているか」で判定）
             const neighbors = {
-                n: visiblePosSet.has(`${c.x},${c.y},${c.z - 1}`),
-                s: visiblePosSet.has(`${c.x},${c.y},${c.z + 1}`),
-                w: visiblePosSet.has(`${c.x - 1},${c.y},${c.z}`),
-                e: visiblePosSet.has(`${c.x + 1},${c.y},${c.z}`)
+                n: visiblePosSet.has(encodePos(c.x,     c.y, c.z - 1)),
+                s: visiblePosSet.has(encodePos(c.x,     c.y, c.z + 1)),
+                w: visiblePosSet.has(encodePos(c.x - 1, c.y, c.z)),
+                e: visiblePosSet.has(encodePos(c.x + 1, c.y, c.z))
             };
 
             // 階段コーナー判定用の隣接ブロック情報（blockId + states 付き）
@@ -633,11 +673,50 @@ export class Viewer3D {
                 const nbStr = (b) => b ? `${b.blockId}:${b.states?.weirdo_direction ?? b.states?.facing ?? ''}` : 'null';
                 stairCornerSig = `|stairs[${nbStr(nb.n)},${nbStr(nb.s)},${nbStr(nb.w)},${nbStr(nb.e)}]`;
             }
-            const sig = _shapeSignature(c.blockId, c.states) + neighborSig + stairCornerSig;
+
+            // Redstone 関連の visual hints を取得
+            let hints = getVisualHints(c.blockId, c.states);
+            let dustSig = '';
+            let effectiveStates = c.states;
+            let repeaterSig = '';
+            let comparatorSig = '';
+            if (c.blockId === 'minecraft:redstone_wire') {
+                // 接続フラグを計算 (完全 MC 準拠)
+                const conn = computeWireConnections(c, getBlock);
+                const code = encodeConnections(conn);
+                dustSig = `|d${code}`;
+                // 接続情報を states にコピー (builder が読む)
+                effectiveStates = { ...(c.states || {}), __dust_conn: conn };
+                hints = { ...(hints || {}), connections: conn };
+            } else if (
+                c.blockId === 'minecraft:repeater' ||
+                c.blockId === 'minecraft:unpowered_repeater' ||
+                c.blockId === 'minecraft:powered_repeater'
+            ) {
+                // リピーター: delay 1..4 を states と sig に注入 (前トーチ位置が変わる)
+                const delay = hints?.delay ?? 1;
+                repeaterSig = `|del${delay}`;
+                effectiveStates = { ...(c.states || {}), __repeater_delay: delay };
+            } else if (
+                c.blockId === 'minecraft:comparator' ||
+                c.blockId === 'minecraft:unpowered_comparator' ||
+                c.blockId === 'minecraft:powered_comparator'
+            ) {
+                // コンパレーター: subtract モードを states と sig に注入
+                // (subtract モードは back torch を高く描く)
+                const subtract = hints?.mode === 'subtract';
+                comparatorSig = `|m${subtract ? 's' : 'c'}`;
+                effectiveStates = { ...(c.states || {}), __comparator_subtract: subtract };
+            }
+
+            const sig = _shapeSignature(c.blockId, c.states) + neighborSig + stairCornerSig + dustSig + repeaterSig + comparatorSig;
+
+            // 後段 (addBlockInstance) で coord → hints を引けるよう保存
+            if (hints) coordHints.set(c, hints);
 
             if (!groups.has(sig)) {
                 groups.set(sig, {
-                    blockId: c.blockId, rawId: c.rawId, states: c.states,
+                    blockId: c.blockId, rawId: c.rawId, states: effectiveStates,
                     neighbors, neighborBlocks, list: []
                 });
             }
@@ -652,12 +731,17 @@ export class Viewer3D {
         
         const hlColor = new THREE.Color(0xffff00); // 黄色でハイライト
         const normalColor = new THREE.Color(0xffffff);
+        const wireScratchColor = new THREE.Color(); // redstone_wire の per-instance 色用
 
         for (const [sig, grp] of groups.entries()) {
             const { blockId, rawId, states, neighbors, neighborBlocks, list } = grp;
             const requiredInstances = list.length;
-            
+
             const isGrass = _isGrassBlock(blockId) && this.colorMode === 'realtexture';
+            const isRedstoneWire = (blockId === 'minecraft:redstone_wire');
+            const isRedstoneTorch = (blockId === 'minecraft:redstone_torch'
+                                  || blockId === 'minecraft:unlit_redstone_torch'
+                                  || blockId === 'minecraft:redstone_wall_torch');
 
             let geo = boxGeo;
             try {
@@ -689,7 +773,7 @@ export class Viewer3D {
                 // 1. 土ベース（内側の不透明な土ブロック）
                 const matBase = this._buildMaterial(THREE, blockId, rawId, states, 'base');
                 this.blockManager.registerBlockType(sig + '_base', geo, matBase, blockId, requiredInstances);
-                
+
                 // 2. 草オーバーレイ（外側の透過テクスチャ）
                 const matOverlay = this._buildMaterial(THREE, blockId, rawId, states, 'overlay');
                 const overlayGeo = geo.clone();
@@ -697,15 +781,33 @@ export class Viewer3D {
                 this.blockManager.registerBlockType(sig + '_overlay', overlayGeo, matOverlay, blockId, requiredInstances);
 
                 for (let i = 0; i < list.length; i++) {
-                    this.blockManager.addBlockInstance(sig + '_base', list[i], isHighlighted, normalColor, hlColor);
-                    this.blockManager.addBlockInstance(sig + '_overlay', list[i], isHighlighted, normalColor, hlColor);
+                    const hints = coordHints.get(list[i]) || null;
+                    this.blockManager.addBlockInstance(sig + '_base', list[i], isHighlighted, normalColor, hlColor, hints);
+                    this.blockManager.addBlockInstance(sig + '_overlay', list[i], isHighlighted, normalColor, hlColor, hints);
                 }
             } else {
                 const mat = this._buildMaterial(THREE, blockId, rawId, states, 'all');
                 // マネージャーにブロックタイプを登録（容量不足時は自動拡張）
                 this.blockManager.registerBlockType(sig, geo, mat, blockId, requiredInstances);
                 for (let i = 0; i < list.length; i++) {
-                    this.blockManager.addBlockInstance(sig, list[i], isHighlighted, normalColor, hlColor);
+                    const hints = coordHints.get(list[i]) || null;
+                    // Redstone Wire: 信号レベルに応じた赤の濃淡 (per-instance color)
+                    // MC は power=0 で非常に暗いが、planner ツールでは視認性のため底上げ。
+                    let instColor = normalColor;
+                    if (isRedstoneWire) {
+                        const power = list[i].states?.redstone_signal ?? 0;
+                        const p = Math.max(0, Math.min(15, power)) / 15;
+                        const intensity = 0.55 + p * 0.45; // 0.55..1.00
+                        wireScratchColor.setRGB(intensity, intensity * 0.15, intensity * 0.08);
+                        instColor = wireScratchColor;
+                    } else if (isRedstoneTorch) {
+                        // 点灯: 鮮やかな赤 / 消灯: 暗い赤
+                        const lit = (hints?.lit !== false) && (blockId !== 'minecraft:unlit_redstone_torch');
+                        if (lit) wireScratchColor.setRGB(1.0, 0.25, 0.20);
+                        else     wireScratchColor.setRGB(0.45, 0.10, 0.10);
+                        instColor = wireScratchColor;
+                    }
+                    this.blockManager.addBlockInstance(sig, list[i], isHighlighted, instColor, hlColor, hints);
                 }
             }
         }
@@ -744,6 +846,7 @@ export class Viewer3D {
     setHighlightBlocks(ids, opts = {}) {
         this._highlightedBlockIds = new Set(ids.map(id => id.toLowerCase()));
         if (opts.pulse !== undefined) this.pulseHighlight = opts.pulse;
+        this._pulseTargetMeshes = null; // パルス対象キャッシュ無効化
         if (!this.isInitialized) return;
         const THREE = window.THREE;
         const normalColor = new THREE.Color(1, 1, 1);
@@ -786,7 +889,8 @@ export class Viewer3D {
             const maxDim = Math.max(size.x, size.y, size.z);
             this.spherical.radius = Math.max(10, maxDim * 1.5);
             this.spherical.theta = 0.5;
-            this.spherical.phi = 0.8;
+            const isFlat = size.y < size.x / 5 && size.y < size.z / 5;
+            this.spherical.phi = isFlat ? 0.22 : 0.8;
             this._updateCamera();
         }
     }
@@ -805,6 +909,55 @@ export class Viewer3D {
             : '';
         const cacheKey = this.colorMode + '::' + blockId + '|' + (rawId || '') + '|' + stateSig + '|' + layer;
         if (this._matCache.has(cacheKey)) return this._matCache.get(cacheKey);
+
+        // Redstone wire / torch: 白マテリアルにして per-instance 色 (赤の濃淡) を素直に出す
+        if (blockId === 'minecraft:redstone_wire' ||
+            blockId === 'minecraft:redstone_torch' ||
+            blockId === 'minecraft:unlit_redstone_torch' ||
+            blockId === 'minecraft:redstone_wall_torch') {
+            const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            this._matCache.set(cacheKey, mat);
+            return mat;
+        }
+
+        // Repeater/Comparator + 方向性キューブ系: index 6 にマーカーマテリアル
+        // (実テクスチャは既存パイプライン経由で取得し、index 6 を append する)
+        const isPistonLike =
+            blockId === 'minecraft:piston' || blockId === 'minecraft:sticky_piston';
+        const isObserverLike = blockId === 'minecraft:observer';
+        const isDispenserLike =
+            blockId === 'minecraft:dispenser' || blockId === 'minecraft:dropper' ||
+            blockId === 'minecraft:crafter';
+        const isRepeaterLike =
+            blockId === 'minecraft:repeater' || blockId === 'minecraft:unpowered_repeater' ||
+            blockId === 'minecraft:powered_repeater';
+        const isComparatorLike =
+            blockId === 'minecraft:comparator' || blockId === 'minecraft:unpowered_comparator' ||
+            blockId === 'minecraft:powered_comparator';
+        const isDirectional = isPistonLike || isObserverLike || isDispenserLike ||
+                              isRepeaterLike || isComparatorLike;
+        const _getMarkerMat = () => {
+            let markerColor = 0x303030;
+            if (isPistonLike) {
+                markerColor = (blockId === 'minecraft:sticky_piston') ? 0x4ac74a : 0xc89060;
+            } else if (isObserverLike) {
+                markerColor = 0xff3030;
+            } else if (isDispenserLike) {
+                markerColor = 0x202020;
+            } else if (isRepeaterLike || isComparatorLike) {
+                // リピーター/コンパレーターのトーチは赤
+                const powered = (blockId === 'minecraft:powered_repeater') ||
+                                (blockId === 'minecraft:powered_comparator');
+                markerColor = powered ? 0xff3030 : 0x6a1414;
+            }
+            const opts = { color: markerColor };
+            if (isRepeaterLike || isComparatorLike) {
+                const powered = (blockId === 'minecraft:powered_repeater') ||
+                                (blockId === 'minecraft:powered_comparator');
+                opts.emissive = powered ? 0x661414 : 0x000000;
+            }
+            return new THREE.MeshLambertMaterial(opts);
+        };
 
         const shape = classifyShape(blockId, states);
         const hasAlpha = _hasTransparency(blockId);
@@ -887,7 +1040,8 @@ export class Viewer3D {
                         return m;
                     };
 
-                    const multiMatShapes = ['cube', 'hopper', 'anvil', 'scaffolding', 'stairs', 'slab', 'lantern', 'campfire', 'bed', 'flower_pot', 'ladder', 'shelf', 'hanging_sign'];
+                    // M-V-1: 方向性ブロック (piston/observer/dispenser/repeater/comparator) も 6 面テクスチャを使う
+                    const multiMatShapes = ['cube', 'hopper', 'anvil', 'scaffolding', 'stairs', 'slab', 'lantern', 'campfire', 'bed', 'flower_pot', 'ladder', 'shelf', 'hanging_sign', 'piston', 'observer', 'dispenser', 'repeater', 'comparator'];
                     if (multiMatShapes.includes(shape)) {
                         // 草ブロックの各面に対してバイオームカラーを適切に適用
                         const applyGrassTint = (face) => {
@@ -904,6 +1058,8 @@ export class Viewer3D {
                             mkMat(urls.south,  'south',  applyGrassTint('south')),
                             mkMat(urls.north,  'north',  applyGrassTint('north')),
                         ];
+                        // M-V-1: 方向性ブロックは index 6 にマーカーマテリアルを追加
+                        if (isDirectional) arr.push(_getMarkerMat());
                         this._matCache.set(cacheKey, arr);
                         return arr;
                     } else {
@@ -937,6 +1093,12 @@ export class Viewer3D {
             matOpts.opacity = 0.85;
         }
         const mat = new THREE.MeshLambertMaterial(matOpts);
+        // M-V-1: 方向性ブロックは 7 要素配列にして index 6 にマーカー
+        if (isDirectional) {
+            const arr = [mat, mat, mat, mat, mat, mat, _getMarkerMat()];
+            this._matCache.set(cacheKey, arr);
+            return arr;
+        }
         this._matCache.set(cacheKey, mat);
         return mat;
     }

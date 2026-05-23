@@ -23,6 +23,8 @@ import { invertStructure, hollowOut,
          applyLightPatch }                       from '../modules/logic/invert.js';
 import { planScaffolding }                       from '../modules/logic/scaffold.js';
 import { mergeStructures }                       from '../modules/logic/merge.js';
+import { normalizeJavaPalette }                  from '../modules/logic/java_id_normalize.js';
+import { auditRedstoneStates, recomputeWireConnections } from '../modules/logic/redstone_audit.js';
 import { ProjectManager }                         from '../core/project-manager.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -464,8 +466,31 @@ async function _convertParsedToLitematic(taskId, parsed, config = {}) {
   // ── Step 3: Convert Bedrock palette → Java palette ──────────────────────
   sendProgress(taskId, 0.25, `Converting ${bedrockPalette.length} palette entries…`);
   const converter = new BeToJeConverter(mappingMap);
-  const { javaPalette, beToJeIndexMap, warnings: paletteWarnings } =
+  let { javaPalette, beToJeIndexMap, warnings: paletteWarnings } =
     converter.convertPalette(bedrockPalette, layer1Indices, totalBlocks);
+
+  // ── P1-B: Java ID正規化（単数/複数ゆれ修正） ─────────────────────────────
+  ({ palette: javaPalette } = normalizeJavaPalette(javaPalette));
+
+  // ── P1-A: OderSo互換モード — 危険ブロック安全化 ─────────────────────────
+  if (config.odersoCompat) {
+    const { sanitizeForOderso } = await import('../modules/logic/oderso_compat.js');
+    const sanitized = sanitizeForOderso(javaPalette);
+    javaPalette = sanitized.palette;
+    if (sanitized.log.length > 0) {
+      self.postMessage({ type: 'odersoSanitizeWarning', log: sanitized.log });
+    }
+  }
+
+  // ── Phase 3: Redstone state audit — 欠落 state を補完して Java で読み込めるようにする
+  // パレット単位の処理なのでブロック数に対して O(palette.length) で軽量
+  {
+    const audited = auditRedstoneStates(javaPalette);
+    javaPalette = audited.palette;
+    if (audited.auditLog.length > 0) {
+      self.postMessage({ type: 'redstoneAuditWarning', log: audited.auditLog });
+    }
+  }
 
   // ── Step 4: Build flat Java index array (with waterlogging) ─────────────
   sendProgress(taskId, 0.35, 'Applying waterlogging…');
@@ -481,6 +506,21 @@ async function _convertParsedToLitematic(taskId, parsed, config = {}) {
     for (let i = 0; i < totalBlocks; i++) {
       const be0 = layer0Indices[i];
       javaIndices[i] = beToJeIndexMap[be0 < 0 ? 0 : be0];
+    }
+  }
+
+  // ── Step 4.5: Redstone Wire の接続フラグ再計算 (Phase 3 - 柱 6/7) ────────
+  // Java クライアントが正しく接続して描画できるよう、隣接情報から north/south/east/west を算出
+  sendProgress(taskId, 0.45, 'Recomputing redstone wire connections…');
+  {
+    const wireResult = recomputeWireConnections(javaIndices, javaPalette, SX, SY, SZ);
+    javaIndices = wireResult.indices;
+    javaPalette = wireResult.palette;
+    if (wireResult.wireCount > 0) {
+      self.postMessage({
+        type: 'redstoneWireInfo',
+        message: `${wireResult.wireCount} 個の redstone_wire を ${wireResult.newEntries} 種類の接続パターンに分類`,
+      });
     }
   }
 
@@ -659,7 +699,8 @@ async function _loadMappingMap() {
   if (_cachedMappingMap) return _cachedMappingMap;
 
   try {
-    const response = await fetch('/data/be_to_je_block_mapping.json');
+    const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || './';
+    const response = await fetch(baseUrl + 'data/be_to_je_block_mapping.json');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const json = await response.json();
     _cachedMappingMap = new Map(Object.entries(json));
@@ -707,7 +748,10 @@ async function _gzip(buffer) {
     return outBuffer.buffer;
 
   } else {
-    throw new Error('CompressionStream API is not available in this browser. Please use a modern browser (Chrome 80+, Firefox 113+, Safari 16.4+).');
+    // フォールバック: pako (legacy browsers)
+    const { gzip } = await import('pako');
+    const compressed = gzip(new Uint8Array(buffer));
+    return compressed.buffer;
   }
 }
 

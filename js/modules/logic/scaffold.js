@@ -47,6 +47,17 @@ const key3 = (x, y, z) => `${x},${y},${z}`;
 /** Decode a string key back to [x, y, z]. */
 const decode3 = k => k.split(',').map(Number);
 
+/**
+ * Numeric key for hot loops (空間ハッシュ用).
+ * 15 bits per axis (±16383) → 45 bits total → safely fits in Number.MAX_SAFE_INTEGER.
+ * 大規模構造でも座標は通常 ±16k 以内に正規化されているため十分。
+ */
+const KEY_OFFSET = 16384;
+const KEY_RANGE  = 32768;
+const KEY_RANGE2 = KEY_RANGE * KEY_RANGE;
+const encodeKey  = (x, y, z) =>
+  (x + KEY_OFFSET) * KEY_RANGE2 + (y + KEY_OFFSET) * KEY_RANGE + (z + KEY_OFFSET);
+
 /** Euclidean distance squared between two 3D points. */
 const dist2 = (ax, ay, az, bx, by, bz) =>
   (ax-bx)**2 + (ay-by)**2 + (az-bz)**2;
@@ -78,11 +89,9 @@ export function computeStandingPositions(targetBlocks, groundY = 0) {
   const R = Math.ceil(PLAYER_REACH);
   const REACH_SQ = PLAYER_REACH * PLAYER_REACH;
 
-  // Build a Set of target block positions so we can exclude them from candidate
-  // standing positions: a player can't stand inside a solid block (e.g. a wall
-  // of the structure being built). Also exclude positions where the player's
-  // head/body would intersect a target block (sy+1, sy+2).
-  const targetSet = new Set(targetBlocks.map(([x, y, z]) => key3(x, y, z)));
+  // 数値キーの空間ハッシュ Set (string キー生成のオーバーヘッドを排除)
+  const targetSetN = new Set();
+  for (const [x, y, z] of targetBlocks) targetSetN.add(encodeKey(x, y, z));
 
   for (const [bx, by, bz] of targetBlocks) {
     const bKey = key3(bx, by, bz);
@@ -92,26 +101,36 @@ export function computeStandingPositions(targetBlocks, groundY = 0) {
     const bcx = bx + 0.5, bcy = by + 0.5, bcz = bz + 0.5;
 
     // Test all positions within a bounding cube of radius R
-    for (let dy = -R; dy <= R; dy++)
-    for (let dx = -R; dx <= R; dx++)
-    for (let dz = -R; dz <= R; dz++) {
-      const sx = bx + dx, sy = by + dy, sz = bz + dz;
+    for (let dy = -R; dy <= R; dy++) {
+      const sy = by + dy;
       if (sy < groundY) continue; // can't stand underground
+      const ey = sy + EYE_HEIGHT;
+      const dyEye = ey - bcy;
+      const dyEye2 = dyEye * dyEye;
+      if (dyEye2 > REACH_SQ) continue; // Y 単独で reach 外なら全 dx/dz スキップ
 
-      // The standing position itself must not be a target block (you stand
-      // on top of (sx,sy,sz), so it acts as the floor — but if it's already
-      // a wall of the structure, you can't replace it with scaffolding).
-      // Player body occupies (sx, sy+1, sz) and (sx, sy+2, sz) — these must
-      // be free of target blocks too.
-      if (targetSet.has(key3(sx,     sy,     sz))) continue;
-      if (targetSet.has(key3(sx, sy + 1, sz))) continue;
-      if (targetSet.has(key3(sx, sy + 2, sz))) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        const sx = bx + dx;
+        const ex = sx + 0.5;
+        const dxEye = ex - bcx;
+        const dxyEye2 = dyEye2 + dxEye * dxEye;
+        if (dxyEye2 > REACH_SQ) continue;
 
-      // Eye position (centre of standing block + eye height)
-      const ex = sx + 0.5, ey = sy + EYE_HEIGHT, ez = sz + 0.5;
+        for (let dz = -R; dz <= R; dz++) {
+          const sz = bz + dz;
+          const ez = sz + 0.5;
+          const dzEye = ez - bcz;
 
-      if (dist2(bcx, bcy, bcz, ex, ey, ez) <= REACH_SQ) {
-        validStanding.add(key3(sx, sy, sz));
+          // 距離判定を先に: 大半の候補はここで落ちる
+          if (dxyEye2 + dzEye * dzEye > REACH_SQ) continue;
+
+          // ターゲットブロックとの衝突判定 (足 / 胴 / 頭)
+          if (targetSetN.has(encodeKey(sx, sy,     sz))) continue;
+          if (targetSetN.has(encodeKey(sx, sy + 1, sz))) continue;
+          if (targetSetN.has(encodeKey(sx, sy + 2, sz))) continue;
+
+          validStanding.add(key3(sx, sy, sz));
+        }
       }
     }
 

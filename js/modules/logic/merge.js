@@ -125,7 +125,10 @@ export function mergeStructures(structures, opts = {}) {
    * Returns a per-structure lookup array: srcIdx → mergedIdx.
    */
   function buildIndexMap(palette) {
-    const map = new Uint16Array(palette.length);
+    if (mergedPalette.length > 0xFFFE) {
+      throw new Error(`マージパレットが上限 (65534) を超えました: ${mergedPalette.length} エントリ`);
+    }
+    const map = new Uint32Array(palette.length);
     for (let i = 0; i < palette.length; i++) {
       const entry = palette[i];
       const name  = entry.name ?? entry.Name ?? airBlockName;
@@ -143,14 +146,15 @@ export function mergeStructures(structures, opts = {}) {
   }
 
   // ── Step 4: Allocate merged arrays ────────────────────────────────────────
-  const mergedLayer0 = new Uint16Array(total); // all air (index 0) by default
+  const mergedLayer0 = new Uint32Array(total); // all air (index 0) by default
   const hasWaterlog  = resolved.some(s => s.layer1 != null);
   const mergedLayer1 = hasWaterlog ? new Int32Array(total).fill(-1) : null;
 
   // The air palette index in the merged palette is always 0
   const AIR_IDX = 0;
 
-  // ── Step 5: Copy each structure into the merged volume ────────────────────
+  // ── Step 5: Copy each structure into the merged volume (sparse 走査) ──────
+  // 空気ブロック (srcMapsToAir かつ layer1=-1) を早期スキップして座標分解コスト削減
   let overwrittenCount = 0;
 
   for (const s of resolved) {
@@ -158,31 +162,49 @@ export function mergeStructures(structures, opts = {}) {
     const [sx, sy, sz] = s.dimensions;
     const indexMap = buildIndexMap(s.palette);
 
-    for (let x = 0; x < sx; x++)
-    for (let y = 0; y < sy; y++)
-    for (let z = 0; z < sz; z++) {
-      const srcFlat  = zyx(x, y, z, sy, sz);
-      const srcIdx   = s.layer0[srcFlat];
-      const mergedIdx = indexMap[srcIdx < 0 ? 0 : srcIdx];
+    // 各 source palette index が merged の air にマップされるかを事前計算 (uint8)
+    const srcMapsToAir = new Uint8Array(indexMap.length);
+    for (let i = 0; i < indexMap.length; i++) {
+      if (indexMap[i] === AIR_IDX) srcMapsToAir[i] = 1;
+    }
 
-      const mx = x + ox + shiftX;
-      const my = y + oy + shiftY;
-      const mz = z + oz + shiftZ;
+    const layer0 = s.layer0;
+    const layer1 = s.layer1 ?? null;
+    const total  = sx * sy * sz;
+    const syz    = sy * sz;
+    const shXOX  = shiftX + ox;
+    const shYOY  = shiftY + oy;
+    const shZOZ  = shiftZ + oz;
+
+    for (let srcFlat = 0; srcFlat < total; srcFlat++) {
+      const srcIdxRaw = layer0[srcFlat];
+      const srcIdx    = srcIdxRaw < 0 ? 0 : srcIdxRaw;
+      const isAir     = srcMapsToAir[srcIdx];
+      const hasWlog   = mergedLayer1 && layer1 && layer1[srcFlat] !== -1;
+
+      // air かつ waterlog なしかつ airOverwrites=false なら何もしない
+      if (isAir && !hasWlog && !airOverwrites) continue;
+
+      // flat → (x, y, z) (Bedrock ZYX: srcFlat = SZ*SY*x + SZ*y + z)
+      const x = (srcFlat / syz) | 0;
+      const rem = srcFlat - x * syz;
+      const y = (rem / sz) | 0;
+      const z = rem - y * sz;
+
+      const mx = x + shXOX;
+      const my = y + shYOY;
+      const mz = z + shZOZ;
       const dstFlat = zyx(mx, my, mz, MSY, MSZ);
 
-      const isAir = mergedIdx === AIR_IDX;
-
       if (!isAir || airOverwrites) {
+        const mergedIdx = indexMap[srcIdx];
         if (!isAir && mergedLayer0[dstFlat] !== AIR_IDX) overwrittenCount++;
         mergedLayer0[dstFlat] = mergedIdx;
       }
 
-      if (mergedLayer1 && s.layer1) {
-        const l1 = s.layer1[srcFlat];
-        if (l1 !== -1) {
-          // Map layer1 index through the same palette
-          mergedLayer1[dstFlat] = indexMap[l1 < 0 ? 0 : l1];
-        }
+      if (hasWlog) {
+        const l1 = layer1[srcFlat];
+        mergedLayer1[dstFlat] = indexMap[l1 < 0 ? 0 : l1];
       }
     }
   }
@@ -278,4 +300,79 @@ export function computeMergeLayout(structures) {
     offsets,
     worldOrigin: [minX, minY, minZ],
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-C: Bounding Box 正規化 & サイズチェック
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * worldOrigins をゼロ基準に正規化する。相対位置（構造間の距離）は保たれる。
+ *
+ * @param {Array<{x:number,y:number,z:number}>} origins - 各構造のワールド原点
+ * @param {Array<{x:number,y:number,z:number}>} dims    - 各構造のサイズ
+ * @returns {{ normalizedOrigins: Array<{x,y,z}>, totalBounds: {x,y,z}, minOrigin: {x,y,z} }}
+ */
+export function normalizeBoundingBox(origins, dims) {
+  if (origins.length === 0) {
+    return { normalizedOrigins: [], totalBounds: { x: 0, y: 0, z: 0 }, minOrigin: { x: 0, y: 0, z: 0 } };
+  }
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+  for (let i = 0; i < origins.length; i++) {
+    const o = origins[i];
+    const d = dims[i];
+    minX = Math.min(minX, o.x);
+    minY = Math.min(minY, o.y);
+    minZ = Math.min(minZ, o.z);
+    maxX = Math.max(maxX, o.x + (d?.x ?? 0));
+    maxY = Math.max(maxY, o.y + (d?.y ?? 0));
+    maxZ = Math.max(maxZ, o.z + (d?.z ?? 0));
+  }
+
+  const totalBounds  = { x: maxX - minX, y: maxY - minY, z: maxZ - minZ };
+  const minOrigin    = { x: minX, y: minY, z: minZ };
+  const normalizedOrigins = origins.map(o => ({
+    x: o.x - minX,
+    y: o.y - minY,
+    z: o.z - minZ,
+  }));
+
+  return { normalizedOrigins, totalBounds, minOrigin };
+}
+
+/** 危険サイズの閾値 */
+const MAX_MERGE_VOLUME    = 50_000_000; // 5000万ブロック
+const MAX_SINGLE_AXIS     = 2048;       // 一辺の最大
+
+/**
+ * マージ実行前のサイズチェック。
+ *
+ * @param {{ x:number, y:number, z:number }} totalBounds
+ * @returns {{ ok: boolean, message?: string, estimatedVolume?: number }}
+ */
+export function checkMergeSafety(totalBounds) {
+  const { x: SX, y: SY, z: SZ } = totalBounds;
+
+  if (SX > MAX_SINGLE_AXIS || SY > MAX_SINGLE_AXIS || SZ > MAX_SINGLE_AXIS) {
+    return {
+      ok: false,
+      message: `構造物が離れすぎています（最大辺 ${Math.max(SX, SY, SZ)} ブロック）。互いの距離を縮めてから再試行してください。`,
+      estimatedVolume: SX * SY * SZ,
+    };
+  }
+
+  const vol = SX * SY * SZ;
+  if (vol > MAX_MERGE_VOLUME) {
+    const volM = (vol / 1_000_000).toFixed(1);
+    return {
+      ok: false,
+      message: `合体範囲が大きすぎます（推定 ${volM}M ブロック）。構造物の間隔を縮めてください。`,
+      estimatedVolume: vol,
+    };
+  }
+
+  return { ok: true, estimatedVolume: vol };
 }

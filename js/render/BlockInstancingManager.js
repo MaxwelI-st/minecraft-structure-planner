@@ -89,9 +89,17 @@ export class BlockInstancingManager {
   }
 
   /**
-   * ブロックを1つ配置（座標・色・メタデータの登録）
+   * ブロックを1つ配置（座標・色・メタデータ・回転の登録）
+   *
+   * @param {string} sig
+   * @param {{x:number,y:number,z:number}} coord
+   * @param {boolean} isHighlighted
+   * @param {THREE.Color} normalColor
+   * @param {THREE.Color} hlColor
+   * @param {Object|null} [visualHints] 描画用 hints — facing/face を読んで per-instance 回転を適用
+   *                                    (詳細: js/modules/logic/bedrock_visual_state.js)
    */
-  addBlockInstance(sig, coord, isHighlighted, normalColor, hlColor) {
+  addBlockInstance(sig, coord, isHighlighted, normalColor, hlColor, visualHints = null) {
     const data = this.instancedMeshes.get(sig);
     if (!data) return; // 事前登録されていない場合はスキップ
 
@@ -100,11 +108,16 @@ export class BlockInstancingManager {
       return;
     }
 
-    // 行列をセット
+    // 行列をセット — 位置 + visualHints から回転を適用
     this.dummy.position.set(coord.x, coord.y, coord.z);
+    this.dummy.rotation.set(0, 0, 0);
+    this.dummy.scale.set(1, 1, 1);
+    if (visualHints) {
+      _applyFacingRotation(this.dummy, visualHints);
+    }
     this.dummy.updateMatrix();
     data.mesh.setMatrixAt(data.count, this.dummy.matrix);
-    
+
     // 色をセット — three.js は初回 setColorAt 呼び出しで instanceColor
     // バッファを遅延生成するので、未初期化チェックでスキップしてはいけない
     // (スキップすると instanceColor が永久に null のままになり、後段の
@@ -147,6 +160,15 @@ export class BlockInstancingManager {
   }
 
   /**
+   * シグネチャに登録された Three.InstancedMesh が存在するか確認するヘルパー
+   * @param {string} sig
+   * @returns {boolean}
+   */
+  hasSig(sig) {
+    return this.instancedMeshes.has(sig);
+  }
+
+  /**
    * テクスチャパック変更時や、別プロジェクト読み込み時にメモリを完全に解放する
    */
   disposeAll() {
@@ -164,4 +186,72 @@ export class BlockInstancingManager {
     }
     this.instancedMeshes.clear();
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 内部ヘルパー: visualHints → dummy への rotation 適用
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Visual Hints (facing / face) から Three.Object3D の回転を設定する。
+ *
+ * 規約:
+ *   ジオメトリは「facing=north (北向き), face=floor (床立て)」を基準形で生成されている。
+ *   このヘルパーは hints に応じて Y/X/Z 軸の回転を適用する。
+ *
+ *   facing 一覧 (Y軸回転):
+ *     north  ->  0
+ *     east   -> -π/2
+ *     south  ->  π
+ *     west   -> +π/2
+ *
+ *   facing=up / down (X軸回転 ±π/2)
+ *   face=ceiling: 上下反転 (Z軸 π回転) + facing
+ *   face=wall   : Z軸 +π/2 回転 + facing
+ *
+ * @param {Object} dummy - Three.Object3D
+ * @param {Object} hints - visualHints
+ */
+function _applyFacingRotation(dummy, hints) {
+  const facing = hints.facing;
+  const face   = hints.face;
+  const PI     = Math.PI;
+  const PI2    = PI / 2;
+
+  // 1) Y 軸回転 (facing が water-level 4 方向の場合)
+  const yawByFacing = {
+    north: 0,
+    east:  -PI2,
+    south: PI,
+    west:  PI2,
+  };
+
+  if (face === 'wall' && facing && yawByFacing[facing] !== undefined) {
+    // 壁設置: Z軸 π/2 回転で base を立てる + facing で Y 回転
+    dummy.rotation.set(0, yawByFacing[facing], PI2);
+    return;
+  }
+
+  if (face === 'ceiling') {
+    // 天井設置: 上下反転 + facing
+    const yaw = facing && yawByFacing[facing] !== undefined ? yawByFacing[facing] : 0;
+    dummy.rotation.set(PI, yaw, 0);
+    return;
+  }
+
+  if (facing === 'up') {
+    dummy.rotation.set(-PI2, 0, 0);
+    return;
+  }
+  if (facing === 'down') {
+    dummy.rotation.set(PI2, 0, 0);
+    return;
+  }
+  if (facing && yawByFacing[facing] !== undefined) {
+    dummy.rotation.set(0, yawByFacing[facing], 0);
+    return;
+  }
+
+  // 該当無し → デフォルト (回転なし)
+  dummy.rotation.set(0, 0, 0);
 }

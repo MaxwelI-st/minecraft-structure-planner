@@ -8,3 +8,8 @@ dev-dist
 # ユーザー個人の参考用ファイル（コミットしない）
 test/*.litematic
 test/*.schem
+test/fullcode_part*.txt
+# v1 時代の旧コード snapshot（参考用に保持、コミット対象外）
+test/original/
+# ビルド成果物のテンポラリ抽出先
+test/extracted/

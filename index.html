@@ -28,8 +28,7 @@
   <link rel="stylesheet" href="./css/style.css">
   <link rel="stylesheet" href="./css/polish.css">
 
-  <!-- JSZip / Three.js は遅延ロード可能だがここで先読みしてキャッシュさせる -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="window.__jszipFailed=true"></script>
+  <!-- JSZip は npm からバンドル (M-A-04)。CDN 依存撤廃済み -->
 </head>
 <body>
 
@@ -84,13 +83,59 @@
       <div class="welcome-content">
         <div class="welcome-icon"><img src="/icons/dark-1/logo.png" alt="Structure Planner" class="welcome-icon-img" data-theme-icon="logo"></div>
         <h2>Structure&nbsp;Planner</h2>
-        <p>.mcstructure を解析して<br>素材管理・3D表示・ドット絵作成をまとめて管理</p>
+        <p class="welcome-subtitle">.mcstructure を解析して素材管理・3D表示・ドット絵作成をまとめて管理</p>
         <div class="welcome-actions">
           <button class="mc-btn primary large" id="btn-drop-file">📂 .mcstructure を開く</button>
           <button class="mc-btn secondary large" id="btn-create-project-welcome">＋ 新規プロジェクト</button>
         </div>
         <div class="drop-hint-area" id="drop-zone">
           <p>ここにファイルをドロップ</p>
+        </div>
+
+        <!-- Feature Cards -->
+        <div class="feature-card-grid">
+          <div class="feature-card large">
+            <div class="feature-card-icon"><img data-theme-icon="tab-materials" src="/icons/dark-1/tab-materials.png" alt=""></div>
+            <div class="feature-card-body">
+              <div class="feature-card-title">素材一覧</div>
+              <div class="feature-card-desc">ブロック種ごとの必要数・スタック数・シュルカー換算を自動集計。CSV/Markdownにエクスポート可。</div>
+            </div>
+          </div>
+          <div class="feature-card large">
+            <div class="feature-card-icon"><img data-theme-icon="tab-3d" src="/icons/dark-1/tab-3d.png" alt=""></div>
+            <div class="feature-card-body">
+              <div class="feature-card-title">3Dビュー</div>
+              <div class="feature-card-desc">構造をリアルタイム3Dレンダリング。複数構造の配置・オフセット調整・Y軸回転に対応。</div>
+            </div>
+          </div>
+          <div class="feature-card large">
+            <div class="feature-card-icon"><img data-theme-icon="tab-dotart" src="/icons/dark-1/tab-dotart.png" alt=""></div>
+            <div class="feature-card-body">
+              <div class="feature-card-title">ドット絵</div>
+              <div class="feature-card-desc">画像をMinecraftブロックに変換してドット絵を生成。マップアート素材の自動計算も可。</div>
+            </div>
+          </div>
+          <div class="feature-card small">
+            <div class="feature-card-icon"><img data-theme-icon="tab-themes" src="/icons/dark-1/tab-themes.png" alt=""></div>
+            <div class="feature-card-body">
+              <div class="feature-card-title">テーマ</div>
+              <div class="feature-card-desc">ダーク・ライト・ゲーム風など14種類のテーマ</div>
+            </div>
+          </div>
+          <div class="feature-card small">
+            <span class="feature-card-icon-emoji">🔄</span>
+            <div class="feature-card-body">
+              <div class="feature-card-title">ブロック置換</div>
+              <div class="feature-card-desc">.mcstructureのブロックを別IDに置換してエクスポート</div>
+            </div>
+          </div>
+          <div class="feature-card small">
+            <span class="feature-card-icon-emoji">📦</span>
+            <div class="feature-card-body">
+              <div class="feature-card-title">プロジェクト管理</div>
+              <div class="feature-card-desc">複数構造を1プロジェクトにまとめて素材を統合集計</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

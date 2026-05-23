@@ -71,7 +71,8 @@ async function handleLoadMapping(taskId, payload) {
   sendProgress(taskId, 0.1, 'Fetching mapping data…');
 
   try {
-    const response = await fetch('/data/be_to_je_block_mapping.json');
+    const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || './';
+    const response = await fetch(baseUrl + 'data/be_to_je_block_mapping.json');
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} fetching block mapping JSON`);
     }

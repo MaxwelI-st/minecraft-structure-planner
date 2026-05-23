@@ -74,6 +74,12 @@ export const SHAPES = Object.freeze({
   LADDER:         'ladder',
   SHELF:          'shelf',
   AIR:            'air',
+  REDSTONE_DUST:  'redstone_dust', // M-V-1 (赤い薄板 + 隣接接続)
+  REPEATER:       'repeater',      // M-V-1 (薄 slab + 2 トーチ)
+  COMPARATOR:     'comparator',    // M-V-1 (薄 slab + 3 トーチ)
+  PISTON:         'piston',        // M-V-1 (ヘッド面マーカー付きキューブ)
+  OBSERVER:       'observer',      // M-V-1 (顔面マーカー付きキューブ)
+  DISPENSER:      'dispenser',     // M-V-1 (出口マーカー付きキューブ)
 });
 
 const _SUFFIX_SHAPE = [
@@ -176,6 +182,21 @@ const _NAME_SHAPE = new Map([
   ['minecraft:powered_rail',      SHAPES.RAIL],
   ['minecraft:detector_rail',     SHAPES.RAIL],
   ['minecraft:activator_rail',    SHAPES.RAIL],
+  // Redstone 系 (M-V-1)
+  ['minecraft:redstone_wire',     SHAPES.REDSTONE_DUST],
+  ['minecraft:repeater',          SHAPES.REPEATER],
+  ['minecraft:unpowered_repeater',SHAPES.REPEATER],
+  ['minecraft:powered_repeater',  SHAPES.REPEATER],
+  ['minecraft:comparator',        SHAPES.COMPARATOR],
+  ['minecraft:unpowered_comparator', SHAPES.COMPARATOR],
+  ['minecraft:powered_comparator',SHAPES.COMPARATOR],
+  // 方向性ブロック (前面マーカー付きキューブ — 回転で向きが見える)
+  ['minecraft:piston',            SHAPES.PISTON],
+  ['minecraft:sticky_piston',     SHAPES.PISTON],
+  ['minecraft:observer',          SHAPES.OBSERVER],
+  ['minecraft:dispenser',         SHAPES.DISPENSER],
+  ['minecraft:dropper',           SHAPES.DISPENSER],
+  ['minecraft:crafter',           SHAPES.DISPENSER],
   ['minecraft:stone_pressure_plate',           SHAPES.PRESSURE_PLATE],
   ['minecraft:polished_blackstone_pressure_plate', SHAPES.PRESSURE_PLATE],
   ['minecraft:light_weighted_pressure_plate',  SHAPES.PRESSURE_PLATE],
@@ -329,6 +350,12 @@ export function resolveGeometry(THREE, blockId, states, neighbors, neighborBlock
     case SHAPES.LADDER:         return _buildLadder(THREE, states);
     case SHAPES.FLOWER_POT:     return _buildFlowerPot(THREE);
     case SHAPES.SHELF:          return _buildShelf(THREE, states);
+    case SHAPES.REDSTONE_DUST:  return _buildRedstoneDust(THREE, states);
+    case SHAPES.REPEATER:       return _buildRepeater(THREE, states);
+    case SHAPES.COMPARATOR:     return _buildComparator(THREE, states);
+    case SHAPES.PISTON:         return _buildPistonLike(THREE, blockId, 'piston');
+    case SHAPES.OBSERVER:       return _buildPistonLike(THREE, blockId, 'observer');
+    case SHAPES.DISPENSER:      return _buildPistonLike(THREE, blockId, 'dispenser');
     default:                    return null; // CUBE → caller uses BoxGeometry
   }
 }
@@ -1067,4 +1094,137 @@ function _buildShelf(THREE, states) {
     // 南向き(default): 南の壁に背、z=-0.25にオフセット、北面が前面
     return _mergeBoxes(THREE, [{ x: 0, y: 0, z: -0.25, w: 1, h: 1, d: 0.5 }]);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Redstone Dust (M-V-1)
+// ─────────────────────────────────────────────────────────────────────────────
+// 床面に薄く貼り付けた赤い板。接続フラグ(n/s/e/w) は states.__dust_conn に注入されている前提
+// (viewer3d.js が `computeWireConnections` の結果を states に埋め込んで渡す)。
+// 各方向の接続タイプは 'none' | 'side' | 'up'。
+function _buildRedstoneDust(THREE, states) {
+  const conn = states?.__dust_conn || { n: 'none', s: 'none', e: 'none', w: 'none' };
+  const yFloor = -0.46875; // 床面より +1/64 浮かせて Z-fight 防止 (-0.5 + 1/32)
+  const H      = 0.03125;  // 1/32 厚 (ダストは薄い)
+  const center = 0.3125;   // 5/16 中央パッド幅
+
+  const boxes = [];
+  const conn4 = (
+    (conn.n !== 'none' ? 1 : 0) +
+    (conn.s !== 'none' ? 1 : 0) +
+    (conn.e !== 'none' ? 1 : 0) +
+    (conn.w !== 'none' ? 1 : 0)
+  );
+
+  // 中央パッド (接続 0 または 1 のとき "ドット")
+  if (conn4 === 0 || conn4 === 1) {
+    boxes.push({ y: yFloor, w: center, h: H, d: center });
+  }
+
+  // 各方向への帯 (side / up とも床面の帯は共通; up は追加で壁面板を伸ばす)
+  if (conn.n !== 'none') {
+    boxes.push({ y: yFloor, z: -((0.5 - center / 2) / 2 + center / 4), w: center, h: H, d: 0.5 - center / 2 });
+    if (conn.n === 'up') {
+      // 北側の壁面に縦帯 (隣接ブロック側面)
+      boxes.push({ y: yFloor + (0.5 - center / 2) / 2 + center / 4, z: -0.46875, w: center, h: 0.5 - center / 2, d: H, rx: Math.PI / 2 });
+    }
+  }
+  if (conn.s !== 'none') {
+    boxes.push({ y: yFloor, z:  ((0.5 - center / 2) / 2 + center / 4), w: center, h: H, d: 0.5 - center / 2 });
+    if (conn.s === 'up') {
+      boxes.push({ y: yFloor + (0.5 - center / 2) / 2 + center / 4, z:  0.46875, w: center, h: 0.5 - center / 2, d: H, rx: Math.PI / 2 });
+    }
+  }
+  if (conn.e !== 'none') {
+    boxes.push({ y: yFloor, x:  ((0.5 - center / 2) / 2 + center / 4), w: 0.5 - center / 2, h: H, d: center });
+    if (conn.e === 'up') {
+      boxes.push({ y: yFloor + (0.5 - center / 2) / 2 + center / 4, x:  0.46875, w: H, h: 0.5 - center / 2, d: center, rz: Math.PI / 2 });
+    }
+  }
+  if (conn.w !== 'none') {
+    boxes.push({ y: yFloor, x: -((0.5 - center / 2) / 2 + center / 4), w: 0.5 - center / 2, h: H, d: center });
+    if (conn.w === 'up') {
+      boxes.push({ y: yFloor + (0.5 - center / 2) / 2 + center / 4, x: -0.46875, w: H, h: 0.5 - center / 2, d: center, rz: Math.PI / 2 });
+    }
+  }
+
+  // 完全孤立かつドットも置かれなかったケースの保険
+  if (boxes.length === 0) {
+    boxes.push({ y: yFloor, w: center, h: H, d: center });
+  }
+
+  return _mergeBoxes(THREE, boxes);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Repeater (M-V-1) — MC モデルピクセル座標に合わせた寸法
+// ─────────────────────────────────────────────────────────────────────────────
+// 基準形: facing=north (出力=+Z、入力=-Z)。
+// ユーザー検証により Bedrock の cardinal_direction='north' は base geometry を
+// MC とは前後逆に配置する必要があった (#7 修正)。
+//   back torch: z=-0.25 (入力側、-Z)
+//   front torch delay 1..4: -0.125, 0, +0.125, +0.25 (delay 1 が back に最も近い)
+function _buildRepeater(THREE, states) {
+  const delay = states?.__repeater_delay ?? 1;
+  const base = { y: -0.4375, w: 1, h: 0.125, d: 1 };
+  const torchW = 0.125;   // 2 pixel
+  const torchH = 0.3125;  // 5 pixel
+  const torchY = -0.21875; // slab top (-0.375) + half torch height
+  const backZ  = -0.25;   // 後ろトーチ (入力側)
+  // 前トーチ delay 1..4 → -0.125, 0, +0.125, +0.25
+  const frontZ = -0.125 + (Math.max(1, Math.min(4, delay)) - 1) * 0.125;
+  const backTorch  = { x: 0, y: torchY, z: backZ,  w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
+  const frontTorch = { x: 0, y: torchY, z: frontZ, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
+  return _mergeBoxes(THREE, [base, backTorch, frontTorch]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comparator (M-V-1) — MC モデルピクセル座標に厳密合わせ
+// ─────────────────────────────────────────────────────────────────────────────
+// 基準形: facing=north (出力=-Z、入力=+Z)。
+// MC pixel coords (16x2x16):
+//   back torch:  center x=8, z=11 (subtract mode はさらに 2px 高く)
+//   front-left:  center x=4, z=5
+//   front-right: center x=12, z=5
+// Three.js (-0.5..+0.5):
+//   back: (0, _, +0.1875)  ← 旧 +0.30 から手前に
+//   front-left:  (-0.25, _, -0.1875)
+//   front-right: (+0.25, _, -0.1875)
+function _buildComparator(THREE, states) {
+  const subtract = states?.__comparator_subtract === true;
+  const base = { y: -0.4375, w: 1, h: 0.125, d: 1 };
+  const torchW = 0.125;   // 2 pixel
+  const torchH = 0.3125;  // 5 pixel
+  const torchY = -0.21875;
+  // subtract モードは back torch を一段高くする (MC では 2px 持ち上げ)
+  const backH = subtract ? 0.4375 : torchH;
+  const backY = subtract ? -0.15625 : torchY;
+  // #7: 180° 反転 — back を -Z 側 (入力)、front を +Z 側 (出力) に配置
+  const backTorch  = { x:  0,    y: backY,  z: -0.1875, w: torchW, h: backH, d: torchW, mats: [6,6,6,6,6,6] };
+  const frontLeft  = { x: -0.25, y: torchY, z:  0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
+  const frontRight = { x:  0.25, y: torchY, z:  0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
+  return _mergeBoxes(THREE, [base, backTorch, frontLeft, frontRight]);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Directional Cube (Piston / Observer / Dispenser / Dropper / Crafter)
+// ─────────────────────────────────────────────────────────────────────────────
+// 通常のキューブ + 前面 (+Z) に向きマーカー (#7 で repeater/comparator と同じく
+// "facing=north 基準時に出力は +Z 側" 規約に揃えた)。
+// 回転で前面マーカーが正しい向きに動く。
+function _buildPistonLike(THREE, blockId, variant) {
+  const boxes = [
+    // メインキューブ
+    { y: 0, w: 1, h: 1, d: 1 },
+  ];
+  const markerMat = [6, 6, 6, 6, 6, 6];
+  if (variant === 'piston') {
+    boxes.push({ x: 0, y: 0, z: 0.49, w: 0.6, h: 0.6, d: 0.02, mats: markerMat });
+  } else if (variant === 'observer') {
+    boxes.push({ x: -0.18, y: 0.12, z: 0.49, w: 0.18, h: 0.18, d: 0.02, mats: markerMat });
+    boxes.push({ x:  0.18, y: 0.12, z: 0.49, w: 0.18, h: 0.18, d: 0.02, mats: markerMat });
+  } else if (variant === 'dispenser') {
+    boxes.push({ x: 0, y: 0, z: 0.49, w: 0.35, h: 0.35, d: 0.02, mats: markerMat });
+  }
+  return _mergeBoxes(THREE, boxes);
 }

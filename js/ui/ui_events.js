@@ -384,9 +384,18 @@ export const UIMixin = {
         });
 
         const btnLoad3d = $('btn-load-3d');
-        if (btnLoad3d) btnLoad3d.onclick = () => this._load3DView();
+        if (btnLoad3d) btnLoad3d.onclick = () => {
+            // ボタン押下時は確実に再描画させる: 同一 coords 参照のスキップを防ぎ、
+            // プロジェクト切替時のフィットも再実行
+            if (this.viewer3d) this.viewer3d._lastCoords = null;
+            this._viewer3dAllAutofocused = false;
+            this._load3DView();
+        };
         const btnReload3d = $('btn-reload-3d');
-        if (btnReload3d) btnReload3d.onclick = () => this._load3DView();
+        if (btnReload3d) btnReload3d.onclick = () => {
+            if (this.viewer3d) this.viewer3d._lastCoords = null;
+            this._load3DView();
+        };
         const btnResetCam = $('btn-reset-camera');
         if (btnResetCam) btnResetCam.onclick = () => {
             this._allModeOrigin = null; // 原点もリセットして次回再描画で再フィット

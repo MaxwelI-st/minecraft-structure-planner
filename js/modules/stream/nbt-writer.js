@@ -40,8 +40,9 @@ class Buf {
   i64(v) {
     this._grow(8);
     const b = typeof v === 'bigint' ? v : BigInt(v);
-    const hi = Number(BigInt.asIntN(64, b) >> 32n);
-    const lo = Number(BigInt.asIntN(64, b) & 0xFFFFFFFFn);
+    const u  = BigInt.asUintN(64, b);
+    const hi = Number((u >> 32n) & 0xFFFFFFFFn);
+    const lo = Number(u & 0xFFFFFFFFn);
     this._v.setInt32(this._p,     hi, false);
     this._v.setInt32(this._p + 4, lo, false);
     this._p += 8;

@@ -31,12 +31,18 @@ export class ProjectManager {
         } catch (e) {
             console.error('Save failed', e);
             if (e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
-                const reduced = projects.slice(0, Math.max(1, Math.floor(projects.length / 2)));
-                try {
-                    localStorage.setItem(this.KEY, JSON.stringify(reduced));
-                    console.warn('localStorage 容量超のため古いプロジェクトを削減:', projects.length, '→', reduced.length);
-                } catch (e2) {
-                    console.error('削減後も保存失敗:', e2);
+                const keep = Math.max(1, Math.floor(projects.length / 2));
+                const ok = typeof confirm === 'function'
+                    ? confirm(`ストレージ容量が不足しています。\n古いプロジェクトを削除して保存しますか？\n（${projects.length} 件 → 最新 ${keep} 件を保持）`)
+                    : true;
+                if (ok) {
+                    const reduced = projects.slice(0, keep);
+                    try {
+                        localStorage.setItem(this.KEY, JSON.stringify(reduced));
+                        console.warn('localStorage 容量超のため古いプロジェクトを削減:', projects.length, '→', reduced.length);
+                    } catch (e2) {
+                        console.error('削減後も保存失敗:', e2);
+                    }
                 }
             }
         }

@@ -38,7 +38,7 @@ self.onmessage = async (e) => {
             normalized = parseBedrock(root);
         }
 
-        const { coords, counts, totalCount, sx, sy, sz, edition, worldOrigin } = normalized;
+        const { coords, counts, totalCount, sx, sy, sz, edition, worldOrigin, multiRegionCount } = normalized;
         const results = Array.from(counts.entries()).map(([id, count]) => {
             const stacks    = Math.floor(count / 64);
             const remainder = count % 64;
@@ -46,14 +46,30 @@ self.onmessage = async (e) => {
             return { id, count, stacks, remainder, slots, category: getCategory(id) };
         }).sort((a, b) => b.count - a.count);
 
+        const warnings = [];
+        if (multiRegionCount > 1) {
+            warnings.push(`⚠️ このファイルには ${multiRegionCount} 個の Region がありますが、最初の Region のみ読み込みました。`);
+        }
+
+        // M-P-03: coords を typed array に変換して Transferable で送信
+        // (structured clone のオーバーヘッドを排除、大規模構造で 5-10x 高速化)
+        const coordsTA = _coordsToTypedArrays(coords);
+
         self.postMessage({
             taskId,
-            success: true, results, coords, edition,
+            success: true, results, edition, warnings,
             size: { x: sx, y: sy, z: sz },
             worldOrigin: worldOrigin ?? [0, 0, 0],
             totalCount, uniqueCount: counts.size,
-            totalSlots: results.reduce((acc, r) => acc + r.slots, 0)
-        });
+            totalSlots: results.reduce((acc, r) => acc + r.slots, 0),
+            coordsTA,
+        }, [
+            coordsTA.xs.buffer,
+            coordsTA.ys.buffer,
+            coordsTA.zs.buffer,
+            coordsTA.blockIdIdx.buffer,
+            coordsTA.rawIdIdx.buffer,
+        ]);
     } catch (err) {
         self.postMessage({
             taskId,
@@ -74,6 +90,7 @@ async function parseLitematic(rawBuffer) {
     let sx = 0, sy = 0, sz = 0;
     let palette = null;
     let longsRaw = null;
+    let multiRegionCount = 0;
 
     // root を走査して Metadata.EnclosingSize と Regions.<name> を取得
     for (const tag of reader.walkCompound(bodyOffset)) {
@@ -89,13 +106,13 @@ async function parseLitematic(rawBuffer) {
             }
         }
         if (tag.name === 'Regions' && tag.value?.__type === 'compound') {
-            // 最初のリージョンを取得
+            let regionCount = 0;
             for (const rt of reader.walkCompound(tag.value.offset)) {
                 if (rt.value?.__type !== 'compound') continue;
-                // rt = 最初のリージョン compound
+                regionCount++;
+                if (regionCount > 1) continue; // 最初のリージョンのみ読み込む
                 for (const ft of reader.walkCompound(rt.value.offset)) {
                     if (ft.name === 'Size' && ft.value?.__type === 'compound') {
-                        // リージョンサイズで上書き（より正確）
                         for (const st of reader.walkCompound(ft.value.offset)) {
                             if (st.name === 'x') sx = Math.abs(st.value);
                             if (st.name === 'y') sy = Math.abs(st.value);
@@ -120,11 +137,11 @@ async function parseLitematic(rawBuffer) {
                         }
                     }
                     if (ft.name === 'BlockStates' && ft.typeId === TAG.LONG_ARRAY) {
-                        longsRaw = ft.value; // BigInt64Array（ビュー）
+                        longsRaw = ft.value;
                     }
                 }
-                break; // 最初のリージョンのみ処理
             }
+            if (regionCount > 1) multiRegionCount = regionCount;
         }
     }
 
@@ -134,7 +151,11 @@ async function parseLitematic(rawBuffer) {
 
     // ビットパック解凍（1.16+ no-wrap ルール）
     // readLongArray は常に BigInt64Array を返す（DataView ベースで BE/LE 対応済み）
-    const total   = sx * sy * sz;
+    const total = sx * sy * sz;
+    const MAX_LITEMATIC_BLOCKS = 10_000_000; // 1000万ブロック
+    if (total > MAX_LITEMATIC_BLOCKS) {
+        throw new Error(`.litematic が大きすぎます（${(total / 1_000_000).toFixed(1)}M ブロック）。最大 ${MAX_LITEMATIC_BLOCKS / 1_000_000}M ブロックまで対応しています。`);
+    }
     const indices = unpackBlockStates(longsRaw, total, palette.length);
 
     // YZX → coords 構築（Litematic: idx = y*SZ*SX + z*SX + x）
@@ -155,7 +176,7 @@ async function parseLitematic(rawBuffer) {
         coords.push({ x, y, z, blockId, rawId: blockId, states: entry.states ?? {} });
     }
 
-    return { coords, counts, totalCount: Array.from(counts.values()).reduce((a,b)=>a+b,0), sx, sy, sz, edition: 'java', worldOrigin: [0, 0, 0] };
+    return { coords, counts, totalCount: Array.from(counts.values()).reduce((a,b)=>a+b,0), sx, sy, sz, edition: 'java', worldOrigin: [0, 0, 0], multiRegionCount };
 }
 
 // ─── .nbt (Java Structure Block) パーサー ────────────────────────────────
@@ -261,6 +282,46 @@ function parseBedrock(root) {
     const coords     = Array.from(totalMap.values());
     const totalCount = Array.from(counts.values()).reduce((a, b) => a + b, 0);
     return { coords, counts, totalCount, sx, sy, sz, edition: 'bedrock', worldOrigin };
+}
+
+/* ─── M-P-03: coords (objects) → 分割 TypedArray 形式 ─────────────
+ * postMessage は構造化クローンで N 個のオブジェクトを deep-copy するため
+ * 大規模 (>100k blocks) では深刻なボトルネック。x/y/z/blockIdIdx を
+ * TypedArray にして transferList 経由でゼロコピー転送、palette/states のみ
+ * 通常クローンで送る。
+ */
+function _coordsToTypedArrays(coords) {
+    const N = coords.length;
+    const xs = new Int32Array(N);
+    const ys = new Int32Array(N);
+    const zs = new Int32Array(N);
+    const blockIdIdx = new Uint32Array(N);
+    const rawIdIdx   = new Uint32Array(N);
+    const statesArr  = new Array(N);
+
+    const blockIdPalette = [];
+    const idToIdx = new Map();
+    const internId = (id) => {
+        let idx = idToIdx.get(id);
+        if (idx === undefined) {
+            idx = blockIdPalette.length;
+            blockIdPalette.push(id);
+            idToIdx.set(id, idx);
+        }
+        return idx;
+    };
+
+    for (let i = 0; i < N; i++) {
+        const c = coords[i];
+        xs[i] = c.x | 0;
+        ys[i] = c.y | 0;
+        zs[i] = c.z | 0;
+        blockIdIdx[i] = internId(c.blockId);
+        rawIdIdx[i]   = internId(c.rawId ?? c.blockId);
+        statesArr[i]  = c.states ?? {};
+    }
+
+    return { xs, ys, zs, blockIdIdx, rawIdIdx, blockIdPalette, statesArr };
 }
 
 /* ─── カテゴリ分類 ────────────────────────────────────────────── */

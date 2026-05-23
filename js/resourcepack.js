@@ -48,30 +48,14 @@ const JAVA_VARIANTS = {
     'bamboo_door': { top: 'bamboo_door_top', bottom: 'bamboo_door_bottom' },
 };
 import { _getState, _isTrue } from './blockshapes.js';
+import JSZip from 'jszip';
 
-function _getJSZip() {
-    if (typeof window !== 'undefined' && window.JSZip) return window.JSZip;
-    if (typeof JSZip !== 'undefined') return JSZip;
-    if (typeof window !== 'undefined' && window.__jszipFailed) {
-        throw new Error('JSZip CDN の読み込みに失敗しました（オフライン or 広告ブロッカー？）。再読み込みをお試しください。');
-    }
-    throw new Error('JSZip がロードされていません');
-}
+// M-A-04: jszip は npm モジュールに統合（旧 CDN 依存を撤廃）
+// 互換性のため _getJSZip / ensureJSZip は同じシグネチャで残す
+function _getJSZip() { return JSZip; }
 
-/* ─── 動的に JSZip を再ロード（CDN失敗時の手動リトライ用） ─────────── */
-export async function ensureJSZip() {
-    if (typeof window !== 'undefined' && window.JSZip) return window.JSZip;
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-        script.onload = () => {
-            window.__jszipFailed = false;
-            resolve(window.JSZip);
-        };
-        script.onerror = () => reject(new Error('JSZip 再ロード失敗'));
-        document.head.appendChild(script);
-    });
-}
+/** @deprecated CDN 切替えで不要になったが、外部呼び出し互換のため残置 */
+export async function ensureJSZip() { return JSZip; }
 
 // 内部状態（複数のモジュールインスタンスが生成される問題への対策として window グローバルを使用）
 if (typeof window !== 'undefined') {
@@ -1182,7 +1166,7 @@ function listAvailable() { return Array.from(_state.textures.keys()).sort(); }
 /* ─── 構造バッファ永続化 (.mcstructure を再アップロード不要に) ─────────── */
 
 /** 構造の ArrayBuffer / Blob を IndexedDB に保存 */
-export async function saveStructureBuffer(structureId, buffer, name = '', edition = 'bedrock') {
+export async function saveStructureBuffer(structureId, buffer, name = '', edition = 'bedrock', fileName = '') {
     const db = await _openDB();
     return new Promise((resolve, reject) => {
         const tx = db.transaction(_IDB_STORE_STRUCTURES, 'readwrite');
@@ -1192,6 +1176,7 @@ export async function saveStructureBuffer(structureId, buffer, name = '', editio
             buffer,
             name,
             edition,
+            fileName,           // 元ファイル名（拡張子含む）— 再解析時のフォーマット判定に必要
             savedAt: Date.now(),
             size: buffer.byteLength || buffer.size || 0,
         }, structureId);

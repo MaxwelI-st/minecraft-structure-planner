@@ -84,7 +84,7 @@ function unpack(longs, total, paletteSize) {
 
 const palette = region.BlockStatePalette.items;
 const blockStates = region.BlockStates;
-const SX = region.Size.x, SY = region.Size.y, SZ = region.Size.z;
+const SX = Math.abs(region.Size.x), SY = Math.abs(region.Size.y), SZ = Math.abs(region.Size.z);
 const total = SX * SY * SZ;
 
 console.log('\nDimensions:', SX, 'x', SY, 'x', SZ, '=', total);

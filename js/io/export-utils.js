@@ -105,6 +105,7 @@ export function exportAllProjects(projects) {
     a.href = URL.createObjectURL(blob);
     a.download = `mc_planner_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 /**

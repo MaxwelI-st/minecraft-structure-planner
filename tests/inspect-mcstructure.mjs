@@ -1,7 +1,13 @@
 // Decode .mcstructure (little-endian NBT) and print palette + sample positions
+//
+// 使い方: node tests/inspect-mcstructure.mjs <path/to/file.mcstructure>
 import fs from 'node:fs';
 
-const path = process.argv[2] || './test/date.mcstructure';
+const path = process.argv[2];
+if (!path) {
+  console.error('Usage: node tests/inspect-mcstructure.mjs <path/to/file.mcstructure>');
+  process.exit(1);
+}
 const buf = fs.readFileSync(path);
 const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
 const dec = new TextDecoder('utf-8');
