@@ -1170,10 +1170,9 @@ function _buildRepeater(THREE, states) {
   const torchW = 0.125;   // 2 pixel
   const torchH = 0.3125;  // 5 pixel
   const torchY = -0.21875; // slab top (-0.375) + half torch height
-  // 基準形: facing=north (出力=-Z、入力=+Z) — _applyFacingRotation の yawByFacing と一致
-  const backZ  = +0.25;   // 後ろトーチ (入力側 = +Z = south)
-  // 前トーチ delay 1..4 → +0.125, 0, -0.125, -0.25 (delay が大きいほど -Z = 出力 (north) に近い)
-  const frontZ = +0.125 - (Math.max(1, Math.min(4, delay)) - 1) * 0.125;
+  const backZ  = -0.25;   // 後ろトーチ (入力側)
+  // 前トーチ delay 1..4 → -0.125, 0, +0.125, +0.25
+  const frontZ = -0.125 + (Math.max(1, Math.min(4, delay)) - 1) * 0.125;
   const backTorch  = { x: 0, y: torchY, z: backZ,  w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
   const frontTorch = { x: 0, y: torchY, z: frontZ, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
   return _mergeBoxes(THREE, [base, backTorch, frontTorch]);
@@ -1200,11 +1199,10 @@ function _buildComparator(THREE, states) {
   // subtract モードは back torch を一段高くする (MC では 2px 持ち上げ)
   const backH = subtract ? 0.4375 : torchH;
   const backY = subtract ? -0.15625 : torchY;
-  // 基準形: facing=north (出力=-Z、入力=+Z) — _applyFacingRotation の yawByFacing と一致
-  // back を +Z 側 (入力 = south)、front を -Z 側 (出力 = north) に配置
-  const backTorch  = { x:  0,    y: backY,  z: +0.1875, w: torchW, h: backH, d: torchW, mats: [6,6,6,6,6,6] };
-  const frontLeft  = { x: -0.25, y: torchY, z: -0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
-  const frontRight = { x:  0.25, y: torchY, z: -0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
+  // #7: 180° 反転 — back を -Z 側 (入力)、front を +Z 側 (出力) に配置
+  const backTorch  = { x:  0,    y: backY,  z: -0.1875, w: torchW, h: backH, d: torchW, mats: [6,6,6,6,6,6] };
+  const frontLeft  = { x: -0.25, y: torchY, z:  0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
+  const frontRight = { x:  0.25, y: torchY, z:  0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
   return _mergeBoxes(THREE, [base, backTorch, frontLeft, frontRight]);
 }
 
