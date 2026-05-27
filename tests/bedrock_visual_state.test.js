@@ -8,14 +8,14 @@ describe('getVisualHints — Repeater', () => {
   it('unpowered_repeater with repeater_delay=0 returns delay=1', () => {
     const h = getVisualHints('minecraft:unpowered_repeater', { repeater_delay: 0, direction: 2 });
     expect(h.delay).toBe(1);
-    expect(h.facing).toBe('north'); // DIR_REPEATER[2]
+    expect(h.facing).toBe('south'); // DIR_REPEATER[2] = 'south' (fixed 180° rotation)
     expect(h.powered).toBe(false);
   });
 
   it('powered_repeater with repeater_delay=3 returns delay=4 and powered=true', () => {
     const h = getVisualHints('minecraft:powered_repeater', { repeater_delay: 3, direction: 0 });
     expect(h.delay).toBe(4);
-    expect(h.facing).toBe('south');
+    expect(h.facing).toBe('north'); // DIR_REPEATER[0] = 'north'
     expect(h.powered).toBe(true);
   });
 
@@ -41,7 +41,7 @@ describe('getVisualHints — Comparator', () => {
       direction: 1,
     });
     expect(h.mode).toBe('subtract');
-    expect(h.facing).toBe('west');
+    expect(h.facing).toBe('east'); // DIR_REPEATER[1] = 'east'
     expect(h.powered).toBe(false);
   });
 
@@ -52,7 +52,7 @@ describe('getVisualHints — Comparator', () => {
       direction: 3,
     });
     expect(h.mode).toBe('compare');
-    expect(h.facing).toBe('east');
+    expect(h.facing).toBe('west'); // DIR_REPEATER[3] = 'west'
     expect(h.powered).toBe(true);
   });
 });
