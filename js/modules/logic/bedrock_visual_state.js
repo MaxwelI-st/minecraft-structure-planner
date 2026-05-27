@@ -25,7 +25,9 @@ const FACING6 = ['down', 'up', 'north', 'south', 'west', 'east'];
 const DIR_TRAPDOOR = ['west',  'east',  'north', 'south'];     // direction 0-3 → trapdoor facing
 const DIR_DOOR     = ['east',  'south', 'west',  'north'];     // door
 const DIR_HOOK     = ['south', 'west',  'north', 'east'];      // tripwire_hook
-const DIR_REPEATER = ['south', 'west',  'north', 'east'];      // repeater / comparator (Bedrock direction)
+// Bedrock の repeater/comparator は direction/cardinal_direction が「入力側」を指す独特な規約。
+// Java facing は「出力側」なので、Bedrock → Java は 180° 反転が必要。
+const DIR_REPEATER = ['north', 'east',  'south', 'west'];      // 入力側を Java facing (出力側) に反転
 
 /** torch_facing_direction (string) → {face, facing} */
 const TORCH_FACING = {
@@ -106,6 +108,15 @@ function _facingFromCardinalDirection(states) {
   return null;
 }
 
+/** 4方向 facing を 180° 反転 (north↔south, east↔west) — repeater/comparator の入力→出力変換に使用 */
+function _flipHorizontalFacing(facing) {
+  if (facing === 'north') return 'south';
+  if (facing === 'south') return 'north';
+  if (facing === 'east')  return 'west';
+  if (facing === 'west')  return 'east';
+  return facing;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // メイン: getVisualHints
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,7 +158,9 @@ export function getVisualHints(blockId, states) {
     case 'minecraft:powered_repeater': {
       const d = _intOrNull(s.repeater_delay);
       out.delay = (d !== null && d >= 0 && d <= 3) ? (d + 1) : null;
-      out.facing = _facingFromCardinalDirection(s)
+      // Bedrock の cardinal_direction / direction は「入力側」を指す独特な規約のため反転して Java facing (出力側) に
+      const cardinal = _facingFromCardinalDirection(s);
+      out.facing = (cardinal ? _flipHorizontalFacing(cardinal) : null)
                 || (_intOrNull(s.direction) !== null ? DIR_REPEATER[_intOrNull(s.direction) & 3] : null)
                 || (typeof s.facing === 'string' ? s.facing : null);
       out.powered = (id === 'minecraft:powered_repeater') || _bool(s.powered);
@@ -162,7 +175,9 @@ export function getVisualHints(blockId, states) {
       const sub = _bool(s.output_subtract_bit) || (s.mode === 'subtract');
       out.mode = sub ? 'subtract' : 'compare';
       out.powered = _bool(s.output_lit_bit) || (id === 'minecraft:powered_comparator') || _bool(s.powered);
-      out.facing = _facingFromCardinalDirection(s)
+      // Bedrock の cardinal_direction / direction は「入力側」を指す独特な規約のため反転して Java facing (出力側) に
+      const cardinal = _facingFromCardinalDirection(s);
+      out.facing = (cardinal ? _flipHorizontalFacing(cardinal) : null)
                 || (_intOrNull(s.direction) !== null ? DIR_REPEATER[_intOrNull(s.direction) & 3] : null)
                 || (typeof s.facing === 'string' ? s.facing : null);
       return out;

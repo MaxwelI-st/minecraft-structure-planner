@@ -5,17 +5,19 @@ import { describe, it, expect } from 'vitest';
 import { getVisualHints, isRedstoneSignalSource } from '../js/modules/logic/bedrock_visual_state.js';
 
 describe('getVisualHints — Repeater', () => {
+  // Bedrock の repeater は direction/cardinal_direction が「入力側」を指す独特な規約。
+  // テストの期待値は Java facing (= 出力側) で、Bedrock 値の 180° 反転。
   it('unpowered_repeater with repeater_delay=0 returns delay=1', () => {
     const h = getVisualHints('minecraft:unpowered_repeater', { repeater_delay: 0, direction: 2 });
     expect(h.delay).toBe(1);
-    expect(h.facing).toBe('north'); // DIR_REPEATER[2]
+    expect(h.facing).toBe('south'); // DIR_REPEATER[2] = 'south' (Bedrock direction 2=入力 north → 出力 south)
     expect(h.powered).toBe(false);
   });
 
   it('powered_repeater with repeater_delay=3 returns delay=4 and powered=true', () => {
     const h = getVisualHints('minecraft:powered_repeater', { repeater_delay: 3, direction: 0 });
     expect(h.delay).toBe(4);
-    expect(h.facing).toBe('south');
+    expect(h.facing).toBe('north'); // DIR_REPEATER[0] = 'north' (Bedrock direction 0=入力 south → 出力 north)
     expect(h.powered).toBe(true);
   });
 
@@ -25,7 +27,7 @@ describe('getVisualHints — Repeater', () => {
       'minecraft:cardinal_direction': 'east',
     });
     expect(h.delay).toBe(3);
-    expect(h.facing).toBe('east');
+    expect(h.facing).toBe('west'); // cardinal_direction 'east' (入力) → Java facing 'west' (出力)
   });
 
   it('out-of-range repeater_delay returns null delay', () => {
@@ -41,7 +43,7 @@ describe('getVisualHints — Comparator', () => {
       direction: 1,
     });
     expect(h.mode).toBe('subtract');
-    expect(h.facing).toBe('west');
+    expect(h.facing).toBe('east'); // DIR_REPEATER[1] = 'east' (Bedrock direction 1=入力 west → 出力 east)
     expect(h.powered).toBe(false);
   });
 
@@ -52,7 +54,7 @@ describe('getVisualHints — Comparator', () => {
       direction: 3,
     });
     expect(h.mode).toBe('compare');
-    expect(h.facing).toBe('east');
+    expect(h.facing).toBe('west'); // DIR_REPEATER[3] = 'west' (Bedrock direction 3=入力 east → 出力 west)
     expect(h.powered).toBe(true);
   });
 });
