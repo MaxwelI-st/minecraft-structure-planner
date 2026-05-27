@@ -25,7 +25,7 @@ const FACING6 = ['down', 'up', 'north', 'south', 'west', 'east'];
 const DIR_TRAPDOOR = ['west',  'east',  'north', 'south'];     // direction 0-3 → trapdoor facing
 const DIR_DOOR     = ['east',  'south', 'west',  'north'];     // door
 const DIR_HOOK     = ['south', 'west',  'north', 'east'];      // tripwire_hook
-const DIR_REPEATER = ['north', 'east',  'south', 'west'];      // repeater / comparator (Bedrock direction) — 180° rotated
+const DIR_REPEATER = ['south', 'west',  'north', 'east'];      // repeater / comparator (Bedrock direction)
 
 /** torch_facing_direction (string) → {face, facing} */
 const TORCH_FACING = {
