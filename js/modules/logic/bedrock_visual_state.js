@@ -265,6 +265,7 @@ export function getVisualHints(blockId, states) {
 
     // ── Button (各種 wood / stone / polished_blackstone 等) ────────────────
     case 'minecraft:wooden_button':
+    case 'minecraft:oak_button':           // Bedrock 1.20+ で wooden_button から改名
     case 'minecraft:stone_button':
     case 'minecraft:polished_blackstone_button':
     case 'minecraft:spruce_button':
@@ -276,7 +277,8 @@ export function getVisualHints(blockId, states) {
     case 'minecraft:cherry_button':
     case 'minecraft:bamboo_button':
     case 'minecraft:crimson_button':
-    case 'minecraft:warped_button': {
+    case 'minecraft:warped_button':
+    case 'minecraft:pale_oak_button': {
       const fd = _intOrNull(s.facing_direction);
       if (fd !== null && fd >= 0 && fd < 6) {
         const m = BUTTON_FACING_DIR[fd];
@@ -339,6 +341,7 @@ export function getVisualHints(blockId, states) {
 
     // ── Pressure Plates (信号源として redstone_signal を持つ) ─────────────
     case 'minecraft:wooden_pressure_plate':
+    case 'minecraft:oak_pressure_plate':              // Bedrock 1.20+ で改名
     case 'minecraft:stone_pressure_plate':
     case 'minecraft:polished_blackstone_pressure_plate':
     case 'minecraft:light_weighted_pressure_plate':
@@ -351,6 +354,7 @@ export function getVisualHints(blockId, states) {
     case 'minecraft:mangrove_pressure_plate':
     case 'minecraft:cherry_pressure_plate':
     case 'minecraft:bamboo_pressure_plate':
+    case 'minecraft:pale_oak_pressure_plate':         // 1.21.30+
     case 'minecraft:crimson_pressure_plate':
     case 'minecraft:warped_pressure_plate': {
       const p = _intOrNull(s.redstone_signal);
@@ -383,18 +387,18 @@ const REDSTONE_SIGNAL_SOURCE_SET = new Set([
   'minecraft:comparator', 'minecraft:unpowered_comparator', 'minecraft:powered_comparator',
   'minecraft:observer',
   'minecraft:lever',
-  'minecraft:wooden_button', 'minecraft:stone_button', 'minecraft:polished_blackstone_button',
+  'minecraft:wooden_button', 'minecraft:oak_button', 'minecraft:stone_button', 'minecraft:polished_blackstone_button',
   'minecraft:spruce_button', 'minecraft:birch_button', 'minecraft:jungle_button',
   'minecraft:acacia_button', 'minecraft:dark_oak_button', 'minecraft:mangrove_button',
-  'minecraft:cherry_button', 'minecraft:bamboo_button',
+  'minecraft:cherry_button', 'minecraft:bamboo_button', 'minecraft:pale_oak_button',
   'minecraft:crimson_button', 'minecraft:warped_button',
-  'minecraft:wooden_pressure_plate', 'minecraft:stone_pressure_plate',
+  'minecraft:wooden_pressure_plate', 'minecraft:oak_pressure_plate', 'minecraft:stone_pressure_plate',
   'minecraft:polished_blackstone_pressure_plate',
   'minecraft:light_weighted_pressure_plate', 'minecraft:heavy_weighted_pressure_plate',
   'minecraft:spruce_pressure_plate', 'minecraft:birch_pressure_plate',
   'minecraft:jungle_pressure_plate', 'minecraft:acacia_pressure_plate',
   'minecraft:dark_oak_pressure_plate', 'minecraft:mangrove_pressure_plate',
-  'minecraft:cherry_pressure_plate', 'minecraft:bamboo_pressure_plate',
+  'minecraft:cherry_pressure_plate', 'minecraft:bamboo_pressure_plate', 'minecraft:pale_oak_pressure_plate',
   'minecraft:crimson_pressure_plate', 'minecraft:warped_pressure_plate',
   'minecraft:tripwire_hook',
   'minecraft:trip_wire', 'minecraft:tripwire',
