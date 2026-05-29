@@ -218,12 +218,10 @@ export function getVisualHints(blockId, states) {
 
     // ── Hopper ─────────────────────────────────────────────────────────────
     case 'minecraft:hopper': {
-      out.facing = _facingFromFacing6(s)
-                || _facingFromMinecraftFacing6(s)
-                || (typeof s.facing === 'string' ? s.facing : null);
-      // BE: toggle_bit=1 → disabled (enabled=false)
-      // facing_direction=0 → down が標準
-      return out;
+      // 注意: hopper の形状 (_buildHopper) は states.facing_direction を直接読んで
+      // spout 位置を変える。ここで facing を返すと _applyFacingRotation で yaw 回転が
+      // ダブルでかかり、形状が崩れる (上面が横を向く等)。よって facing は返さない。
+      return null;
     }
 
     // ── Torch (一般 / Soul / Redstone) ─────────────────────────────────────

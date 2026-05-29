@@ -46,6 +46,9 @@ const JAVA_VARIANTS = {
     'cherry_door': { top: 'cherry_door_top', bottom: 'cherry_door_bottom' },
     'pale_oak_door': { top: 'pale_oak_door_top', bottom: 'pale_oak_door_bottom' },
     'bamboo_door': { top: 'bamboo_door_top', bottom: 'bamboo_door_bottom' },
+    // ピストン: 専用分岐 (getFaceUrls 内) で 6 面を個別に割り当てるが、テクスチャ存在判定のためここにも登録
+    'piston':        { top: 'piston_side', side: 'piston_side', bottom: 'piston_bottom', front: 'piston_top' },
+    'sticky_piston': { top: 'piston_side', side: 'piston_side', bottom: 'piston_bottom', front: 'piston_top_sticky' },
 };
 import { _getState, _isTrue } from './blockshapes.js';
 import JSZip from 'jszip';
@@ -1090,11 +1093,27 @@ export function getFaceUrls(blockId, options = {}) {
 
         // 草ブロックの場合、上面(top)のみに色をつけ、側面と底面は土にする
         if (javaBaseId === 'grass_block') {
-            return { 
-                east: normU(b, null), west: normU(b, null), 
-                top: normU(t, tint), bottom: normU(b, null), 
-                north: normU(b, null), south: normU(b, null), 
-                found: true 
+            return {
+                east: normU(b, null), west: normU(b, null),
+                top: normU(t, tint), bottom: normU(b, null),
+                north: normU(b, null), south: normU(b, null),
+                found: true
+            };
+        }
+
+        // ピストン: 基準形 (blockshapes _buildPistonLike, マーカー z=-0.49) は push face が
+        // -Z (north) 面、背面が +Z (south) 面。Y軸 (top/bottom) と east/west は piston_side。
+        // _applyFacingRotation の yawByFacing (north 基準) と整合し、facing 値に応じて正しく回転する。
+        if (javaBaseId === 'piston' || javaBaseId === 'sticky_piston') {
+            const sideU  = getU('piston_side');
+            const backU  = getU('piston_bottom');
+            const frontU = getU(javaBaseId === 'sticky_piston' ? 'piston_top_sticky' : 'piston_top');
+            return {
+                east:  normU(sideU,  null), west:  normU(sideU,  null),
+                top:   normU(sideU,  null), bottom: normU(sideU, null),
+                north: normU(frontU, null),  // push face (基準形 -Z = マーカーと一致)
+                south: normU(backU,  null),  // 背面 (+Z、穴付きテクスチャ)
+                found: true
             };
         }
 

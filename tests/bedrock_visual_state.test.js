@@ -92,9 +92,9 @@ describe('getVisualHints — Piston / Dropper / Dispenser / Hopper', () => {
     expect(h.powered).toBe(true);
   });
 
-  it('hopper facing_direction=0 → down', () => {
+  it('hopper returns null (形状 _buildHopper が states を直接読むため hints 不要)', () => {
     const h = getVisualHints('minecraft:hopper', { facing_direction: 0, toggle_bit: 0 });
-    expect(h.facing).toBe('down');
+    expect(h).toBeNull();
   });
 });
 

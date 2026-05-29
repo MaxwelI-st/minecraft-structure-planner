@@ -219,14 +219,11 @@ function _applyFacingRotation(dummy, hints) {
   const PI2    = PI / 2;
 
   // 1) Y 軸回転 (facing が water-level 4 方向の場合)
-  // 注: blockshapes.js の方向性ブロック (piston/observer/dispenser/repeater/comparator) は
-  //     基準形 facing=south (出力/正面が +Z 側) で実装されているため、yaw=0 は south に対応する。
-  //     Three.js の Y 軸回転は反時計回り正 (上から見て): +PI/2 で +Z (south) → +X (east)
   const yawByFacing = {
-    south: 0,        // 基準形 (出力 +Z)
-    east:  PI2,      // +90° (south → east)
-    north: PI,       // 180° (south → north)
-    west:  -PI2,     // -90° (south → west)
+    north: 0,
+    east:  -PI2,
+    south: PI,
+    west:  PI2,
   };
 
   if (face === 'wall' && facing && yawByFacing[facing] !== undefined) {

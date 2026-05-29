@@ -1218,9 +1218,13 @@ function _buildPistonLike(THREE, blockId, variant) {
     { y: 0, w: 1, h: 1, d: 1 },
   ];
   const markerMat = [6, 6, 6, 6, 6, 6];
+  // ピストン: マーカー = 押し出し面 (正面)。yawByFacing は facing=north 基準 (yaw=0 で前面 -Z)
+  // なので、基準形でも push face は -Z 側にすべき。これで facing='south' (yaw=PI) →
+  // 180° 回転後 push face が +Z (south) になり、向きが一致する。
   if (variant === 'piston') {
-    boxes.push({ x: 0, y: 0, z: 0.49, w: 0.6, h: 0.6, d: 0.02, mats: markerMat });
+    boxes.push({ x: 0, y: 0, z: -0.49, w: 0.6, h: 0.6, d: 0.02, mats: markerMat });
   } else if (variant === 'observer') {
+    // オブザーバー: マーカー = 観察側 (背面) を +Z 側に置くと、現状で外向き配置が正しく描画される
     boxes.push({ x: -0.18, y: 0.12, z: 0.49, w: 0.18, h: 0.18, d: 0.02, mats: markerMat });
     boxes.push({ x:  0.18, y: 0.12, z: 0.49, w: 0.18, h: 0.18, d: 0.02, mats: markerMat });
   } else if (variant === 'dispenser') {
