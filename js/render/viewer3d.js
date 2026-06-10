@@ -165,6 +165,11 @@ export class Viewer3D {
     destroy() {
         if (!this.isInitialized) return;
 
+        // 描画ループ停止 (_animate は renderer=null でも自衛するが、即時停止する)
+        if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = null; }
+        // window に登録した resize/mousemove/mouseup/blur リスナーを一括解除
+        if (this._listenerAbort) { this._listenerAbort.abort(); this._listenerAbort = null; }
+
         for (const mesh of this._structureHighlightMeshes ?? []) {
             mesh.geometry?.dispose();
             mesh.material?.dispose();
@@ -341,8 +346,13 @@ export class Viewer3D {
     _setupControls() {
         const el = this.renderer.domElement;
 
+        // destroy() で window 側リスナーを一括解除するための AbortController。
+        // el (renderer.domElement) 側は canvas ごと破棄されるが、同じ signal に統一しておく。
+        this._listenerAbort = new AbortController();
+        const signal = this._listenerAbort.signal;
+
         // ─── リサイズ対応 ─────────────────────────────────────────────
-        window.addEventListener('resize', () => this.handleResize());
+        window.addEventListener('resize', () => this.handleResize(), { signal });
 
         // ─── 回転（左ドラッグ）─────────────────────────────────────────────
         const orbitBy = (dx, dy) => {
@@ -406,7 +416,7 @@ export class Viewer3D {
                 dragMode = 'pan';
             }
             e.preventDefault();
-        });
+        }, { signal });
         window.addEventListener('mousemove', (e) => {
             if (!dragMode) return;
             const dx = e.clientX - prevMouse.x;
@@ -424,7 +434,7 @@ export class Viewer3D {
                 if (this.onAltDragMove) this.onAltDragMove({ axis: 'z', dx });
             }
             prevMouse = { x: e.clientX, y: e.clientY };
-        });
+        }, { signal });
         window.addEventListener('mouseup', (e) => {
             // Alt+ドラッグ終了 → 構造ハイライト解除
             if (dragMode === 'pan-x' || dragMode === 'pan-z') {
@@ -439,16 +449,24 @@ export class Viewer3D {
                 this._handleClick(e, true);
             }
             dragMode = null;
-        });
+        }, { signal });
+        // ウィンドウ外でマウスを離すと mouseup が届かないため、フォーカス喪失時に
+        // ドラッグ状態を強制解除する (Alt+ドラッグのハイライト残留・移動継続を防止)
+        window.addEventListener('blur', () => {
+            if (dragMode === 'pan-x' || dragMode === 'pan-z') {
+                if (this.onAltDragEnd) this.onAltDragEnd();
+            }
+            dragMode = null;
+        }, { signal });
         // 右クリックメニューを抑制
-        el.addEventListener('contextmenu', (e) => e.preventDefault());
+        el.addEventListener('contextmenu', (e) => e.preventDefault(), { signal });
 
         // ─── ズーム（ホイール）────────────────────────────────────────────
         el.addEventListener('wheel', (e) => {
             e.preventDefault();
             this.spherical.radius = Math.max(2, Math.min(500, this.spherical.radius * (e.deltaY > 0 ? 1.1 : 0.9)));
             this._updateCamera();
-        }, { passive: false });
+        }, { passive: false, signal });
 
         // ─── タッチ操作（スマホ・タブレット）────────────────────────────────
         let touches = [];
@@ -457,7 +475,7 @@ export class Viewer3D {
             touches = Array.from(e.touches);
             prevPinchDist = null;
             e.preventDefault();
-        }, { passive: false });
+        }, { passive: false, signal });
         el.addEventListener('touchmove', (e) => {
             e.preventDefault();
             const t = Array.from(e.touches);
@@ -481,8 +499,8 @@ export class Viewer3D {
                 panBy(cx - pcx, cy - pcy);
             }
             touches = t;
-        }, { passive: false });
-        el.addEventListener('touchend', (e) => { touches = Array.from(e.touches); prevPinchDist = null; }, { passive: false });
+        }, { passive: false, signal });
+        el.addEventListener('touchend', (e) => { touches = Array.from(e.touches); prevPinchDist = null; }, { passive: false, signal });
     }
 
     /** Alt+ドラッグ開始時にクリックしたブロックをレイキャストしてコールバックを呼ぶ */
@@ -514,7 +532,11 @@ export class Viewer3D {
     }
 
     _animate() {
-        requestAnimationFrame(() => this._animate());
+        // destroy() 後はループを止める (renderer は null になっているため)。
+        // ※ isInitialized は使わない — 初回の _animate は init() が完了する前に
+        //   _setupScene() から呼ばれるため、isInitialized 判定だと起動できない。
+        if (!this.renderer) { this._rafId = null; return; }
+        this._rafId = requestAnimationFrame(() => this._animate());
         // マルチハイライトのパルスアニメーション (デフォルト無効 — pulseHighlight=true で有効化)
         if (this.pulseHighlight && this._highlightedBlockIds.size > 0 && this.meshes.length > 0) {
             // ハイライト対象 mesh は毎フレーム filter せずキャッシュ
