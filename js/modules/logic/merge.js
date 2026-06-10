@@ -28,7 +28,7 @@
 /**
  * @typedef {object} MergeResult
  * @property {Uint16Array} layer0    - Merged flat index array (ZYX)
- * @property {Uint16Array} [layer1]  - Merged waterlog layer (if any input had one)
+ * @property {Int32Array}  [layer1]  - Merged waterlog layer (-1 = なし)
  * @property {Array}       palette   - Deduplicated merged palette
  * @property {[number,number,number]} dimensions - [SX, SY, SZ] of merged volume
  * @property {[number,number,number]} worldOrigin - Normalised world origin (always ≥ 0)
@@ -146,7 +146,9 @@ export function mergeStructures(structures, opts = {}) {
   }
 
   // ── Step 4: Allocate merged arrays ────────────────────────────────────────
-  const mergedLayer0 = new Uint32Array(total); // all air (index 0) by default
+  // パレットは buildIndexMap で 0xFFFE 上限ガード済みなので Uint16 で十分
+  // (JSDoc / _wrapSingle と型を統一し、大型構造でのメモリも半減)
+  const mergedLayer0 = new Uint16Array(total); // all air (index 0) by default
   const hasWaterlog  = resolved.some(s => s.layer1 != null);
   const mergedLayer1 = hasWaterlog ? new Int32Array(total).fill(-1) : null;
 
@@ -244,7 +246,11 @@ function _wrapSingle(s) {
   let layer1;
   if (s.layer1) {
     layer1 = new Int32Array(total);
-    for (let i = 0; i < total; i++) layer1[i] = s.layer1[i];
+    // "水没なし" マーカーは -1 に統一 (layer0 の負値→0 正規化と同様の防御)
+    for (let i = 0; i < total; i++) {
+      const v = s.layer1[i];
+      layer1[i] = v < 0 ? -1 : v;
+    }
   }
 
   return {
