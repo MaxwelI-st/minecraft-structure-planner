@@ -9,6 +9,10 @@ export class ProjectManager {
     static MAX_PROJECTS = 20;
     static STORAGE_WARNING_SIZE = 4 * 1024 * 1024; // 4MB
 
+    /** 容量警告フック (bytes) => void。app.js が起動時にトースト表示をセットする。 */
+    static onStorageWarning = null;
+    static _storageWarned = false; // セッション中1回だけ通知 (トースト連発防止)
+
     static load() {
         try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); }
         catch { return []; }
@@ -26,6 +30,10 @@ export class ProjectManager {
             const json = JSON.stringify(toSave);
             if (json.length > ProjectManager.STORAGE_WARNING_SIZE) {
                 console.warn('プロジェクトJSON が 4MB 超：localStorage 上限に近づいています', json.length);
+                if (!ProjectManager._storageWarned) {
+                    ProjectManager._storageWarned = true;
+                    try { ProjectManager.onStorageWarning?.(json.length); } catch (_) {}
+                }
             }
             localStorage.setItem(this.KEY, json);
         } catch (e) {

@@ -70,6 +70,11 @@ class App {
         this._rangeStart = null;
         this._editHistory = [];
 
+        // ストレージ容量警告をユーザーに見える形で通知 (従来は console.warn のみ)
+        ProjectManager.onStorageWarning = (bytes) => {
+            this._toast?.(`⚠️ ストレージ使用量 ${(bytes / 1048576).toFixed(1)}MB / 約5MB — 不要なプロジェクトの削除を推奨`, 'error');
+        };
+
         this._setupWorker();
         this._init();
     }
