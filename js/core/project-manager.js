@@ -198,6 +198,21 @@ export class ProjectManager {
             for (let i = 0; i < rot; i++) nv = FACING_STR_NEXT[nv] ?? nv;
             out.facing = nv;
         }
+        // ---- 新形式 Bedrock 文字列 state (1.20.40+) ----
+        // minecraft:cardinal_direction (水平4方向: repeater/comparator 等)
+        // minecraft:facing_direction  (6方向 string: observer 等。up/down は不変)
+        // ※ cardinal_direction は「入力側」を指す規約だが、Y軸回転は入力/出力を
+        //   同時に回すので raw 値をそのまま 90°CW ずつ回せば正しい。
+        for (const k of ['minecraft:cardinal_direction', 'minecraft:facing_direction']) {
+            const v = out[k];
+            if (v === undefined) continue;
+            const wrapped = (v && typeof v === 'object' && 'value' in v);
+            const raw = wrapped ? v.value : v;
+            if (typeof raw !== 'string' || !(raw in FACING_STR_NEXT)) continue;
+            let nv = raw;
+            for (let i = 0; i < rot; i++) nv = FACING_STR_NEXT[nv] ?? nv;
+            out[k] = wrapped ? { ...v, value: nv } : nv;
+        }
         // axis: x↔z (rot 奇数)
         if (typeof out.axis === 'string' && rot % 2 === 1) {
             out.axis = out.axis === 'x' ? 'z' : out.axis === 'z' ? 'x' : out.axis;
