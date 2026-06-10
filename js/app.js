@@ -1337,9 +1337,43 @@ class App {
         }
     }
 
+    /** 資材リスト直上の「準備済み」プログレスバーを描画/更新する (additive UI) */
+    _renderPreparedProgress() {
+        const list = document.getElementById('block-list');
+        if (!list || !list.parentNode) return;
+        let bar = document.getElementById('prepared-progress');
+        const items = this._integratedMaterials || [];
+        if (items.length === 0) { if (bar) bar.style.display = 'none'; return; }
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'prepared-progress';
+            bar.style.cssText = 'margin:0 0 0.6rem';
+            bar.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.78rem;color:var(--muted,#9ab0c8);margin-bottom:0.25rem">
+                    <span>✅ 準備済み</span><span id="prepared-progress-text"></span>
+                </div>
+                <div style="height:8px;border-radius:4px;background:var(--bg2,rgba(128,128,128,0.25));overflow:hidden">
+                    <div id="prepared-progress-fill" style="height:100%;width:0%;border-radius:4px;background:var(--accent,#63b3ed);transition:width .25s ease"></div>
+                </div>`;
+            list.parentNode.insertBefore(bar, list);
+        }
+        bar.style.display = '';
+        const prepared = this._preparedSet();
+        const done = items.reduce((n, r) => n + (prepared.has(r.id) ? 1 : 0), 0);
+        const pct = items.length > 0 ? Math.round((done / items.length) * 100) : 0;
+        const text = document.getElementById('prepared-progress-text');
+        const fill = document.getElementById('prepared-progress-fill');
+        if (text) text.textContent = `${done} / ${items.length} 種 (${pct}%)`;
+        if (fill) {
+            fill.style.width = `${pct}%`;
+            fill.style.background = pct >= 100 ? 'var(--success, #48bb78)' : 'var(--accent, #63b3ed)';
+        }
+    }
+
     _renderBlockList() {
         const list = document.getElementById('block-list');
         if (!list) return;
+        this._renderPreparedProgress();
         if (!this._integratedMaterials) { list.innerHTML = ''; return; }
         const query = document.getElementById('search-input')?.value.toLowerCase() ?? '';
         const showId = document.getElementById('id-toggle')?.checked ?? false;
@@ -1424,6 +1458,7 @@ class App {
                 if (e.target.checked) set.add(item.id); else set.delete(item.id);
                 this._savePrepared();
                 card.classList.toggle('prepared', e.target.checked);
+                this._renderPreparedProgress();
             });
             frag.appendChild(card);
         });
