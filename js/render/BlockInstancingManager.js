@@ -195,9 +195,23 @@ export class BlockInstancingManager {
 /**
  * Visual Hints (facing / face) から Three.Object3D の回転を設定する。
  *
- * 規約:
- *   ジオメトリは「facing=north (北向き), face=floor (床立て)」を基準形で生成されている。
- *   このヘルパーは hints に応じて Y/X/Z 軸の回転を適用する。
+ * ══ 方向性ブロックの回転規約 (ここに一元化) ══════════════════════════════
+ *
+ * 1. hints は bedrock_visual_state.js getVisualHints() が生成する。
+ *    repeater/comparator は Bedrock の cardinal_direction (入力側) を
+ *    180° 反転して「出力側」を facing として返す。
+ *
+ * 2. ジオメトリ基準形は blockshapes.js の各 _buildXxx が定義する。
+ *    yawByFacing は「facing=north → yaw 0 (基準形そのまま)」を前提とするが、
+ *    基準形の向き自体はブロックごとに異なり得る:
+ *      - repeater/comparator: 入力=-Z / 出力=+Z (ユーザー目視検証 #7 で確定)
+ *      - hopper: 基準形側 (_buildHopper) が states.facing_direction を直接読んで
+ *        spout を配置するため、getVisualHints は null を返す (ここで yaw を
+ *        掛けると二重回転になる — bedrock_visual_state.js の hopper 分岐参照)
+ *
+ * 3. ⚠️ この領域は過去に fix→revert→再fix が繰り返された (35ff335→58bbcd4)。
+ *    yawByFacing・基準形・getVisualHints の反転処理は三位一体なので、
+ *    どれか1つを変えるときは必ず 3D プレビューで全方向を目視確認すること。
  *
  *   facing 一覧 (Y軸回転):
  *     north  ->  0

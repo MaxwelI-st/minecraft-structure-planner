@@ -1159,9 +1159,10 @@ function _buildRedstoneDust(THREE, states) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Repeater (M-V-1) — MC モデルピクセル座標に合わせた寸法
 // ─────────────────────────────────────────────────────────────────────────────
-// 基準形: facing=north (出力=+Z、入力=-Z)。
+// 基準形: 入力=-Z (back torch)、出力=+Z (front torch) — comparator と同じ向き。
 // ユーザー検証により Bedrock の cardinal_direction='north' は base geometry を
 // MC とは前後逆に配置する必要があった (#7 修正)。
+// ※ 回転規約の全体像は BlockInstancingManager.js の _applyFacingRotation を参照。
 //   back torch: z=-0.25 (入力側、-Z)
 //   front torch delay 1..4: -0.125, 0, +0.125, +0.25 (delay 1 が back に最も近い)
 function _buildRepeater(THREE, states) {
@@ -1181,15 +1182,17 @@ function _buildRepeater(THREE, states) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Comparator (M-V-1) — MC モデルピクセル座標に厳密合わせ
 // ─────────────────────────────────────────────────────────────────────────────
-// 基準形: facing=north (出力=-Z、入力=+Z)。
-// MC pixel coords (16x2x16):
-//   back torch:  center x=8, z=11 (subtract mode はさらに 2px 高く)
-//   front-left:  center x=4, z=5
-//   front-right: center x=12, z=5
-// Three.js (-0.5..+0.5):
-//   back: (0, _, +0.1875)  ← 旧 +0.30 から手前に
-//   front-left:  (-0.25, _, -0.1875)
-//   front-right: (+0.25, _, -0.1875)
+// 基準形: 入力=-Z (back torch)、出力=+Z (front torch 2本) — repeater と同じ向き。
+// #7 のユーザー目視検証により back/front を旧実装から 180° 反転して配置している
+// (下の旧 Three.js 座標とは z 符号が逆になっているのが現状の正)。
+// ※ 回転規約の全体像は BlockInstancingManager.js の _applyFacingRotation を参照。
+// MC pixel coords (16x2x16) 由来の寸法:
+//   back torch:  center x=8 (subtract mode はさらに 2px 高く)
+//   front-left:  center x=4 / front-right: center x=12
+// Three.js (-0.5..+0.5) 現実装:
+//   back: (0, _, -0.1875)
+//   front-left:  (-0.25, _, +0.1875)
+//   front-right: (+0.25, _, +0.1875)
 function _buildComparator(THREE, states) {
   const subtract = states?.__comparator_subtract === true;
   const base = { y: -0.4375, w: 1, h: 0.125, d: 1 };
