@@ -407,6 +407,18 @@ export const UIMixin = {
             if (sel?.value === '__ALL__') this._scheduleViewer3DRefresh();
         };
 
+        const btnScreenshot = $('btn-v3d-screenshot');
+        if (btnScreenshot) btnScreenshot.onclick = () => {
+            const dataUrl = this.viewer3d?.captureScreenshot?.();
+            if (!dataUrl) { this._toast('先に 3D 表示を開始してください', 'error'); return; }
+            const a = document.createElement('a');
+            const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            a.href = dataUrl;
+            a.download = `mc-planner-3d-${ts}.png`;
+            a.click();
+            this._toast('📸 スクリーンショットを保存しました');
+        };
+
         $('floor-type-select').addEventListener('change', (e) => {
             if (this.viewer3d) this.viewer3d.setFloorType(e.target.value);
         });

@@ -1480,6 +1480,23 @@ export class Viewer3D {
     highlightBlock(blockId) {}
     clearHighlight() { this.clearSelectionIndicator(); }
 
+    /**
+     * 現在のビューを PNG data URL として取得。
+     * preserveDrawingBuffer なしの WebGL は描画後にバッファが消えるため、
+     * render() 直後に同期で toDataURL() を読むことで対応する。
+     * @returns {string|null} data URL (失敗時 null)
+     */
+    captureScreenshot() {
+        if (!this.isInitialized || !this.renderer || !this.scene || !this.camera) return null;
+        try {
+            this.renderer.render(this.scene, this.camera);
+            return this.renderer.domElement.toDataURL('image/png');
+        } catch (e) {
+            console.error('captureScreenshot failed:', e);
+            return null;
+        }
+    }
+
     /** ウィンドウリサイズ時の処理 */
     handleResize() {
         if (!this.isInitialized || !this.container || !this.renderer || !this.camera) return;
