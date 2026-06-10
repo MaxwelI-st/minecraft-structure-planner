@@ -235,15 +235,17 @@ export const UIMixin = {
 
         this._setupMultiplierModal();
 
-        document.querySelector('[data-tab="settings"]').addEventListener('click', () => {
-            const count = this.projects.length;
-            $('setting-project-count').textContent = `${count} / ${ProjectManager.MAX_PROJECTS}`;
+        document.querySelector('[data-tab="settings"]')?.addEventListener('click', () => {
+            const countEl = $('setting-project-count');
+            if (countEl) countEl.textContent = `${this.projects.length} / ${ProjectManager.MAX_PROJECTS}`;
+            const sizeEl = $('setting-storage-size');
+            if (!sizeEl) return;
             try {
                 const bytes = new Blob([localStorage.getItem('mc_planner_v2') || '']).size;
-                $('setting-storage-size').textContent = bytes > 1024
+                sizeEl.textContent = bytes > 1024
                     ? `${(bytes / 1024).toFixed(1)} KB`
                     : `${bytes} B`;
-            } catch { $('setting-storage-size').textContent = '—'; }
+            } catch { sizeEl.textContent = '—'; }
         });
 
         if ($('btn-export-all')) $('btn-export-all').onclick = () => this._exportAll();

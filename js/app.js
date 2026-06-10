@@ -1334,10 +1334,11 @@ class App {
 
     _renderBlockList() {
         const list = document.getElementById('block-list');
+        if (!list) return;
         if (!this._integratedMaterials) { list.innerHTML = ''; return; }
-        const query = document.getElementById('search-input').value.toLowerCase();
-        const showId = document.getElementById('id-toggle').checked;
-        const showWiki = document.getElementById('wiki-toggle').checked;
+        const query = document.getElementById('search-input')?.value.toLowerCase() ?? '';
+        const showId = document.getElementById('id-toggle')?.checked ?? false;
+        const showWiki = document.getElementById('wiki-toggle')?.checked ?? false;
         const prepared = this._preparedSet();
         const filtered = this._integratedMaterials.filter(r => {
             const rawId = r.id.replace('minecraft:', '');
@@ -1407,7 +1408,9 @@ class App {
                 </div>
             `;
             card.querySelector('.block-name').addEventListener('click', () => {
-                navigator.clipboard.writeText(item.id).then(() => this._toast(`📋 ${item.id}`));
+                navigator.clipboard.writeText(item.id)
+                    .then(() => this._toast(`📋 ${item.id}`))
+                    .catch(() => this._toast('コピーに失敗しました', 'error'));
             });
             card.querySelector('.prepared-check').addEventListener('change', (e) => {
                 const pid = this.currentProjectId;
@@ -1544,12 +1547,16 @@ class App {
                 const snapped = m.snapToMapGrid(x, z);
                 const shifted = m.shiftForEdgeExclusion(snapped.x, snapped.z);
                 const info = $('map-pos-info');
+                if (!info) return;
                 info.style.display = 'block';
                 info.innerHTML = `
                     <div>最寄り地図角: <strong>${snapped.x}, ${snapped.z}</strong></div>
                     <div style="color:var(--accent);margin-top:0.2rem">💡 推奨設置座標 (縁を回避):<br><strong>X: ${shifted.x}, Z: ${shifted.z}</strong></div>
                     <div style="font-size:0.6rem;margin-top:0.2rem;opacity:0.8">※統合版の仕様により、地図の最外周1ブロックは色が化けることがあるため、+1ずらして配置することを推奨します。</div>
                 `;
+            }).catch(err => {
+                console.error('map-calc-pos failed:', err);
+                this._toast?.('地図座標の計算に失敗しました', 'error');
             });
         };
         $('btn-export-png').onclick = () => this._exportDotArtPng();
@@ -2308,7 +2315,6 @@ class App {
                 ? replacedCoords.filter(c => !this._deletedPositions.has(`${c.x},${c.y},${c.z}`))
                 : replacedCoords;
             this.viewer3d.loadStructure(filteredCoords, structure.size, { yMin, yMax, xMin, xMax, zMin, zMax, colorMode });
-            this.viewer3d.onBlockClick = (info) => this._onViewer3DClick(info);
             this._updateTextureStatusUI();
             this._renderV3dOffsetPanel(project, [structure]);
             const infoEl = document.getElementById('viewer3d-info');
