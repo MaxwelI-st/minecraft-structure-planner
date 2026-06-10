@@ -230,6 +230,10 @@ export class ProjectManager {
 
     static getIntegrated(project, replacementsByStructure) {
         const totals = new Map();
+        // 集計キー (正規化/置換後の id) → category。
+        // 後段で元 results を r.id で再検索すると正規化後の id とは一致せず
+        // 常に 'other' に落ちるため、r を握っているここで対応を記録する。
+        const categories = new Map();
         for (const s of project.structures) {
             const mult = s.multiplier || 1;
             const repMap = replacementsByStructure?.get(s.id);
@@ -248,14 +252,14 @@ export class ProjectManager {
                 if (lowId === 'minecraft:air' || lowId === 'air') continue;
                 const existing = totals.get(id) || 0;
                 totals.set(id, existing + r.count * mult * countMul);
+                if (!categories.has(id) && r.category) categories.set(id, r.category);
             }
         }
         return Array.from(totals.entries()).map(([id, count]) => {
             const stacks = Math.floor(count / 64);
             const remainder = count % 64;
             const slots = stacks + (remainder > 0 ? 1 : 0);
-            const sample = project.structures.flatMap(s => s.results).find(r => r.id === id);
-            return { id, count, stacks, remainder, slots, category: sample?.category || 'other' };
+            return { id, count, stacks, remainder, slots, category: categories.get(id) || 'other' };
         }).sort((a, b) => b.count - a.count);
     }
 }
