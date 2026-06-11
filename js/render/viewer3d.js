@@ -10,6 +10,7 @@ import { _getState, _isTrue } from '../blockshapes.js';
 import { BlockInstancingManager } from './BlockInstancingManager.js';
 import { getVisualHints } from '../modules/logic/bedrock_visual_state.js';
 import { computeWireConnections, encodeConnections } from '../modules/logic/redstone_wire_connect.js';
+import { readOrientation, computeStairsShape } from './orientation.js';
 
 // ─── バイオームカラー定数 ──────────────────────────────────────────────────
 // 平原バイオーム準拠（Minecraft 標準）
@@ -105,22 +106,23 @@ function _shapeSignature(blockId, states) {
     if (shape === 'cube' || !states) return blockId;
     const keys = [];
     // Bedrock + Java の両方の state 名を含めてキャッシュ衝突を防ぐ
-    if      (shape === 'stairs')         keys.push('weirdo_direction', 'facing', 'upside_down_bit', 'half');
+    if      (shape === 'stairs')         keys.push('upside_down_bit', 'half');
     else if (shape === 'slab')           keys.push('top_slot_bit', 'vertical_half', 'minecraft:vertical_half', 'upside_down_bit', 'type');
-    else if (shape === 'trapdoor')       keys.push('open_bit', 'open', 'upside_down_bit', 'half', 'direction', 'facing', 'minecraft:cardinal_direction');
-    else if (shape === 'door')           keys.push('open_bit', 'open', 'direction', 'facing', 'facing_direction', 'minecraft:cardinal_direction', 'upper_block_bit', 'half', 'door_hinge_bit', 'hinge_bit', 'hinge');
-    else if (shape === 'fence_gate')     keys.push('open_bit', 'open', 'direction', 'facing', 'minecraft:cardinal_direction');
+    else if (shape === 'trapdoor')       keys.push('open_bit', 'open', 'upside_down_bit', 'half');
+    else if (shape === 'door')           keys.push('open_bit', 'open', 'upper_block_bit', 'half', 'door_hinge_bit', 'hinge_bit', 'hinge');
+    else if (shape === 'fence_gate')     keys.push('open_bit', 'open');
     else if (shape === 'lantern')        keys.push('hanging_bit', 'hanging');
-    else if (shape === 'chain')          keys.push('pillar_axis', 'axis');
+    else if (shape === 'chain')          { /* rotation only */ }
     else if (shape === 'rail')           keys.push('rail_direction', 'shape');
-    else if (shape === 'frame')          keys.push('facing_direction', 'facing');
-    else if (shape === 'end_rod')        keys.push('pillar_axis', 'axis', 'facing_direction');
+    else if (shape === 'frame')          { /* rotation only */ }
+    else if (shape === 'end_rod')        { /* rotation only */ }
     else if (shape === 'snow_layer')     keys.push('height', 'snow_layer_height');
     else if (shape === 'button')         keys.push('facing_direction', 'face');
-    else if (shape === 'hopper')         keys.push('facing_direction', 'facing');
-    else if (shape === 'anvil')          keys.push('direction', 'facing_direction');
-    else if (shape === 'shelf')          keys.push('direction', 'facing_direction');
-    else if (shape === 'campfire')       keys.push('direction', 'facing_direction');
+    else if (shape === 'hopper')         { /* rotation + hopper topology sig */ }
+    else if (shape === 'anvil')          { /* rotation only */ }
+    else if (shape === 'shelf')          { /* rotation only */ }
+    else if (shape === 'campfire')       { /* rotation only */ }
+    else if (shape === 'torch')          keys.push('torch_facing_direction');
     const sigParts = keys.map(k => k + '=' + (states[k] ?? ''));
     return blockId + '|' + sigParts.join(',');
 }
@@ -686,15 +688,7 @@ export class Viewer3D {
             };
 
             const neighborSig = `|n${neighbors.n?1:0}s${neighbors.s?1:0}w${neighbors.w?1:0}e${neighbors.e?1:0}`;
-            // 階段は隣接ブロックのIDと向きもシグネチャに含める
             let stairCornerSig = '';
-            if (classifyShape(c.blockId, c.states) === 'stairs') {
-                const nb = neighborBlocks;
-                // Bedrock weirdo_direction (int) + Java facing (string) どちらも含めて
-                // 隣接階段の向き変化でキャッシュ衝突を防ぐ
-                const nbStr = (b) => b ? `${b.blockId}:${b.states?.weirdo_direction ?? b.states?.facing ?? ''}` : 'null';
-                stairCornerSig = `|stairs[${nbStr(nb.n)},${nbStr(nb.s)},${nbStr(nb.w)},${nbStr(nb.e)}]`;
-            }
 
             // Redstone 関連の visual hints を取得
             let hints = getVisualHints(c.blockId, c.states);
@@ -702,6 +696,7 @@ export class Viewer3D {
             let effectiveStates = c.states;
             let repeaterSig = '';
             let comparatorSig = '';
+            let hopperSig = '';
             if (c.blockId === 'minecraft:redstone_wire') {
                 // 接続フラグを計算 (完全 MC 準拠)
                 const conn = computeWireConnections(c, getBlock);
@@ -729,9 +724,41 @@ export class Viewer3D {
                 const subtract = hints?.mode === 'subtract';
                 comparatorSig = `|m${subtract ? 's' : 'c'}`;
                 effectiveStates = { ...(c.states || {}), __comparator_subtract: subtract };
+            } else if (classifyShape(c.blockId, c.states) === 'torch') {
+                if (hints?.face === 'wall') {
+                    effectiveStates = { ...(c.states || {}), __torch_face: 'wall' };
+                    hints = { ...hints, face: null };
+                }
+            } else if (classifyShape(c.blockId, c.states) === 'stairs') {
+                const facing = hints?.facing ?? readOrientation(c.blockId, c.states)?.facing ?? 'north';
+                const half = (c.states?.upside_down_bit === 1 || c.states?.half === 'top') ? 'top' : 'bottom';
+                const getNeighborByDirection = (direction) => {
+                    const delta = {
+                        north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0],
+                    }[direction];
+                    const neighbor = getBlock(c.x + delta[0], c.y, c.z + delta[1]);
+                    if (!neighbor || classifyShape(neighbor.blockId, neighbor.states) !== 'stairs') return null;
+                    const neighborOrientation = readOrientation(neighbor.blockId, neighbor.states);
+                    const neighborHalf = (neighbor.states?.upside_down_bit === 1 || neighbor.states?.half === 'top')
+                        ? 'top' : 'bottom';
+                    return { isStairs: true, facing: neighborOrientation?.facing ?? 'north', half: neighborHalf };
+                };
+                const stairShape = c.states?.shape ?? computeStairsShape(facing, half, getNeighborByDirection);
+                stairCornerSig = `|sh=${stairShape}`;
+                effectiveStates = { ...(c.states || {}), __stair_shape: stairShape };
+                hints = { ...(hints || {}), facing };
+            } else if (c.blockId === 'minecraft:hopper') {
+                const facingDirection = c.states?.facing_direction;
+                const javaFacing = c.states?.facing;
+                const isDown = facingDirection === 0 || facingDirection === '0' || javaFacing === 'down' ||
+                    (facingDirection === undefined && javaFacing === undefined);
+                if (isDown) effectiveStates = { ...(c.states || {}), __hopper_down: true };
+                hopperSig = isDown ? '|hd' : '|hs';
             }
 
-            const sig = _shapeSignature(c.blockId, c.states) + neighborSig + stairCornerSig + dustSig + repeaterSig + comparatorSig;
+            const structureSig = c.structureId ? `|sid=${c.structureId}` : '';
+            const sig = _shapeSignature(c.blockId, c.states) + neighborSig + stairCornerSig +
+                dustSig + repeaterSig + comparatorSig + hopperSig + structureSig;
 
             // 後段 (addBlockInstance) で coord → hints を引けるよう保存
             if (hints) coordHints.set(c, hints);
@@ -739,7 +766,7 @@ export class Viewer3D {
             if (!groups.has(sig)) {
                 groups.set(sig, {
                     blockId: c.blockId, rawId: c.rawId, states: effectiveStates,
-                    neighbors, neighborBlocks, list: []
+                    neighbors, neighborBlocks, structureId: c.structureId ?? null, list: []
                 });
             }
             groups.get(sig).list.push(c);
@@ -756,7 +783,7 @@ export class Viewer3D {
         const wireScratchColor = new THREE.Color(); // redstone_wire の per-instance 色用
 
         for (const [sig, grp] of groups.entries()) {
-            const { blockId, rawId, states, neighbors, neighborBlocks, list } = grp;
+            const { blockId, rawId, states, neighbors, neighborBlocks, structureId, list } = grp;
             const requiredInstances = list.length;
 
             const isGrass = _isGrassBlock(blockId) && this.colorMode === 'realtexture';
@@ -794,13 +821,13 @@ export class Viewer3D {
             if (isGrass) {
                 // 1. 土ベース（内側の不透明な土ブロック）
                 const matBase = this._buildMaterial(THREE, blockId, rawId, states, 'base');
-                this.blockManager.registerBlockType(sig + '_base', geo, matBase, blockId, requiredInstances);
+                this.blockManager.registerBlockType(sig + '_base', geo, matBase, blockId, requiredInstances, structureId);
 
                 // 2. 草オーバーレイ（外側の透過テクスチャ）
                 const matOverlay = this._buildMaterial(THREE, blockId, rawId, states, 'overlay');
                 const overlayGeo = geo.clone();
                 overlayGeo.scale(1.001, 1.001, 1.001); // 0.001だけ大きくしてZファイティング防止
-                this.blockManager.registerBlockType(sig + '_overlay', overlayGeo, matOverlay, blockId, requiredInstances);
+                this.blockManager.registerBlockType(sig + '_overlay', overlayGeo, matOverlay, blockId, requiredInstances, structureId);
 
                 for (let i = 0; i < list.length; i++) {
                     const hints = coordHints.get(list[i]) || null;
@@ -810,7 +837,7 @@ export class Viewer3D {
             } else {
                 const mat = this._buildMaterial(THREE, blockId, rawId, states, 'all');
                 // マネージャーにブロックタイプを登録（容量不足時は自動拡張）
-                this.blockManager.registerBlockType(sig, geo, mat, blockId, requiredInstances);
+                this.blockManager.registerBlockType(sig, geo, mat, blockId, requiredInstances, structureId);
                 for (let i = 0; i < list.length; i++) {
                     const hints = coordHints.get(list[i]) || null;
                     // Redstone Wire: 信号レベルに応じた赤の濃淡 (per-instance color)
@@ -1146,6 +1173,12 @@ export class Viewer3D {
             this.loadStructure(this._lastCoords, this._lastSize, this._lastOptions || {});
         }
     }
+
+    /** 合体モードの構造ドラッグを再メッシュ化せずにプレビューする。 */
+    translateStructurePreview(structureId, axis, delta) {
+        this.blockManager?.translateStructure(structureId, axis, delta);
+    }
+
     _handleClick(e, isRightClick = false) {
         if (!isRightClick && !this.onBlockClick) return;
         if (isRightClick && !this.onBlockRightClick) return;

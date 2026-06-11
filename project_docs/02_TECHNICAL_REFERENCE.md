@@ -315,6 +315,19 @@ for (const [key, positions] of groups) {
 
 **Culling**: Run Hollow-out Engine before populating matrices. Blocks with all 6 neighbors opaque are excluded. Typical reduction: 60–80% fewer instances on solid structures.
 
+### 6-3. Direction and Rotation Convention (2026-06 Rebuild)
+
+- Single source of truth: `js/render/orientation.js` owns Bedrock/Java state normalization,
+  direction tables, and per-instance Euler rotations (`YXZ`).
+- Canonical geometry faces north (`-Z`) and is floor-mounted. Shape builders do not bake
+  horizontal direction into geometry.
+- Geometry signatures include topology changes only, such as open/half/hinge/delay,
+  connection state, stair shape, and torch attachment.
+- Stair inner/outer corner calculation lives in `js/render/orientation_stairs.js`.
+- Verify with `npx vitest run tests/orientation_*.test.js` and `?dirtest=1`.
+- Repeater/comparator behavior is derived in
+  `docs/superpowers/plans/2026-06-11-3d-orientation-rebuild.md` section 0-5.
+
 ---
 
 ## 7. Data Hack: Invert (Excavation) Mode

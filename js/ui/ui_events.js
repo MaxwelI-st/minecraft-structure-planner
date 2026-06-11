@@ -521,6 +521,7 @@ export const UIMixin = {
                 if (project) {
                     this._switchV3dSubtab('advanced');
                     this._renderV3dOffsetPanel(project);
+                    if (this.viewer3d?.isInitialized) this._load3DView();
                 }
             } else {
                 const op = document.getElementById('v3d-offset-panel');

@@ -4,6 +4,8 @@
  * 形状や隣接状態をシグネチャ（sig）としてグループ化し、
  * 動的な描画数（count）変更に対応させることでパフォーマンスを最大化する。
  */
+import { eulerFor } from './orientation.js';
+
 export class BlockInstancingManager {
   /**
    * @param {THREE.Scene} scene - 描画対象のシーン
@@ -30,8 +32,9 @@ export class BlockInstancingManager {
    * @param {THREE.Material|THREE.Material[]} material 
    * @param {string} blockId - メタデータ用
    * @param {number} requiredInstances - 今回必要な配置数
+   * @param {string|null} structureId - 合体モード時の構造識別子
    */
-  registerBlockType(sig, geometry, material, blockId, requiredInstances) {
+  registerBlockType(sig, geometry, material, blockId, requiredInstances, structureId = null) {
     const data = this.instancedMeshes.get(sig);
     
     // すでに存在し、容量も十分な場合は再利用
@@ -39,6 +42,7 @@ export class BlockInstancingManager {
       // 念のためマテリアルとジオメトリは最新にする
       data.mesh.geometry = geometry;
       data.mesh.material = material;
+      data.mesh.userData.structureId = structureId;
       return;
     }
 
@@ -64,7 +68,7 @@ export class BlockInstancingManager {
     mesh.count = 0;
     
     // userDataにblockIdとシグネチャを保持（ハイライト処理等で使用）
-    mesh.userData = { blockId, sig, instanceCoords: [] };
+    mesh.userData = { blockId, sig, structureId, instanceCoords: [] };
 
     if (data) {
         // 容量不足で再作成する場合は、古いメッシュをシーンから削除しメモリ解放
@@ -85,6 +89,7 @@ export class BlockInstancingManager {
       data.count = 0;
       data.mesh.count = 0; 
       data.mesh.userData.instanceCoords = []; // 座標リストもクリア
+      data.mesh.position.set(0, 0, 0);
     }
   }
 
@@ -110,11 +115,10 @@ export class BlockInstancingManager {
 
     // 行列をセット — 位置 + visualHints から回転を適用
     this.dummy.position.set(coord.x, coord.y, coord.z);
-    this.dummy.rotation.set(0, 0, 0);
     this.dummy.scale.set(1, 1, 1);
-    if (visualHints) {
-      _applyFacingRotation(this.dummy, visualHints);
-    }
+    const euler = eulerFor(visualHints || {});
+    this.dummy.rotation.order = euler.order;
+    this.dummy.rotation.set(euler.x, euler.y, euler.z);
     this.dummy.updateMatrix();
     data.mesh.setMatrixAt(data.count, this.dummy.matrix);
 
@@ -160,6 +164,18 @@ export class BlockInstancingManager {
   }
 
   /**
+   * 合体モードのドラッグプレビュー用。対象構造のメッシュだけを平行移動する。
+   */
+  translateStructure(structureId, axis, delta) {
+    if (!structureId || !['x', 'y', 'z'].includes(axis) || !delta) return;
+    for (const data of this.instancedMeshes.values()) {
+      if (data.mesh.userData.structureId !== structureId) continue;
+      data.mesh.position[axis] += delta;
+      data.mesh.updateMatrixWorld();
+    }
+  }
+
+  /**
    * シグネチャに登録された Three.InstancedMesh が存在するか確認するヘルパー
    * @param {string} sig
    * @returns {boolean}
@@ -188,84 +204,4 @@ export class BlockInstancingManager {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 内部ヘルパー: visualHints → dummy への rotation 適用
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Visual Hints (facing / face) から Three.Object3D の回転を設定する。
- *
- * ══ 方向性ブロックの回転規約 (ここに一元化) ══════════════════════════════
- *
- * 1. hints は bedrock_visual_state.js getVisualHints() が生成する。
- *    repeater/comparator は Bedrock の cardinal_direction (入力側) を
- *    180° 反転して「出力側」を facing として返す。
- *
- * 2. ジオメトリ基準形は blockshapes.js の各 _buildXxx が定義する。
- *    yawByFacing は「facing=north → yaw 0 (基準形そのまま)」を前提とするが、
- *    基準形の向き自体はブロックごとに異なり得る:
- *      - repeater/comparator: 入力=-Z / 出力=+Z (ユーザー目視検証 #7 で確定)
- *      - hopper: 基準形側 (_buildHopper) が states.facing_direction を直接読んで
- *        spout を配置するため、getVisualHints は null を返す (ここで yaw を
- *        掛けると二重回転になる — bedrock_visual_state.js の hopper 分岐参照)
- *
- * 3. ⚠️ この領域は過去に fix→revert→再fix が繰り返された (35ff335→58bbcd4)。
- *    yawByFacing・基準形・getVisualHints の反転処理は三位一体なので、
- *    どれか1つを変えるときは必ず 3D プレビューで全方向を目視確認すること。
- *
- *   facing 一覧 (Y軸回転):
- *     north  ->  0
- *     east   -> -π/2
- *     south  ->  π
- *     west   -> +π/2
- *
- *   facing=up / down (X軸回転 ±π/2)
- *   face=ceiling: 上下反転 (Z軸 π回転) + facing
- *   face=wall   : Z軸 +π/2 回転 + facing
- *
- * @param {Object} dummy - Three.Object3D
- * @param {Object} hints - visualHints
- */
-function _applyFacingRotation(dummy, hints) {
-  const facing = hints.facing;
-  const face   = hints.face;
-  const PI     = Math.PI;
-  const PI2    = PI / 2;
-
-  // 1) Y 軸回転 (facing が water-level 4 方向の場合)
-  const yawByFacing = {
-    north: 0,
-    east:  -PI2,
-    south: PI,
-    west:  PI2,
-  };
-
-  if (face === 'wall' && facing && yawByFacing[facing] !== undefined) {
-    // 壁設置: Z軸 π/2 回転で base を立てる + facing で Y 回転
-    dummy.rotation.set(0, yawByFacing[facing], PI2);
-    return;
-  }
-
-  if (face === 'ceiling') {
-    // 天井設置: 上下反転 + facing
-    const yaw = facing && yawByFacing[facing] !== undefined ? yawByFacing[facing] : 0;
-    dummy.rotation.set(PI, yaw, 0);
-    return;
-  }
-
-  if (facing === 'up') {
-    dummy.rotation.set(-PI2, 0, 0);
-    return;
-  }
-  if (facing === 'down') {
-    dummy.rotation.set(PI2, 0, 0);
-    return;
-  }
-  if (facing && yawByFacing[facing] !== undefined) {
-    dummy.rotation.set(0, yawByFacing[facing], 0);
-    return;
-  }
-
-  // 該当無し → デフォルト (回転なし)
-  dummy.rotation.set(0, 0, 0);
-}
+// Rotation rules live in js/render/orientation.js.

@@ -22,13 +22,13 @@
 // 方向マッピング (block-type aware)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// 旧 _TRAP_DIR (Bedrock visual で動いてた値) と一致させる
-// BE direction=0 → 視覚 west wall (Java facing='west' と同じ視覚)
-const TRAPDOOR_DIR_TO_FACING   = ['west', 'east', 'north', 'south'];
-const DOOR_DIR_TO_FACING       = ['east',  'south', 'west', 'north'];
-const FENCE_GATE_DIR_TO_FACING = ['south', 'west',  'north', 'east'];
-const STAIR_WD_TO_FACING       = ['east',  'west',  'south', 'north'];
-const FACING6_TO_FACING        = ['down',  'up',    'north', 'south', 'west', 'east'];
+import { DIR_TABLES, FACING6, ROT_CW } from './orientation.js';
+
+const TRAPDOOR_DIR_TO_FACING = DIR_TABLES.trapdoor;
+const DOOR_DIR_TO_FACING = DIR_TABLES.door;
+const FENCE_GATE_DIR_TO_FACING = DIR_TABLES.fence_gate;
+const STAIR_WD_TO_FACING = DIR_TABLES.stairs;
+const FACING6_TO_FACING = FACING6;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 内部ヘルパー
@@ -166,7 +166,7 @@ export function readStairsShape(states) {
 
 // ドア用 90° 回転 (CW): Bedrock cardinal_direction → Java facing
 // north → east → south → west → north
-const ROT_CW90 = { north: 'east', east: 'south', south: 'west', west: 'north' };
+const ROT_CW90 = ROT_CW;
 
 /** @returns {'north' | 'south' | 'east' | 'west'} */
 export function readDoorFacing(states) {

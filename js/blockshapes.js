@@ -12,11 +12,10 @@
  */
 
 import {
-  readSlabType, readTrapdoorFacing, readTrapdoorHalf, readTrapdoorOpen,
-  readStairsFacing, readStairsHalf, readDoorFacing, readDoorHalf,
-  readDoorOpen, readDoorHinge, readFenceGateFacing, readFenceGateOpen,
-  readFenceConnections, readWallConnections, readAxis, readFacing6, readHanging,
-  readRailShape,
+  readSlabType, readTrapdoorHalf, readTrapdoorOpen,
+  readStairsHalf, readStairsShape, readDoorHalf,
+  readDoorOpen, readDoorHinge, readFenceGateOpen,
+  readFenceConnections, readWallConnections, readHanging, readRailShape,
 } from './render/state-reader.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -316,7 +315,7 @@ export function resolveGeometry(THREE, blockId, states, neighbors, neighborBlock
 
   switch (shape) {
     case SHAPES.SLAB:           return _buildSlab(THREE, states);
-    case SHAPES.STAIRS:         return _buildStairs(THREE, states, neighbors, neighborBlocks);
+    case SHAPES.STAIRS:         return _buildStairs(THREE, states);
     case SHAPES.FENCE:          return _buildFence(THREE, neighbors);
     case SHAPES.FENCE_GATE:     return _buildFenceGate(THREE, states);
     case SHAPES.WALL:           return _buildWall(THREE, neighbors);
@@ -328,10 +327,10 @@ export function resolveGeometry(THREE, blockId, states, neighbors, neighborBlock
     case SHAPES.PRESSURE_PLATE: return _buildPressurePlate(THREE);
     case SHAPES.BUTTON:         return _buildButton(THREE, states);
     case SHAPES.CROSS:          return _buildCross(THREE);
-    case SHAPES.TORCH:          return _buildTorch(THREE);
+    case SHAPES.TORCH:          return _buildTorch(THREE, states, states?.__torch_face ?? 'floor');
     case SHAPES.LANTERN:        return _buildLantern(THREE, states);
-    case SHAPES.END_ROD:        return _buildEndRod(THREE, states);
-    case SHAPES.CHAIN:          return _buildChain(THREE, states);
+    case SHAPES.END_ROD:        return _buildEndRod(THREE);
+    case SHAPES.CHAIN:          return _buildChain(THREE);
     case SHAPES.CANDLE:         return _buildCandle(THREE);
     case SHAPES.CAMPFIRE:       return _buildCampfire(THREE);
     case SHAPES.SKULL:          return _buildSkull(THREE);
@@ -465,28 +464,31 @@ function _buildSlab(THREE, states) {
 }
 
 // ── Stairs ────────────────────────────────────────────────────────────────────
-// Bedrock weirdo_direction: 0=east, 1=west, 2=south, 3=north
-const _STAIR_DIR = { 0:'east', 1:'west', 2:'south', 3:'north',
-  east:'east', west:'west', south:'south', north:'north' };
-
-function _buildStairs(THREE, states, neighbors, neighborBlocks) {
-  const facing  = readStairsFacing(states);
+function _buildStairs(THREE, states) {
   const flipped = readStairsHalf(states) === 'top';
-
-  // main slab half
+  const shape = states?.__stair_shape ?? readStairsShape(states) ?? 'straight';
   const baseY = flipped ? 0.25  : -0.25;
   const stepY = flipped ? -0.25 :  0.25;
-
   const boxes = [{ y: baseY, w: 1, h: 0.5, d: 1 }];
 
-  // step on the "high" side (the side you walk up to)
-  switch (facing) {
-    case 'east':  boxes.push({ x:  0.25, y: stepY, w: 0.5, h: 0.5, d: 1 }); break;
-    case 'west':  boxes.push({ x: -0.25, y: stepY, w: 0.5, h: 0.5, d: 1 }); break;
-    case 'south': boxes.push({ z:  0.25, y: stepY, w: 1, h: 0.5, d: 0.5 }); break;
-    case 'north': boxes.push({ z: -0.25, y: stepY, w: 1, h: 0.5, d: 0.5 }); break;
+  switch (shape) {
+    case 'outer_left':
+      boxes.push({ x: -0.25, z: -0.25, y: stepY, w: 0.5, h: 0.5, d: 0.5 });
+      break;
+    case 'outer_right':
+      boxes.push({ x: 0.25, z: -0.25, y: stepY, w: 0.5, h: 0.5, d: 0.5 });
+      break;
+    case 'inner_left':
+      boxes.push({ z: -0.25, y: stepY, w: 1, h: 0.5, d: 0.5 });
+      boxes.push({ x: -0.25, z: 0.25, y: stepY, w: 0.5, h: 0.5, d: 0.5 });
+      break;
+    case 'inner_right':
+      boxes.push({ z: -0.25, y: stepY, w: 1, h: 0.5, d: 0.5 });
+      boxes.push({ x: 0.25, z: 0.25, y: stepY, w: 0.5, h: 0.5, d: 0.5 });
+      break;
+    default:
+      boxes.push({ z: -0.25, y: stepY, w: 1, h: 0.5, d: 0.5 });
   }
-
   return _mergeBoxes(THREE, boxes);
 }
 
@@ -518,48 +520,22 @@ function _buildFence(THREE, neighbors) {
 }
 
 // ── Fence Gate ────────────────────────────────────────────────────────────────
-const _GATE_DIR = { 0:'south', 1:'west', 2:'north', 3:'east',
-  south:'south', west:'west', north:'north', east:'east' };
-
 function _buildFenceGate(THREE, states) {
-  const open   = readFenceGateOpen(states);
-  const facing = readFenceGateFacing(states);
-  const isNS   = facing === 'north' || facing === 'south';
-
-  // Gate posts (wall connection)
+  const open = readFenceGateOpen(states);
   const T = 0.125, PH = 1;
-  const boxes = [];
+  const boxes = [
+    { x: -0.375, w: T, h: PH, d: T },
+    { x: 0.375, w: T, h: PH, d: T },
+  ];
 
   if (!open) {
-    // Closed: two posts + horizontal beams spanning the opening
-    if (isNS) {
-      boxes.push({ x: -0.375, w: T, h: PH, d: T });
-      boxes.push({ x:  0.375, w: T, h: PH, d: T });
-      boxes.push({ y: 0.0625, w: 0.75, h: T, d: T });
-      boxes.push({ y: 0.25,   w: 0.75, h: T, d: T });
-    } else {
-      boxes.push({ z: -0.375, w: T, h: PH, d: T });
-      boxes.push({ z:  0.375, w: T, h: PH, d: T });
-      boxes.push({ y: 0.0625, w: T, h: T, d: 0.75 });
-      boxes.push({ y: 0.25,   w: T, h: T, d: 0.75 });
-    }
+    boxes.push({ y: 0.0625, w: 0.75, h: T, d: T });
+    boxes.push({ y: 0.25, w: 0.75, h: T, d: T });
   } else {
-    // Open: gate panels swung to each side (simplified)
-    if (isNS) {
-      boxes.push({ x: -0.375, w: T, h: PH, d: T });
-      boxes.push({ x:  0.375, w: T, h: PH, d: T });
-      boxes.push({ x: -0.375, y: 0.0625, w: T, h: T, d: 0.5 });
-      boxes.push({ x: -0.375, y: 0.25,   w: T, h: T, d: 0.5 });
-      boxes.push({ x:  0.375, y: 0.0625, w: T, h: T, d: 0.5 });
-      boxes.push({ x:  0.375, y: 0.25,   w: T, h: T, d: 0.5 });
-    } else {
-      boxes.push({ z: -0.375, w: T, h: PH, d: T });
-      boxes.push({ z:  0.375, w: T, h: PH, d: T });
-      boxes.push({ z: -0.375, y: 0.0625, w: 0.5, h: T, d: T });
-      boxes.push({ z: -0.375, y: 0.25,   w: 0.5, h: T, d: T });
-      boxes.push({ z:  0.375, y: 0.0625, w: 0.5, h: T, d: T });
-      boxes.push({ z:  0.375, y: 0.25,   w: 0.5, h: T, d: T });
-    }
+    boxes.push({ x: -0.375, y: 0.0625, w: T, h: T, d: 0.5 });
+    boxes.push({ x: -0.375, y: 0.25, w: T, h: T, d: 0.5 });
+    boxes.push({ x: 0.375, y: 0.0625, w: T, h: T, d: 0.5 });
+    boxes.push({ x: 0.375, y: 0.25, w: T, h: T, d: 0.5 });
   }
   return _mergeBoxes(THREE, boxes);
 }
@@ -622,15 +598,9 @@ function _buildPane(THREE, neighbors) {
 }
 
 // ── Trapdoor ──────────────────────────────────────────────────────────────────
-// Bedrock trapdoor direction: 0=north, 1=south, 2=west, 3=east (JSON 実測値)
-// Java facing string も同様 (north/south/west/east)
-const _TRAP_DIR = { 0:'north', 1:'south', 2:'west', 3:'east',
-  south:'south', north:'north', east:'east', west:'west' };
-
 function _buildTrapdoor(THREE, states) {
   const open    = readTrapdoorOpen(states);
   const flipped = readTrapdoorHalf(states) === 'top';
-  const dir     = readTrapdoorFacing(states);
   const T = 0.1875; // 3/16 thick
 
   if (!open) {
@@ -639,18 +609,8 @@ function _buildTrapdoor(THREE, states) {
     return _mergeBoxes(THREE, [{ y, w: 1, h: T, d: 1 }]);
   }
 
-  // Open: トラップドアの `facing` は隣接ブロックの方向 (ヒンジ側の壁の方向)。
-  // 板はその壁に立つので、facing と同じ側に描画する。
-  // 例: facing='north' → 隣接は北 → 板は north 側 (z=-ec)
-  const ec     = 0.5 - T / 2; // edge center
-
-  switch (dir) {
-    case 'north': return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]);
-    case 'south': return _mergeBoxes(THREE, [{ z:  ec, w: 1, h: 1, d: T }]);
-    case 'west':  return _mergeBoxes(THREE, [{ x: -ec, w: T, h: 1, d: 1 }]);
-    case 'east':  return _mergeBoxes(THREE, [{ x:  ec, w: T, h: 1, d: 1 }]);
-    default:      return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]);
-  }
+  const ec = 0.5 - T / 2;
+  return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]);
 }
 
 // ── Door ──────────────────────────────────────────────────────────────────────
@@ -658,44 +618,14 @@ function _buildTrapdoor(THREE, states) {
 //          door_hinge_bit: 0=left hinge 1=right hinge (when looking at the door from outside)
 //          open_bit: 0=closed 1=open
 // §02_TECHNICAL_REFERENCE §4-3, §6-1
-const _DOOR_DIR = { 0:'east', 1:'south', 2:'west', 3:'north',
-  east:'east', south:'south', west:'west', north:'north' };
-
 function _buildDoor(THREE, states) {
   const T  = 0.1875;           // 3/16 thick
   const ec = 0.5 - T / 2;
 
-  const facing = readDoorFacing(states);
   const open   = readDoorOpen(states);
-  const hinge  = readDoorHinge(states) === 'right';
-
-  // Java DoorBlock の bounding box に合わせる:
-  // 閉じた状態: 板は facing と **反対側** の壁にある (facing=north → 板は south 端)
-  // 開いた状態: ヒンジ側の壁に板が swung する
-  // hinge=false (left) は外側から見て左 = 外側方向に対して反時計回りの方向
-  if (!open) {
-    switch (facing) {
-      case 'east':  return _mergeBoxes(THREE, [{ x: -ec, w: T, h: 1, d: 1 }]); // panel at west
-      case 'west':  return _mergeBoxes(THREE, [{ x:  ec, w: T, h: 1, d: 1 }]); // panel at east
-      case 'south': return _mergeBoxes(THREE, [{ z: -ec, w: 1, h: 1, d: T }]); // panel at north
-      case 'north': return _mergeBoxes(THREE, [{ z:  ec, w: 1, h: 1, d: T }]); // panel at south
-    }
-  }
-
-  // 開いた状態 (hinge=true は right hinge / Java's "right")
-  // facing=north + hinge=left → ヒンジは west → 板は west 壁
-  // facing=north + hinge=right → ヒンジは east → 板は east 壁
-  switch (facing) {
-    case 'north':
-      return _mergeBoxes(THREE, [{ x: hinge ?  ec : -ec, w: T, h: 1, d: 1 }]);
-    case 'south':
-      return _mergeBoxes(THREE, [{ x: hinge ? -ec :  ec, w: T, h: 1, d: 1 }]);
-    case 'east':
-      return _mergeBoxes(THREE, [{ z: hinge ?  ec : -ec, w: 1, h: 1, d: T }]);
-    case 'west':
-      return _mergeBoxes(THREE, [{ z: hinge ? -ec :  ec, w: 1, h: 1, d: T }]);
-  }
-  return _mergeBoxes(THREE, [{ w: T, h: 1, d: 1 }]);
+  const hingeRight = readDoorHinge(states) === 'right';
+  if (!open) return _mergeBoxes(THREE, [{ z: ec, w: 1, h: 1, d: T }]);
+  return _mergeBoxes(THREE, [{ x: hingeRight ? ec : -ec, w: T, h: 1, d: 1 }]);
 }
 
 // ── Carpet ────────────────────────────────────────────────────────────────────
@@ -733,9 +663,14 @@ function _buildCross(THREE) {
 }
 
 // ── Torch ─────────────────────────────────────────────────────────────────────
-function _buildTorch(THREE) {
+function _buildTorch(THREE, states, face = 'floor') {
+  if (face === 'wall') {
+    return _mergeBoxes(THREE, [
+      { y: -0.1, z: -0.35, w: 0.09375, h: 0.5, d: 0.09375, rx: -0.45 },
+    ]);
+  }
   return _mergeBoxes(THREE, [
-    { y: -0.25, w: 0.09375, h: 0.5, d: 0.09375 }, // stick
+    { y: -0.25, w: 0.09375, h: 0.5, d: 0.09375 },
   ]);
 }
 
@@ -782,18 +717,15 @@ function _buildLantern(THREE, states) {
 }
 
 // ── End Rod / Lightning Rod ────────────────────────────────────────────────────
-function _buildEndRod(THREE, states) {
-  const axis = _getState(states, 'pillar_axis') ?? _getState(states, 'axis') ?? 'y';
-  if (axis === 'x') return _mergeBoxes(THREE, [{ w: 1, h: 0.09375, d: 0.09375 }]);
-  if (axis === 'z') return _mergeBoxes(THREE, [{ w: 0.09375, h: 0.09375, d: 1 }]);
-  return _mergeBoxes(THREE, [{ w: 0.09375, h: 1, d: 0.09375 }]);
+function _buildEndRod(THREE) {
+  return _mergeBoxes(THREE, [
+    { w: 0.09375, h: 1, d: 0.09375 },
+    { y: -0.46875, w: 0.25, h: 0.0625, d: 0.25 },
+  ]);
 }
 
 // ── Chain ─────────────────────────────────────────────────────────────────────
-function _buildChain(THREE, states) {
-  const axis = readAxis(states); // 'x' | 'y' | 'z'
-  if (axis === 'x') return _mergeBoxes(THREE, [{ w: 1,       h: 0.09375, d: 0.09375 }]);
-  if (axis === 'z') return _mergeBoxes(THREE, [{ w: 0.09375, h: 0.09375, d: 1       }]);
+function _buildChain(THREE) {
   return _mergeBoxes(THREE, [{ w: 0.09375, h: 1, d: 0.09375 }]);
 }
 
@@ -875,7 +807,7 @@ function _buildSign(THREE) {
 // ── Wall Sign / Ladder ────────────────────────────────────────────────────────
 function _buildWallSign(THREE) {
   const T = 0.0625;
-  return _mergeBoxes(THREE, [{ z: -(0.5 - T / 2), w: 0.875, h: 0.375, d: T }]);
+  return _mergeBoxes(THREE, [{ z: 0.5 - T / 2, w: 0.875, h: 0.375, d: T }]);
 }
 
 // ── Bed ───────────────────────────────────────────────────────────────────────
@@ -892,51 +824,25 @@ function _buildLever(THREE) {
 }
 
 // ── Item Frame / Painting ──────────────────────────────────────────────────────
-// 額縁 = 背面薄板 + 上下左右の枠 4 本。facing で 6 方向に配置
-function _buildFrame(THREE, states) {
-  const face = readFacing6(states);
-  const W = 0.75;       // 額縁の幅・高さ (12/16)
-  const F = 0.0625;     // 壁からの飛び出し厚 (1/16)
-  const T = 0.0625;     // 枠の太さ (1/16)
+// Canonical frame faces north and sits against the south side of the block.
+function _buildFrame(THREE) {
+  const W = 0.75;
+  const F = 0.0625;
+  const T = 0.0625;
   const inner = W - T * 2;
-  // base: 北壁 (z = -ec) に対する 5 box 構成
-  // 中央背面板
-  const baseBoxes = [
-    { x: 0, y: 0, z: 0, w: W, h: T, d: F }, // 上の枠 (placeholder, 後で z 軸基準にする)
-  ];
-
-  // 北壁 (facing='north') に向けた額縁: 背面 + 4 枠を z=-(0.5-F/2) に配置
   const ec = 0.5 - F / 2;
-  const boxesNorth = [
-    // 背面板 (薄い)
-    { x: 0, y: 0, z: -ec, w: inner, h: inner, d: F * 0.5, autoUV: true },
-    // 上枠
-    { x: 0, y:  W/2 - T/2, z: -ec, w: W, h: T, d: F, autoUV: true },
-    // 下枠
-    { x: 0, y: -W/2 + T/2, z: -ec, w: W, h: T, d: F, autoUV: true },
-    // 左枠
-    { x: -W/2 + T/2, y: 0, z: -ec, w: T, h: inner, d: F, autoUV: true },
-    // 右枠
-    { x:  W/2 - T/2, y: 0, z: -ec, w: T, h: inner, d: F, autoUV: true },
-  ];
-
-  // facing で回転
-  let ry = 0, rx = 0;
-  if      (face === 'south') ry =  Math.PI;
-  else if (face === 'east')  ry = -Math.PI / 2;
-  else if (face === 'west')  ry =  Math.PI / 2;
-  else if (face === 'up')    rx =  Math.PI / 2;
-  else if (face === 'down')  rx = -Math.PI / 2;
-
-  // 回転を各 box に適用
-  return _mergeBoxes(THREE, boxesNorth.map(b => ({ ...b, ry, rx })));
+  return _mergeBoxes(THREE, [
+    { x: 0, y: 0, z: ec, w: inner, h: inner, d: F * 0.5, autoUV: true },
+    { x: 0, y: W / 2 - T / 2, z: ec, w: W, h: T, d: F, autoUV: true },
+    { x: 0, y: -W / 2 + T / 2, z: ec, w: W, h: T, d: F, autoUV: true },
+    { x: -W / 2 + T / 2, y: 0, z: ec, w: T, h: inner, d: F, autoUV: true },
+    { x: W / 2 - T / 2, y: 0, z: ec, w: T, h: inner, d: F, autoUV: true },
+  ]);
 }
 
 // ── Hopper ────────────────────────────────────────────────────────────────────
 function _buildHopper(THREE, states) {
-  // Java/Bedrock 両対応: readFacing6 が 'down'|'up'|'north'|'south'|'east'|'west' を返す
-  const dirVal = readFacing6(states);
-  const isDown = dirVal === 'down';
+  const isDown = states?.__hopper_down === true;
 
   const boxes = [
     // Top rim (16x16, 6 thick). Uses autoUV so the transparent 'top' texture maps correctly.
@@ -950,45 +856,22 @@ function _buildHopper(THREE, states) {
     { x: 0, y: -0.0625, z: 0, w: 0.5, h: 0.375, d: 0.5, autoUV: true, mats: { 2: 0 } },
   ];
 
-  // Spout (4x4x4)
   if (isDown) {
     boxes.push({ x: 0, y: -0.375, z: 0, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
   } else {
-    const sy = -0.125;
-    const dist = 0.375;
-    if      (dirVal === 'north') boxes.push({ x: 0, y: sy, z: -dist, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
-    else if (dirVal === 'south') boxes.push({ x: 0, y: sy, z:  dist, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
-    else if (dirVal === 'west')  boxes.push({ x: -dist, y: sy, z: 0, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
-    else if (dirVal === 'east')  boxes.push({ x:  dist, y: sy, z: 0, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
+    boxes.push({ x: 0, y: -0.125, z: -0.375, w: 0.25, h: 0.25, d: 0.25, autoUV: true });
   }
 
   return _mergeBoxes(THREE, boxes);
 }
 
 // ── Anvil ─────────────────────────────────────────────────────────────────────
-function _buildAnvil(THREE, states) {
-  const dirVal = _getState(states, 'direction') ?? 0;
-  // 0: Z-axis (north/south), 1: X-axis (east/west)
-  const isX = dirVal === 1 || dirVal === 3 || dirVal === 'east' || dirVal === 'west';
-
-
-  let wB=0.75, dB=0.75;
-  let wL=0.5, dL=0.625;
-  let wN=0.375, dN=0.5;
-  let wT=0.625, dT=1.0;
-
-  if (isX) {
-    [wB, dB] = [dB, wB];
-    [wL, dL] = [dL, wL];
-    [wN, dN] = [dN, wN];
-    [wT, dT] = [dT, wT];
-  }
-
+function _buildAnvil(THREE) {
   return _mergeBoxes(THREE, [
-    { x: 0, y: -0.375, z: 0, w: wB, h: 0.25, d: dB, autoUV: true }, // Base
-    { x: 0, y: -0.09375, z: 0, w: wL, h: 0.3125, d: dL, autoUV: true }, // Lower body
-    { x: 0, y: 0.09375, z: 0, w: wN, h: 0.0625, d: dN, autoUV: true }, // Neck
-    { x: 0, y: 0.3125, z: 0, w: wT, h: 0.375, d: dT, autoUV: true }, // Top
+    { x: 0, y: -0.375, z: 0, w: 0.75, h: 0.25, d: 0.75, autoUV: true },
+    { x: 0, y: -0.09375, z: 0, w: 0.5, h: 0.3125, d: 0.625, autoUV: true },
+    { x: 0, y: 0.09375, z: 0, w: 0.375, h: 0.0625, d: 0.5, autoUV: true },
+    { x: 0, y: 0.3125, z: 0, w: 0.625, h: 0.375, d: 1, autoUV: true },
   ]);
 }
 
@@ -1007,23 +890,10 @@ function _buildScaffolding(THREE) {
 }
 
 // ── Ladder ────────────────────────────────────────────────────────────────────
-function _buildLadder(THREE, states) {
-  // Java/Bedrock 両形式対応: readFacing6 が Java 'facing' string と Bedrock 'facing_direction' int を統一
-  const face = readFacing6(states); // 'down'|'up'|'north'|'south'|'east'|'west'
-
+function _buildLadder(THREE) {
   const T = 0.125; // 2/16 thick
   const ec = 0.5 - T / 2;
-
-  // ladder の facing は「プレイヤーが向く方向」= 板が attach されている**反対**の壁
-  // facing='south' → プレイヤー南向き → 板は北壁 (z=-ec)
-  let boxes = [];
-  if (face === 'south')      boxes.push({ z: -ec, w: 1, h: 1, d: T });
-  else if (face === 'north') boxes.push({ z:  ec, w: 1, h: 1, d: T });
-  else if (face === 'east')  boxes.push({ x: -ec, w: T, h: 1, d: 1 });
-  else if (face === 'west')  boxes.push({ x:  ec, w: T, h: 1, d: 1 });
-  else                       boxes.push({ z:  ec, w: 1, h: 1, d: T });
-
-  return _mergeBoxes(THREE, boxes);
+  return _mergeBoxes(THREE, [{ z: ec, w: 1, h: 1, d: T }]);
 }
 
 // ── Flower Pot ────────────────────────────────────────────────────────────────
@@ -1064,36 +934,8 @@ function _buildHangingSign(THREE, states, isWall) {
 // ── Shelf (minecraft:shelf, 1.21.100+ vanilla block) ─────────────────────────
 // 幅1×高さ1×奥行き0.5の縦ハーフブロック。facing方向の壁に背中を貼り付ける形で配置。
 // facing=south なら南の壁に背中 → ブロック南端（z=+0.25）にオフセット
-function _buildShelf(THREE, states) {
-  const dirVal = _getState(states, 'facing_direction') ?? _getState(states, 'direction') ?? 0;
-  // Bedrock facing_direction: 2=north, 3=south, 4=west, 5=east
-  const isNorth = dirVal === 2 || dirVal === 'north';
-  const isEast  = dirVal === 5 || dirVal === 'east';
-  const isWest  = dirVal === 4 || dirVal === 'west';
-  // default: south (3)
-
-  // 棚は奥行きが0.5（8/16ピクセル）で壁に貼り付く形状
-  // Three.js座標系: +Z=south, -Z=north, +X=east, -X=west
-  // facing=south → 壁は南側(z=+0.5)、棚はz=-0.25にオフセット（南の壁に背を向ける）
-  // facing=north → 壁は北側(z=-0.5)、棚はz=+0.25にオフセット
-  // facing=east  → 壁は東側(x=+0.5)、棚はx=-0.25にオフセット
-  // facing=west  → 壁は西側(x=-0.5)、棚はx=+0.25にオフセット
-
-  // _mergeBoxes の box定義: x/y/z はジオメトリ中心（-0.5〜+0.5の単位系）
-  // w=1, h=1, d=0.5 の箱を facing に応じてオフセット
-  if (isNorth) {
-    // 北向き: 北の壁に背、z=+0.25にオフセット、南面が前面
-    return _mergeBoxes(THREE, [{ x: 0, y: 0, z: 0.25, w: 1, h: 1, d: 0.5 }]);
-  } else if (isEast) {
-    // 東向き: 東の壁に背、x=-0.25にオフセット、西面が前面
-    return _mergeBoxes(THREE, [{ x: -0.25, y: 0, z: 0, w: 0.5, h: 1, d: 1 }]);
-  } else if (isWest) {
-    // 西向き: 西の壁に背、x=+0.25にオフセット、東面が前面
-    return _mergeBoxes(THREE, [{ x: 0.25, y: 0, z: 0, w: 0.5, h: 1, d: 1 }]);
-  } else {
-    // 南向き(default): 南の壁に背、z=-0.25にオフセット、北面が前面
-    return _mergeBoxes(THREE, [{ x: 0, y: 0, z: -0.25, w: 1, h: 1, d: 0.5 }]);
-  }
+function _buildShelf(THREE) {
+  return _mergeBoxes(THREE, [{ x: 0, y: 0, z: 0.25, w: 1, h: 1, d: 0.5 }]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1159,21 +1001,15 @@ function _buildRedstoneDust(THREE, states) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Repeater (M-V-1) — MC モデルピクセル座標に合わせた寸法
 // ─────────────────────────────────────────────────────────────────────────────
-// 基準形: 入力=-Z (back torch)、出力=+Z (front torch) — comparator と同じ向き。
-// ユーザー検証により Bedrock の cardinal_direction='north' は base geometry を
-// MC とは前後逆に配置する必要があった (#7 修正)。
-// ※ 回転規約の全体像は BlockInstancingManager.js の _applyFacingRotation を参照。
-//   back torch: z=-0.25 (入力側、-Z)
-//   front torch delay 1..4: -0.125, 0, +0.125, +0.25 (delay 1 が back に最も近い)
+// Canonical north: output is -Z and input is +Z. See orientation.js.
 function _buildRepeater(THREE, states) {
   const delay = states?.__repeater_delay ?? 1;
   const base = { y: -0.4375, w: 1, h: 0.125, d: 1 };
   const torchW = 0.125;   // 2 pixel
   const torchH = 0.3125;  // 5 pixel
   const torchY = -0.21875; // slab top (-0.375) + half torch height
-  const backZ  = -0.25;   // 後ろトーチ (入力側)
-  // 前トーチ delay 1..4 → -0.125, 0, +0.125, +0.25
-  const frontZ = -0.125 + (Math.max(1, Math.min(4, delay)) - 1) * 0.125;
+  const backZ  = 0.25;
+  const frontZ = 0.125 - (Math.max(1, Math.min(4, delay)) - 1) * 0.125;
   const backTorch  = { x: 0, y: torchY, z: backZ,  w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
   const frontTorch = { x: 0, y: torchY, z: frontZ, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
   return _mergeBoxes(THREE, [base, backTorch, frontTorch]);
@@ -1182,10 +1018,7 @@ function _buildRepeater(THREE, states) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Comparator (M-V-1) — MC モデルピクセル座標に厳密合わせ
 // ─────────────────────────────────────────────────────────────────────────────
-// 基準形: 入力=-Z (back torch)、出力=+Z (front torch 2本) — repeater と同じ向き。
-// #7 のユーザー目視検証により back/front を旧実装から 180° 反転して配置している
-// (下の旧 Three.js 座標とは z 符号が逆になっているのが現状の正)。
-// ※ 回転規約の全体像は BlockInstancingManager.js の _applyFacingRotation を参照。
+// Canonical north: front/output torches are -Z and the rear/input torch is +Z.
 // MC pixel coords (16x2x16) 由来の寸法:
 //   back torch:  center x=8 (subtract mode はさらに 2px 高く)
 //   front-left:  center x=4 / front-right: center x=12
@@ -1202,10 +1035,9 @@ function _buildComparator(THREE, states) {
   // subtract モードは back torch を一段高くする (MC では 2px 持ち上げ)
   const backH = subtract ? 0.4375 : torchH;
   const backY = subtract ? -0.15625 : torchY;
-  // #7: 180° 反転 — back を -Z 側 (入力)、front を +Z 側 (出力) に配置
-  const backTorch  = { x:  0,    y: backY,  z: -0.1875, w: torchW, h: backH, d: torchW, mats: [6,6,6,6,6,6] };
-  const frontLeft  = { x: -0.25, y: torchY, z:  0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
-  const frontRight = { x:  0.25, y: torchY, z:  0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
+  const backTorch  = { x:  0,    y: backY,  z:  0.1875, w: torchW, h: backH, d: torchW, mats: [6,6,6,6,6,6] };
+  const frontLeft  = { x: -0.25, y: torchY, z: -0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
+  const frontRight = { x:  0.25, y: torchY, z: -0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
   return _mergeBoxes(THREE, [base, backTorch, frontLeft, frontRight]);
 }
 
@@ -1231,7 +1063,7 @@ function _buildPistonLike(THREE, blockId, variant) {
     boxes.push({ x: -0.18, y: 0.12, z: 0.49, w: 0.18, h: 0.18, d: 0.02, mats: markerMat });
     boxes.push({ x:  0.18, y: 0.12, z: 0.49, w: 0.18, h: 0.18, d: 0.02, mats: markerMat });
   } else if (variant === 'dispenser') {
-    boxes.push({ x: 0, y: 0, z: 0.49, w: 0.35, h: 0.35, d: 0.02, mats: markerMat });
+    boxes.push({ x: 0, y: 0, z: -0.49, w: 0.35, h: 0.35, d: 0.02, mats: markerMat });
   }
   return _mergeBoxes(THREE, boxes);
 }

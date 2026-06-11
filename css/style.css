@@ -3456,9 +3456,65 @@ body.fonts-default .header-main h3 {
     padding-bottom: 0.2rem;
     border-bottom: 1px solid var(--border);
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: stretch;
+    flex-direction: column;
     gap: 0.4rem;
+}
+.v3dp-title-row,
+.v3dp-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+}
+.v3dp-title-row { justify-content: space-between; }
+.v3dp-layout-size,
+.v3dp-dim {
+    color: var(--muted2);
+    font-size: 0.64rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.v3dp-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+.v3dp-gap-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    color: var(--muted2);
+    font-size: 0.66rem;
+}
+#v3dp-arrange-gap {
+    width: 36px;
+    padding: 0.12rem 0.2rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.7rem;
+}
+.v3dp-layout-status,
+.v3dp-help {
+    border-radius: 4px;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.65rem;
+    line-height: 1.4;
+}
+.v3dp-layout-status.ok {
+    color: #86efac;
+    background: rgba(34, 197, 94, 0.1);
+}
+.v3dp-layout-status.warning {
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.12);
+}
+.v3dp-help {
+    color: var(--muted2);
+    background: rgba(99, 179, 237, 0.07);
 }
 .v3dp-header .mc-btn {
     font-size: 0.7rem;
@@ -3468,6 +3524,13 @@ body.fonts-default .header-main h3 {
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
+    padding: 0.35rem;
+    border: 1px solid transparent;
+    border-radius: 5px;
+}
+.v3dp-row.has-overlap {
+    border-color: rgba(245, 158, 11, 0.5);
+    background: rgba(245, 158, 11, 0.06);
 }
 .v3dp-name {
     font-size: 0.7rem;
@@ -3476,6 +3539,15 @@ body.fonts-default .header-main h3 {
     overflow: hidden;
     text-overflow: ellipsis;
     font-weight: 600;
+    flex: 1;
+}
+.v3dp-overlap-badge {
+    border-radius: 999px;
+    padding: 0.08rem 0.3rem;
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    font-size: 0.58rem;
+    white-space: nowrap;
 }
 .v3dp-axes {
     display: flex;

@@ -26,7 +26,7 @@ import { ProjectManager, uid } from './core/project-manager.js';
 import { exportCsv, copyAsMarkdown, exportAllProjects, exportMcStructure } from './io/export-utils.js';
 import { UIMixin } from './ui/ui_events.js';
 import { convertToLitematic, mergeAndConvertToLitematic, downloadBuffer } from './main.js';
-import { snapStructure, DIRECTION_LABELS } from './modules/logic/snap.js';
+import { snapStructure, aabbOverlaps, DIRECTION_LABELS } from './modules/logic/snap.js';
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 class App {
@@ -77,6 +77,9 @@ class App {
 
         this._setupWorker();
         this._init();
+        import('./render/direction-test-scene.js')
+            .then(module => module.installDirectionTest(this))
+            .catch(error => console.warn('direction test scene not available:', error));
     }
 
     async _init() {
@@ -987,11 +990,11 @@ class App {
     /** __ALL__ モード時のみ、デバウンスして 3D 再描画。
      *  ドロップダウン値で判定するので、まだ「3D表示を開始」を押していなくても
      *  初回回転/移動クリックでロード＆描画が走る。 */
-    _scheduleViewer3DRefresh() {
+    _scheduleViewer3DRefresh(delay = 150) {
         const sel = document.getElementById('viewer3d-structure-select');
         if (sel?.value !== '__ALL__') return;
         clearTimeout(this._viewer3dRefreshTimer);
-        this._viewer3dRefreshTimer = setTimeout(() => this._load3DView(), 150);
+        this._viewer3dRefreshTimer = setTimeout(() => this._load3DView(), delay);
     }
 
     /** 整列ポップオーバー：B (= structureId) を別構造 A の指定面に貼り付ける。 */
@@ -1054,8 +1057,14 @@ class App {
                 if (!baseStruct) return;
                 const prevOffset = { ...ProjectManager.getOffset(target) };
                 const newOffset = snapStructure(
-                    { offset: ProjectManager.getOffset(baseStruct), size: baseStruct.size },
-                    { offset: prevOffset, size: target.size },
+                    {
+                        offset: ProjectManager.getOffset(baseStruct),
+                        size: ProjectManager.rotatedSize(baseStruct.size, ProjectManager.getRotation(baseStruct)),
+                    },
+                    {
+                        offset: prevOffset,
+                        size: ProjectManager.rotatedSize(target.size, ProjectManager.getRotation(target)),
+                    },
                     btn.dataset.dir,
                 );
                 this._pushHistory({ type: 'offset', structureId: target.id, prevOffset });
@@ -2374,6 +2383,48 @@ class App {
      * 各構造の (offset, coords) を合成 AABB に正規化して flat 配列を作り、
      * 既存 viewer3d.loadStructure に渡す（パイプライン側は単一構造扱い）。
      */
+    _getAllModeStructureCoords(structure, origin) {
+        if (!this._allModeCoordsCache) this._allModeCoordsCache = new Map();
+        const raw = this.coordsCache.get(structure.id) || [];
+        const offset = ProjectManager.getOffset(structure);
+        const rotation = ProjectManager.getRotation(structure);
+        const replacements = this.replacements.get(structure.id);
+        const replacementKey = replacements
+            ? Array.from(replacements.entries()).map(([from, to]) => `${from}>${to}`).sort().join('|')
+            : '';
+        const key = [
+            offset.x, offset.y, offset.z, rotation,
+            origin.x, origin.y, origin.z,
+            structure.size?.x, structure.size?.y, structure.size?.z,
+            replacementKey,
+        ].join(':');
+        const cached = this._allModeCoordsCache.get(structure.id);
+        if (cached?.raw === raw && cached.key === key) return cached.coords;
+
+        const replaced = this._applyReplacements(structure.id, raw);
+        const dx = offset.x - origin.x;
+        const dy = offset.y - origin.y;
+        const dz = offset.z - origin.z;
+        const coords = new Array(replaced.length);
+        for (let i = 0; i < replaced.length; i++) {
+            const c = replaced[i];
+            const { rx, rz } = ProjectManager.applyRotation(c.x, c.z, structure.size, rotation);
+            coords[i] = {
+                x: rx + dx,
+                y: c.y + dy,
+                z: rz + dz,
+                blockId: c.blockId,
+                states: rotation === 0
+                    ? c.states
+                    : ProjectManager.rotateBlockStates(c.states, rotation, c.blockId),
+                rawId: c.rawId,
+                structureId: structure.id,
+            };
+        }
+        this._allModeCoordsCache.set(structure.id, { raw, key, coords });
+        return coords;
+    }
+
     async _load3DViewAll(project, container) {
         const btn = document.getElementById('btn-load-3d');
         if (btn) { btn.disabled = true; btn.textContent = '読み込み中...'; }
@@ -2411,6 +2462,12 @@ class App {
             if (!this._allModeOrigin || this._allModeOriginProjectId !== project.id) {
                 this._allModeOrigin = { x: minX, y: minY, z: minZ };
                 this._allModeOriginProjectId = project.id;
+            } else {
+                // 固定原点より負方向へ移動した場合だけ表示範囲を拡張する。
+                // 正方向の移動では原点を維持するため、他構造が画面内でずれない。
+                this._allModeOrigin.x = Math.min(this._allModeOrigin.x, minX);
+                this._allModeOrigin.y = Math.min(this._allModeOrigin.y, minY);
+                this._allModeOrigin.z = Math.min(this._allModeOrigin.z, minZ);
             }
             const origin = this._allModeOrigin;
             const mergedSize = {
@@ -2422,22 +2479,8 @@ class App {
             // 3. 全構造の coords を offset + 回転 反映してフラット化（state も回転）
             const combined = [];
             for (const s of usableStructures) {
-                const off = ProjectManager.getOffset(s);
-                const rot = ProjectManager.getRotation(s);
-                const dx = off.x - origin.x, dy = off.y - origin.y, dz = off.z - origin.z;
-                const raw = this.coordsCache.get(s.id) || [];
-                const replaced = this._applyReplacements(s.id, raw);
-                for (const c of replaced) {
-                    const { rx, rz } = ProjectManager.applyRotation(c.x, c.z, s.size, rot);
-                    const rStates = rot === 0
-                        ? c.states
-                        : ProjectManager.rotateBlockStates(c.states, rot, c.blockId);
-                    combined.push({
-                        x: rx + dx, y: c.y + dy, z: rz + dz,
-                        blockId: c.blockId, states: rStates, rawId: c.rawId,
-                        structureId: s.id,
-                    });
-                }
+                const transformed = this._getAllModeStructureCoords(s, origin);
+                for (let i = 0; i < transformed.length; i++) combined.push(transformed[i]);
             }
 
             // 3b. 構造ごとの表示AABB（ハイライト用）
@@ -2482,7 +2525,6 @@ class App {
 
             const cmRadio = document.querySelector('input[name="viewer3d-colormode"]:checked');
             const colorMode = cmRadio ? cmRadio.value : 'material';
-            this.viewer3d._matCache?.clear();
             const { yMin, yMax, xMin, xMax, zMin, zMax } = this._getSliceValues();
             const filtered = this._deletedPositions.size > 0
                 ? combined.filter(c => !this._deletedPositions.has(`${c.x},${c.y},${c.z}`))
@@ -2498,7 +2540,9 @@ class App {
             this._renderV3dOffsetPanel(project);
             const infoEl = document.getElementById('viewer3d-info');
             if (infoEl) {
-                infoEl.innerHTML = `<p class="info-text">✅ 全構造表示中（${usableStructures.length}個・${combined.length.toLocaleString()}ブロック）</p>`;
+                const layout = this._getMergeLayoutInfo(usableStructures);
+                const overlapText = layout.overlapPairs ? ` / ⚠ 重なり${layout.overlapPairs}組` : '';
+                infoEl.innerHTML = `<p class="info-text">✅ 全構造表示中（${usableStructures.length}個・${combined.length.toLocaleString()}ブロック / ${mergedSize.x}×${mergedSize.y}×${mergedSize.z}${overlapText}）</p>`;
             }
             // ★ ドラッグ継続中なら新 bounds でハイライトを復元
             if (this._altDragStructureId && this._structureBounds) {
@@ -2552,6 +2596,8 @@ class App {
                     structureId: this._altDragStructureId,
                     prevOffset: this._altDragOffsetSnapshot,
                 });
+                ProjectManager.save(this.projects);
+                this._scheduleViewer3DRefresh(0);
             }
             this._altDragStructureId = null;
             this._altDragOffsetSnapshot = null;
@@ -2576,23 +2622,16 @@ class App {
             const off = ProjectManager.getOffset(s);
             s.offset = { ...off, [axis]: off[axis] + blocks };
             this._altDragMoved = true;
-            ProjectManager.save(this.projects);
             // offset パネルの数値も即時更新
             const inp = document.querySelector(`.v3dp-inp[data-sid="${s.id}"][data-axis="${axis}"]`);
             if (inp) inp.value = s.offset[axis];
             // ★ ハイライト枠+ラベルをそのまま追従（再描画前でも動く）
+            this.viewer3d.translateStructurePreview(this._altDragStructureId, axis, blocks);
             this.viewer3d.translateStructureHighlight(axis, blocks);
-            this._scheduleViewer3DRefresh();
         };
     }
 
-    /**
-     * 全構造を X 軸方向に順番に並べる。
-     * - 1番目の構造の offset を基準（y, z は固定）
-     * - 2番目以降は前の構造の右端 + 1 ブロック隙間に配置
-     * - 回転後サイズを考慮（rotatedSize.x）
-     */
-    _arrangeAllInX() {
+    _arrangeAll(axis = 'x', gap = 1) {
         const project = this._currentProject();
         if (!project || project.structures.length === 0) return;
         const arr = project.structures;
@@ -2604,15 +2643,16 @@ class App {
         // Undo 用: 変更前の全構造 offset をスナップショット
         const snapshot = arr.map(s => ({ structureId: s.id, prevOffset: { ...ProjectManager.getOffset(s) } }));
 
+        gap = Math.max(0, Math.min(64, gap | 0));
         const base = ProjectManager.getOffset(arr[0]);
-        const baseY = base.y, baseZ = base.z;
-        let cursor = base.x + ProjectManager.rotatedSize(arr[0].size, ProjectManager.getRotation(arr[0])).x;
+        const firstSize = ProjectManager.rotatedSize(arr[0].size, ProjectManager.getRotation(arr[0]));
+        let cursor = base[axis] + firstSize[axis];
 
         for (let i = 1; i < arr.length; i++) {
             const s = arr[i];
-            s.offset = { x: cursor + 1, y: baseY, z: baseZ };
+            s.offset = { ...base, [axis]: cursor + gap };
             const rs = ProjectManager.rotatedSize(s.size, ProjectManager.getRotation(s));
-            cursor = s.offset.x + rs.x;
+            cursor = s.offset[axis] + rs[axis];
         }
 
         this._pushHistory({ type: 'multi-offset', entries: snapshot });
@@ -2622,7 +2662,77 @@ class App {
         this._viewer3dAllAutofocused = false;
         this._renderV3dOffsetPanel(project);
         this._scheduleViewer3DRefresh();
-        this._toast(`✨ ${arr.length} 個の構造を X 軸に整列しました`);
+        this._toast(`✨ ${arr.length} 個の構造を ${axis.toUpperCase()} 軸に整列しました`);
+    }
+
+    _normalizeAllOffsets() {
+        const project = this._currentProject();
+        if (!project || project.structures.length === 0) return;
+        const entries = project.structures.map(structure => ({
+            structure,
+            offset: ProjectManager.getOffset(structure),
+        }));
+        const min = {
+            x: Math.min(...entries.map(entry => entry.offset.x)),
+            y: Math.min(...entries.map(entry => entry.offset.y)),
+            z: Math.min(...entries.map(entry => entry.offset.z)),
+        };
+        if (min.x === 0 && min.y === 0 && min.z === 0) {
+            this._toast('すでに原点へ寄せられています', 'info');
+            return;
+        }
+        const snapshot = entries.map(({ structure, offset }) => ({
+            structureId: structure.id,
+            prevOffset: { ...offset },
+        }));
+        for (const { structure, offset } of entries) {
+            structure.offset = {
+                x: offset.x - min.x,
+                y: offset.y - min.y,
+                z: offset.z - min.z,
+            };
+        }
+        this._pushHistory({ type: 'multi-offset', entries: snapshot });
+        ProjectManager.save(this.projects);
+        this._allModeOrigin = null;
+        this._viewer3dAllAutofocused = false;
+        this._renderV3dOffsetPanel(project);
+        this._scheduleViewer3DRefresh();
+        this._toast('配置全体を原点へ寄せました');
+    }
+
+    _getMergeLayoutInfo(structures) {
+        const boxes = structures.map(structure => ({
+            structure,
+            offset: ProjectManager.getOffset(structure),
+            size: ProjectManager.rotatedSize(structure.size, ProjectManager.getRotation(structure)),
+        }));
+        const overlaps = new Map(boxes.map(box => [box.structure.id, 0]));
+        let overlapPairs = 0;
+        for (let i = 0; i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+                if (!aabbOverlaps(boxes[i], boxes[j])) continue;
+                overlapPairs++;
+                overlaps.set(boxes[i].structure.id, overlaps.get(boxes[i].structure.id) + 1);
+                overlaps.set(boxes[j].structure.id, overlaps.get(boxes[j].structure.id) + 1);
+            }
+        }
+        const min = {
+            x: Math.min(...boxes.map(box => box.offset.x)),
+            y: Math.min(...boxes.map(box => box.offset.y)),
+            z: Math.min(...boxes.map(box => box.offset.z)),
+        };
+        const max = {
+            x: Math.max(...boxes.map(box => box.offset.x + box.size.x)),
+            y: Math.max(...boxes.map(box => box.offset.y + box.size.y)),
+            z: Math.max(...boxes.map(box => box.offset.z + box.size.z)),
+        };
+        return {
+            boxes,
+            overlaps,
+            overlapPairs,
+            size: { x: max.x - min.x, y: max.y - min.y, z: max.z - min.z },
+        };
     }
 
     /** __ALL__ モード用: 右パネルに各構造のオフセット調整UIを描画 */
@@ -2634,22 +2744,48 @@ class App {
 
         const isAllMode = structuresToShow === null;
         const structures = isAllMode ? project.structures : structuresToShow;
+        const layout = isAllMode && structures.length > 0 ? this._getMergeLayoutInfo(structures) : null;
 
         const header = document.createElement('div');
         header.className = 'v3dp-header';
         if (isAllMode) {
             header.innerHTML = `
-                <span>📐 位置調整</span>
-                <button id="btn-arrange-x" class="mc-btn secondary small" title="全構造を +X 方向に 1 ブロック隙間で順に並べる">
-                    ✨ X軸に並べる
-                </button>
+                <div class="v3dp-title-row">
+                    <span>📐 合体レイアウト</span>
+                    <span class="v3dp-layout-size">${layout.size.x}×${layout.size.y}×${layout.size.z}</span>
+                </div>
+                <div class="v3dp-actions">
+                    <label class="v3dp-gap-label">間隔
+                        <input id="v3dp-arrange-gap" type="number" min="0" max="64" step="1" value="1">
+                    </label>
+                    <button id="btn-arrange-x" class="mc-btn secondary small" title="回転後サイズを考慮して東西に並べる">X整列</button>
+                    <button id="btn-arrange-z" class="mc-btn secondary small" title="回転後サイズを考慮して南北に並べる">Z整列</button>
+                    <button id="btn-normalize-all" class="mc-btn secondary small" title="相対位置を保ったまま最小座標を0にする">原点へ</button>
+                </div>
             `;
         } else {
             header.innerHTML = `<span>📐 位置調整</span>`;
         }
         panel.appendChild(header);
+        if (layout) {
+            const status = document.createElement('div');
+            status.className = `v3dp-layout-status ${layout.overlapPairs ? 'warning' : 'ok'}`;
+            status.textContent = layout.overlapPairs
+                ? `⚠ ${layout.overlapPairs}組が重なっています。後に並ぶ構造が合体時に上書きします。`
+                : '✓ 構造同士のAABB重なりはありません';
+            panel.appendChild(status);
+            const help = document.createElement('div');
+            help.className = 'v3dp-help';
+            help.textContent = 'Alt+左ドラッグ: X移動 / Alt+右ドラッグ: Z移動。ドラッグ中は軽量プレビュー、離すと確定します。';
+            panel.appendChild(help);
+        }
         const arrangeBtn = header.querySelector('#btn-arrange-x');
-        if (arrangeBtn) arrangeBtn.onclick = () => this._arrangeAllInX();
+        const gapValue = () => parseInt(header.querySelector('#v3dp-arrange-gap')?.value || '1', 10) || 0;
+        if (arrangeBtn) arrangeBtn.onclick = () => this._arrangeAll('x', gapValue());
+        const arrangeZBtn = header.querySelector('#btn-arrange-z');
+        if (arrangeZBtn) arrangeZBtn.onclick = () => this._arrangeAll('z', gapValue());
+        const normalizeBtn = header.querySelector('#btn-normalize-all');
+        if (normalizeBtn) normalizeBtn.onclick = () => this._normalizeAllOffsets();
 
         for (const s of structures) {
             const off = ProjectManager.getOffset(s);
@@ -2658,12 +2794,18 @@ class App {
 
             const rot = ProjectManager.getRotation(s);
             const rotLabels = ['0°', '90°', '180°', '270°'];
+            const rotatedSize = ProjectManager.rotatedSize(s.size, rot);
+            const overlapCount = layout?.overlaps.get(s.id) || 0;
 
             const row = document.createElement('div');
-            row.className = 'v3dp-row';
+            row.className = `v3dp-row${overlapCount ? ' has-overlap' : ''}`;
             row.dataset.sid = s.id;
             row.innerHTML = `
-                <div class="v3dp-name" title="${this._escape(s.name)}">${this._escape(s.name)}</div>
+                <div class="v3dp-name-row">
+                    <div class="v3dp-name" title="${this._escape(s.name)}">${this._escape(s.name)}</div>
+                    <span class="v3dp-dim">${rotatedSize.x}×${rotatedSize.y}×${rotatedSize.z}</span>
+                    ${overlapCount ? `<span class="v3dp-overlap-badge">重なり ${overlapCount}</span>` : ''}
+                </div>
                 <div class="v3dp-axes">
                     ${['x','y','z'].map(ax => `
                     <span class="v3dp-axis">

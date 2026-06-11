@@ -34,6 +34,9 @@ js/
 │
 ├── render/
 │   ├── viewer3d.js             # 3D coordinator (Three.js r128)               ✅ MOVED
+│   ├── orientation.js          # Direction tables, readers, Euler rotations   ✅
+│   ├── orientation_stairs.js   # Stair corner shape calculation               ✅
+│   ├── direction-test-scene.js # Visual harness (?dirtest=1 / __dirTest())     ✅
 │   ├── block-mesh.js           # Block mesh & material gen                    ✅ MOVED
 │   ├── textures.js             # Texture management                           ✅ MOVED
 │   └── scene.js                # Scene / Camera / Light management            🔲 STUB
