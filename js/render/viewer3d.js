@@ -11,6 +11,11 @@ import { BlockInstancingManager } from './BlockInstancingManager.js';
 import { getVisualHints } from '../modules/logic/bedrock_visual_state.js';
 import { computeWireConnections, encodeConnections } from '../modules/logic/redstone_wire_connect.js';
 import { readOrientation, computeStairsShape } from './orientation.js';
+import { getTextureAlphaMode, getTextureMaterialOptions } from './texture-material-policy.js';
+import {
+    getRedstoneMaterialColors,
+    isMaterialRedstoneDevice,
+} from './redstone-material-policy.js';
 
 // ─── バイオームカラー定数 ──────────────────────────────────────────────────
 // 平原バイオーム準拠（Minecraft 標準）
@@ -52,12 +57,6 @@ function getBiomeTint(blockId) {
 }
 
 /** ブロックが透過やアルファテスト（切り抜き）を必要とするかどうか */
-function _hasTransparency(blockId) {
-    const local = String(blockId).toLowerCase().replace(/^minecraft:/, '');
-    const alphas = ['glass', 'ice', 'leaves', 'vine', 'sapling', 'fern', 'grass', 'scaffolding', 'hopper', 'chain', 'iron_bars', 'pane', 'campfire', 'lantern', 'ladder', 'flower_pot', 'door', 'trapdoor', 'rail', 'anvil'];
-    return alphas.some(a => local.includes(a));
-}
-
 /** ブロックIDが草ブロック系かどうか（上面グレースケール→バイオーム着色が必要） */
 function _isGrassBlock(blockId) {
     const local = String(blockId).toLowerCase().replace(/^minecraft:/, '');
@@ -101,6 +100,14 @@ export function getBlockColor(blockId) {
     return 0x8a8a8a;
 }
 
+/** 階段の half (top/bottom) 判定。Bedrock byte (1/true/'1'/{value:1}) と Java half= に両対応 */
+function _stairHalf(states) {
+    let v = states?.upside_down_bit ?? states?.['minecraft:upside_down_bit'];
+    if (v && typeof v === 'object' && 'value' in v) v = v.value;
+    const flipped = v === 1 || v === true || v === '1' || v === 'true';
+    return (flipped || states?.half === 'top') ? 'top' : 'bottom';
+}
+
 function _shapeSignature(blockId, states) {
     const shape = classifyShape(blockId, states);
     if (shape === 'cube' || !states) return blockId;
@@ -136,6 +143,7 @@ export class Viewer3D {
         this.target = { x: 0, y: 0, z: 0 };
         this.colorMode = 'material';
         this._matCache = new Map();
+        this._textureCache = new Map();
         this.blockManager = null;
         this._lastCoords = null; this._lastSize = null; this._lastOptions = null;
         this._highlightedBlockId = null;
@@ -200,6 +208,7 @@ export class Viewer3D {
         
         this.meshes = [];
         this._matCache.clear();
+        this._clearTextureCache();
 
         if (this.renderer) {
             this.renderer.dispose();
@@ -243,6 +252,9 @@ export class Viewer3D {
         this._updateCamera();
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         this.renderer.setSize(w, h);
+        if (THREE.sRGBEncoding !== undefined) {
+            this.renderer.outputEncoding = THREE.sRGBEncoding;
+        }
         // ガラスの透過を正しく描画するためにソート済みレンダリングを有効化
         this.renderer.sortObjects = true;
         this.container.innerHTML = '';
@@ -696,6 +708,7 @@ export class Viewer3D {
             let effectiveStates = c.states;
             let repeaterSig = '';
             let comparatorSig = '';
+            let redstoneStateSig = '';
             let hopperSig = '';
             if (c.blockId === 'minecraft:redstone_wire') {
                 // 接続フラグを計算 (完全 MC 準拠)
@@ -712,8 +725,9 @@ export class Viewer3D {
             ) {
                 // リピーター: delay 1..4 を states と sig に注入 (前トーチ位置が変わる)
                 const delay = hints?.delay ?? 1;
-                repeaterSig = `|del${delay}`;
-                effectiveStates = { ...(c.states || {}), __repeater_delay: delay };
+                const powered = hints?.powered === true;
+                repeaterSig = `|del${delay}|pow${powered ? 1 : 0}`;
+                effectiveStates = { ...(c.states || {}), __repeater_delay: delay, powered };
             } else if (
                 c.blockId === 'minecraft:comparator' ||
                 c.blockId === 'minecraft:unpowered_comparator' ||
@@ -722,8 +736,45 @@ export class Viewer3D {
                 // コンパレーター: subtract モードを states と sig に注入
                 // (subtract モードは back torch を高く描く)
                 const subtract = hints?.mode === 'subtract';
-                comparatorSig = `|m${subtract ? 's' : 'c'}`;
-                effectiveStates = { ...(c.states || {}), __comparator_subtract: subtract };
+                const powered = hints?.powered === true;
+                comparatorSig = `|m${subtract ? 's' : 'c'}|pow${powered ? 1 : 0}`;
+                effectiveStates = { ...(c.states || {}), __comparator_subtract: subtract, powered };
+            } else if (c.blockId === 'minecraft:observer') {
+                const powered = hints?.powered === true;
+                redstoneStateSig = `|pow${powered ? 1 : 0}`;
+                effectiveStates = { ...(c.states || {}), powered };
+            } else if (
+                c.blockId === 'minecraft:piston' ||
+                c.blockId === 'minecraft:sticky_piston'
+            ) {
+                const extended = hints?.extended === true;
+                redstoneStateSig = `|ext${extended ? 1 : 0}`;
+                effectiveStates = { ...(c.states || {}), extended };
+            } else if (
+                c.blockId === 'minecraft:redstone_torch' ||
+                c.blockId === 'minecraft:lit_redstone_torch' ||
+                c.blockId === 'minecraft:unlit_redstone_torch' ||
+                c.blockId === 'minecraft:redstone_wall_torch'
+            ) {
+                const lit = c.blockId !== 'minecraft:unlit_redstone_torch'
+                    && hints?.lit !== false;
+                redstoneStateSig = `|lit${lit ? 1 : 0}`;
+                effectiveStates = { ...(c.states || {}), lit };
+                if (hints?.face === 'wall') {
+                    effectiveStates.__torch_face = 'wall';
+                    hints = { ...hints, face: null };
+                }
+            } else if (
+                c.blockId === 'minecraft:redstone_lamp' ||
+                c.blockId === 'minecraft:lit_redstone_lamp'
+            ) {
+                const stateLit = c.states?.lit ?? c.states?.['minecraft:lit']
+                    ?? c.states?.powered ?? c.states?.['minecraft:powered'];
+                const lit = c.blockId === 'minecraft:lit_redstone_lamp'
+                    || stateLit === true || stateLit === 1
+                    || stateLit === '1' || stateLit === 'true';
+                redstoneStateSig = `|lit${lit ? 1 : 0}`;
+                effectiveStates = { ...(c.states || {}), lit };
             } else if (classifyShape(c.blockId, c.states) === 'torch') {
                 if (hints?.face === 'wall') {
                     effectiveStates = { ...(c.states || {}), __torch_face: 'wall' };
@@ -731,7 +782,7 @@ export class Viewer3D {
                 }
             } else if (classifyShape(c.blockId, c.states) === 'stairs') {
                 const facing = hints?.facing ?? readOrientation(c.blockId, c.states)?.facing ?? 'north';
-                const half = (c.states?.upside_down_bit === 1 || c.states?.half === 'top') ? 'top' : 'bottom';
+                const half = _stairHalf(c.states);
                 const getNeighborByDirection = (direction) => {
                     const delta = {
                         north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0],
@@ -739,26 +790,23 @@ export class Viewer3D {
                     const neighbor = getBlock(c.x + delta[0], c.y, c.z + delta[1]);
                     if (!neighbor || classifyShape(neighbor.blockId, neighbor.states) !== 'stairs') return null;
                     const neighborOrientation = readOrientation(neighbor.blockId, neighbor.states);
-                    const neighborHalf = (neighbor.states?.upside_down_bit === 1 || neighbor.states?.half === 'top')
-                        ? 'top' : 'bottom';
-                    return { isStairs: true, facing: neighborOrientation?.facing ?? 'north', half: neighborHalf };
+                    return { isStairs: true, facing: neighborOrientation?.facing ?? 'north', half: _stairHalf(neighbor.states) };
                 };
                 const stairShape = c.states?.shape ?? computeStairsShape(facing, half, getNeighborByDirection);
                 stairCornerSig = `|sh=${stairShape}`;
                 effectiveStates = { ...(c.states || {}), __stair_shape: stairShape };
                 hints = { ...(hints || {}), facing };
             } else if (c.blockId === 'minecraft:hopper') {
-                const facingDirection = c.states?.facing_direction;
-                const javaFacing = c.states?.facing;
-                const isDown = facingDirection === 0 || facingDirection === '0' || javaFacing === 'down' ||
-                    (facingDirection === undefined && javaFacing === undefined);
+                // down 判定は readOrientation 経由の hints に任せる (NBT wrap {value} や
+                // minecraft: プレフィックスを解決済み)。横4方向のときだけ facing が入る。
+                const isDown = !hints?.facing;
                 if (isDown) effectiveStates = { ...(c.states || {}), __hopper_down: true };
                 hopperSig = isDown ? '|hd' : '|hs';
             }
 
             const structureSig = c.structureId ? `|sid=${c.structureId}` : '';
             const sig = _shapeSignature(c.blockId, c.states) + neighborSig + stairCornerSig +
-                dustSig + repeaterSig + comparatorSig + hopperSig + structureSig;
+                dustSig + repeaterSig + comparatorSig + redstoneStateSig + hopperSig + structureSig;
 
             // 後段 (addBlockInstance) で coord → hints を引けるよう保存
             if (hints) coordHints.set(c, hints);
@@ -789,6 +837,7 @@ export class Viewer3D {
             const isGrass = _isGrassBlock(blockId) && this.colorMode === 'realtexture';
             const isRedstoneWire = (blockId === 'minecraft:redstone_wire');
             const isRedstoneTorch = (blockId === 'minecraft:redstone_torch'
+                                  || blockId === 'minecraft:lit_redstone_torch'
                                   || blockId === 'minecraft:unlit_redstone_torch'
                                   || blockId === 'minecraft:redstone_wall_torch');
 
@@ -849,7 +898,7 @@ export class Viewer3D {
                         const intensity = 0.55 + p * 0.45; // 0.55..1.00
                         wireScratchColor.setRGB(intensity, intensity * 0.15, intensity * 0.08);
                         instColor = wireScratchColor;
-                    } else if (isRedstoneTorch) {
+                    } else if (isRedstoneTorch && this.colorMode !== 'realtexture') {
                         // 点灯: 鮮やかな赤 / 消灯: 暗い赤
                         const lit = (hints?.lit !== false) && (blockId !== 'minecraft:unlit_redstone_torch');
                         if (lit) wireScratchColor.setRGB(1.0, 0.25, 0.20);
@@ -959,11 +1008,50 @@ export class Viewer3D {
         const cacheKey = this.colorMode + '::' + blockId + '|' + (rawId || '') + '|' + stateSig + '|' + layer;
         if (this._matCache.has(cacheKey)) return this._matCache.get(cacheKey);
 
+        // wire/repeater/comparator は colorMode に関わらず常に専用の様式化マテリアル
+        // (色分け) でレンダリングする。実テクスチャだとトーチ位置・配線が分かりにくく
+        // なりがちなので、回路の視認性を最優先する (ユーザー要望)。
+        if (isMaterialRedstoneDevice(blockId)) {
+            const colors = getRedstoneMaterialColors(blockId, states);
+            const invisible = new THREE.MeshBasicMaterial({ visible: false });
+            if (blockId.replace(/^minecraft:/, '') === 'redstone_wire') {
+                const dot = new THREE.MeshLambertMaterial({ color: colors.dust });
+                const line = new THREE.MeshLambertMaterial({ color: colors.line });
+                const arr = [invisible, invisible, dot, invisible, invisible, invisible, line, invisible];
+                this._matCache.set(cacheKey, arr);
+                return arr;
+            }
+
+            const side = new THREE.MeshLambertMaterial({ color: colors.side });
+            const top = new THREE.MeshLambertMaterial({ color: colors.top });
+            const bottom = new THREE.MeshLambertMaterial({ color: colors.bottom });
+            const torch = new THREE.MeshLambertMaterial({
+                color: colors.torch,
+                emissive: colors.emissive,
+            });
+            const circuit = new THREE.MeshLambertMaterial({
+                color: colors.circuit,
+                emissive: colors.emissive,
+            });
+            // index 9 = リピーターの方向矢印 (黒) — top 面に描いて入力/出力の向きを示す
+            const arrow = new THREE.MeshLambertMaterial({ color: colors.arrow ?? 0x1a1a1a });
+            // index 10 = コンパレーターの mode マーカー (compare=赤 / subtract=紫)
+            const modeMarker = new THREE.MeshLambertMaterial({
+                color: colors.modeColor ?? colors.torch,
+                emissive: colors.modeEmissive ?? colors.emissive,
+            });
+            const arr = [side, side, top, bottom, side, side, torch, circuit, invisible, arrow, modeMarker];
+            this._matCache.set(cacheKey, arr);
+            return arr;
+        }
+
         // Redstone wire / torch: 白マテリアルにして per-instance 色 (赤の濃淡) を素直に出す
-        if (blockId === 'minecraft:redstone_wire' ||
+        if (this.colorMode !== 'realtexture' && (
+            blockId === 'minecraft:redstone_wire' ||
             blockId === 'minecraft:redstone_torch' ||
+            blockId === 'minecraft:lit_redstone_torch' ||
             blockId === 'minecraft:unlit_redstone_torch' ||
-            blockId === 'minecraft:redstone_wall_torch') {
+            blockId === 'minecraft:redstone_wall_torch')) {
             const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
             this._matCache.set(cacheKey, mat);
             return mat;
@@ -983,8 +1071,14 @@ export class Viewer3D {
         const isComparatorLike =
             blockId === 'minecraft:comparator' || blockId === 'minecraft:unpowered_comparator' ||
             blockId === 'minecraft:powered_comparator';
+        const isRedstoneDust = blockId === 'minecraft:redstone_wire';
         const isDirectional = isPistonLike || isObserverLike || isDispenserLike ||
                               isRepeaterLike || isComparatorLike;
+        const isPoweredDevice =
+            blockId === 'minecraft:powered_repeater' ||
+            blockId === 'minecraft:powered_comparator' ||
+            states?.powered === true || states?.powered === 1 ||
+            states?.powered === '1' || states?.powered === 'true';
         const _getMarkerMat = () => {
             let markerColor = 0x303030;
             if (isPistonLike) {
@@ -995,21 +1089,17 @@ export class Viewer3D {
                 markerColor = 0x202020;
             } else if (isRepeaterLike || isComparatorLike) {
                 // リピーター/コンパレーターのトーチは赤
-                const powered = (blockId === 'minecraft:powered_repeater') ||
-                                (blockId === 'minecraft:powered_comparator');
-                markerColor = powered ? 0xff3030 : 0x6a1414;
+                markerColor = isPoweredDevice ? 0xff3030 : 0x6a1414;
             }
             const opts = { color: markerColor };
             if (isRepeaterLike || isComparatorLike) {
-                const powered = (blockId === 'minecraft:powered_repeater') ||
-                                (blockId === 'minecraft:powered_comparator');
-                opts.emissive = powered ? 0x661414 : 0x000000;
+                opts.emissive = isPoweredDevice ? 0x661414 : 0x000000;
             }
             return new THREE.MeshLambertMaterial(opts);
         };
 
         const shape = classifyShape(blockId, states);
-        const hasAlpha = _hasTransparency(blockId);
+        const alphaMode = getTextureAlphaMode(blockId, layer);
         const isGrassBlock = _isGrassBlock(blockId);
         const biomeTint = getBiomeTint(blockId);
 
@@ -1045,29 +1135,35 @@ export class Viewer3D {
                             console.warn(`         -> No URL for face [${faceName}] of [${blockId}]`);
                             return new THREE.MeshLambertMaterial({ color: 0x888888 });
                         }
-                        const tex = loader.load(url, (t) => {
-                            // もし縦長画像（アニメーション・ストリップ）であれば、一番上の1コマだけに絞る
-                            if (t.image && t.image.height > t.image.width) {
-                                const numFrames = Math.floor(t.image.height / t.image.width);
-                                t.repeat.set(1, 1 / numFrames);
-                                t.offset.y = (numFrames - 1) / numFrames;
-                                t.generateMipmaps = false;
-                                t.wrapT = THREE.ClampToEdgeWrapping;
-                            }
-                            t.needsUpdate = true;
-                        });
-                        tex.magFilter = tex.minFilter = THREE.NearestFilter;
+                        let tex = this._textureCache.get(url);
+                        if (!tex) {
+                            tex = loader.load(url, (t) => {
+                                // Animated strips use the first frame only.
+                                if (t.image && t.image.height > t.image.width) {
+                                    const numFrames = Math.floor(t.image.height / t.image.width);
+                                    t.repeat.set(1, 1 / numFrames);
+                                    t.offset.y = (numFrames - 1) / numFrames;
+                                    t.generateMipmaps = false;
+                                    t.minFilter = THREE.NearestFilter;
+                                    t.wrapT = THREE.ClampToEdgeWrapping;
+                                }
+                                t.needsUpdate = true;
+                            });
+                            tex.magFilter = THREE.NearestFilter;
+                            tex.minFilter = THREE.NearestMipmapNearestFilter || THREE.NearestFilter;
+                            tex.anisotropy = Math.min(
+                                4,
+                                this.renderer?.capabilities?.getMaxAnisotropy?.() || 1
+                            );
+                            if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
+                            this._textureCache.set(url, tex);
+                        }
 
                         // ─── マテリアル設定 ──────────────────────────────
-                        const matOpts = { map: tex };
-
-                        // ① ガラス系 または 草ブロックの透過オーバーレイ: alphaTest を適用
-                        if (hasAlpha || layer === 'overlay') {
-                            matOpts.transparent = true;
-                            matOpts.alphaTest = 0.1;
-                            // 奥が透けないように深度書き込みを維持する
-                            matOpts.depthWrite = true;
-                        }
+                        const matOpts = {
+                            map: tex,
+                            ...getTextureMaterialOptions(blockId, layer),
+                        };
 
                         const m = new THREE.MeshLambertMaterial(matOpts);
 
@@ -1090,7 +1186,7 @@ export class Viewer3D {
                     };
 
                     // M-V-1: 方向性ブロック (piston/observer/dispenser/repeater/comparator) も 6 面テクスチャを使う
-                    const multiMatShapes = ['cube', 'hopper', 'anvil', 'scaffolding', 'stairs', 'slab', 'lantern', 'campfire', 'bed', 'flower_pot', 'ladder', 'shelf', 'hanging_sign', 'piston', 'observer', 'dispenser', 'repeater', 'comparator'];
+                    const multiMatShapes = ['cube', 'hopper', 'anvil', 'scaffolding', 'stairs', 'slab', 'lantern', 'campfire', 'bed', 'flower_pot', 'ladder', 'shelf', 'hanging_sign', 'redstone_dust', 'piston', 'observer', 'dispenser', 'repeater', 'comparator'];
                     if (multiMatShapes.includes(shape)) {
                         // 草ブロックの各面に対してバイオームカラーを適切に適用
                         const applyGrassTint = (face) => {
@@ -1102,13 +1198,26 @@ export class Viewer3D {
                         const arr = [
                             mkMat(urls.east,   'east',   applyGrassTint('east')),
                             mkMat(urls.west,   'west',   applyGrassTint('west')),
-                            mkMat(urls.top,    'top',    applyGrassTint('top')),
+                            mkMat(
+                                (isRepeaterLike || isComparatorLike) ? (urls.baseTop || urls.top) : urls.top,
+                                'top',
+                                applyGrassTint('top')
+                            ),
                             mkMat(urls.bottom, 'bottom', applyGrassTint('bottom')),
                             mkMat(urls.south,  'south',  applyGrassTint('south')),
                             mkMat(urls.north,  'north',  applyGrassTint('north')),
                         ];
-                        // M-V-1: 方向性ブロックは index 6 にマーカーマテリアルを追加
-                        if (isDirectional) arr.push(_getMarkerMat());
+                        if (isRepeaterLike || isComparatorLike) {
+                            arr.push(_getMarkerMat());
+                            arr.push(mkMat(urls.top, 'top-overlay'));
+                            arr.push(new THREE.MeshBasicMaterial({ visible: false }));
+                        } else if (isRedstoneDust) {
+                            arr.push(mkMat(urls.line || urls.top, 'line'));
+                            arr.push(new THREE.MeshBasicMaterial({ visible: false }));
+                        } else if (isDirectional) {
+                            // Direction is already encoded in the real front/back textures.
+                            arr.push(new THREE.MeshBasicMaterial({ visible: false }));
+                        }
                         this._matCache.set(cacheKey, arr);
                         return arr;
                     } else {
@@ -1134,17 +1243,19 @@ export class Viewer3D {
 
         // ─── マテリアルモード / フォールバック ─────────────────────────────
         const color = biomeTint !== null ? biomeTint : getBlockColor(blockId);
-        const matOpts = { color };
-        if (hasAlpha) {
-            matOpts.transparent = true;
-            matOpts.alphaTest = 0.5;
+        const matOpts = { color, ...getTextureMaterialOptions(blockId, layer) };
+        if (alphaMode === 'blend') {
             // フォールバック時は少し透明感を持たせる
-            matOpts.opacity = 0.85;
+            matOpts.opacity = 0.72;
         }
         const mat = new THREE.MeshLambertMaterial(matOpts);
         // M-V-1: 方向性ブロックは 7 要素配列にして index 6 にマーカー
         if (isDirectional) {
             const arr = [mat, mat, mat, mat, mat, mat, _getMarkerMat()];
+            if (isRepeaterLike || isComparatorLike) {
+                arr.push(new THREE.MeshBasicMaterial({ visible: false }));
+                arr.push(new THREE.MeshBasicMaterial({ visible: false }));
+            }
             this._matCache.set(cacheKey, arr);
             return arr;
         }
@@ -1166,12 +1277,20 @@ export class Viewer3D {
     refreshTextures() {
         // テクスチャパックが更新された場合、キャッシュを全破棄して再描画
         this._matCache.clear();
+        this._clearTextureCache();
         // 置換を再適用するためにapp.js側の再描画コールバックを呼ぶ
         if (this.onNeedsReload) {
             this.onNeedsReload();
         } else if (this._lastCoords) {
             this.loadStructure(this._lastCoords, this._lastSize, this._lastOptions || {});
         }
+    }
+
+    _clearTextureCache() {
+        for (const texture of this._textureCache?.values?.() || []) {
+            texture?.dispose?.();
+        }
+        this._textureCache?.clear?.();
     }
 
     /** 合体モードの構造ドラッグを再メッシュ化せずにプレビューする。 */

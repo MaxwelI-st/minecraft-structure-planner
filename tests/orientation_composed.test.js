@@ -19,4 +19,19 @@ describe('orientation composition', () => {
     expect(worldPoint('minecraft:piston', { facing_direction: 0 }, pushFace).y).toBeCloseTo(-0.49);
     expect(worldPoint('minecraft:piston', { facing_direction: 3 }, pushFace).z).toBeCloseTo(0.49);
   });
+
+  // observer の赤ドット (出力) は背面 = 基準形 +Z → facing の反対側を向く
+  const observerDot = { x: 0.18, y: 0.12, z: 0.478 };
+  it('keeps observer output dots opposite to facing', () => {
+    expect(worldPoint('minecraft:observer', { facing_direction: 2 }, observerDot).z).toBeCloseTo(0.478);  // facing north → dot south
+    expect(worldPoint('minecraft:observer', { 'minecraft:facing_direction': 'up' }, observerDot).y).toBeLessThan(0); // facing up → dot down
+  });
+
+  // dispenser の射出口マーカーは前面 = 基準形 -Z → facing 方向を向く
+  // (テクスチャの front=north 面と同じ側。旧実装の +Z 配置は矛盾バグだった)
+  const outlet = { x: 0, y: 0, z: -0.478 };
+  it('points dispenser outlets at facing', () => {
+    expect(worldPoint('minecraft:dispenser', { facing_direction: 3 }, outlet).z).toBeCloseTo(0.478);   // south
+    expect(worldPoint('minecraft:dispenser', { facing_direction: 4 }, outlet).x).toBeCloseTo(-0.478);  // west
+  });
 });

@@ -380,7 +380,10 @@ function _mergeBoxes(THREE, boxes) {
   let vertCount = 0;
 
   for (const box of boxes) {
-    const { x=0, y=0, z=0, w=1, h=1, d=1, rx=0, ry=0, rz=0, autoUV=false, uv=null, mats=null } = box;
+    const {
+      x=0, y=0, z=0, w=1, h=1, d=1, rx=0, ry=0, rz=0,
+      autoUV=false, uv=null, uvRotations=null, mats=null,
+    } = box;
     const geo = new THREE.BoxGeometry(w, h, d);
 
     if (rx || ry || rz) {
@@ -410,24 +413,16 @@ function _mergeBoxes(THREE, boxes) {
         const u_min = x1 / 16, u_max = x2 / 16;
         const v_min = 1 - (y2 / 16), v_max = 1 - (y1 / 16);
         
-        const origU = uvArr[vi * 2];
-        const origV = uvArr[vi * 2 + 1];
+        let origU = uvArr[vi * 2];
+        let origV = uvArr[vi * 2 + 1];
+        const turns = ((uvRotations?.[faceIdx] || 0) % 4 + 4) % 4;
+        for (let turn = 0; turn < turns; turn++) {
+          [origU, origV] = [origV, 1 - origU];
+        }
         
         uvs.push(u_min + origU * (u_max - u_min), v_min + origV * (v_max - v_min));
       } else if (autoUV) {
-        // Project UV based on absolute normal direction to match world-aligned textures
-        const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
-        let u, v;
-        if (ax > ay && ax > az) {
-          u = nx > 0 ? (0.5 - pz) : (pz + 0.5);
-          v = py + 0.5;
-        } else if (ay > ax && ay > az) {
-          u = px + 0.5;
-          v = ny > 0 ? (0.5 - pz) : (pz + 0.5);
-        } else {
-          u = nz > 0 ? (px + 0.5) : (0.5 - px);
-          v = py + 0.5;
-        }
+        const { u, v } = projectBlockUV(px, py, pz, nx, ny, nz);
         uvs.push(u, v);
       } else {
         uvs.push(uvArr[vi*2], uvArr[vi*2+1]);
@@ -451,6 +446,21 @@ function _mergeBoxes(THREE, boxes) {
   return result;
 }
 
+export function projectBlockUV(px, py, pz, nx, ny, nz) {
+  const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+  if (ax > ay && ax > az) {
+    return { u: nx > 0 ? (0.5 - pz) : (pz + 0.5), v: py + 0.5 };
+  }
+  if (ay > ax && ay > az) {
+    return { u: px + 0.5, v: ny > 0 ? (0.5 - pz) : (pz + 0.5) };
+  }
+  return { u: nz > 0 ? (px + 0.5) : (0.5 - px), v: py + 0.5 };
+}
+
+function _withProjectedUV(boxes) {
+  return boxes.map(box => ({ autoUV: true, ...box }));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shape builders
 // All use block-local coords: center=(0,0,0), block spans [-0.5, +0.5] in each axis
@@ -459,8 +469,8 @@ function _mergeBoxes(THREE, boxes) {
 // ── Slab ──────────────────────────────────────────────────────────────────────
 function _buildSlab(THREE, states) {
   const t = readSlabType(states);
-  if (t === 'double') return _mergeBoxes(THREE, [{ y: 0, w: 1, h: 1, d: 1 }]);
-  return _mergeBoxes(THREE, [{ y: t === 'top' ? 0.25 : -0.25, w: 1, h: 0.5, d: 1 }]);
+  if (t === 'double') return _mergeBoxes(THREE, _withProjectedUV([{ y: 0, w: 1, h: 1, d: 1 }]));
+  return _mergeBoxes(THREE, _withProjectedUV([{ y: t === 'top' ? 0.25 : -0.25, w: 1, h: 0.5, d: 1 }]));
 }
 
 // ── Stairs ────────────────────────────────────────────────────────────────────
@@ -489,7 +499,7 @@ function _buildStairs(THREE, states) {
     default:
       boxes.push({ z: -0.25, y: stepY, w: 1, h: 0.5, d: 0.5 });
   }
-  return _mergeBoxes(THREE, boxes);
+  return _mergeBoxes(THREE, _withProjectedUV(boxes));
 }
 
 // ── Fence ─────────────────────────────────────────────────────────────────────
@@ -516,7 +526,7 @@ function _buildFence(THREE, neighbors) {
     boxes.push({ x:  0.25, y: LO, w: 0.5, h: T, d: 0.25 });
     boxes.push({ x:  0.25, y: HI, w: 0.5, h: T, d: 0.25 });
   }
-  return _mergeBoxes(THREE, boxes);
+  return _mergeBoxes(THREE, _withProjectedUV(boxes));
 }
 
 // ── Fence Gate ────────────────────────────────────────────────────────────────
@@ -537,7 +547,7 @@ function _buildFenceGate(THREE, states) {
     boxes.push({ x: 0.375, y: 0.0625, w: T, h: T, d: 0.5 });
     boxes.push({ x: 0.375, y: 0.25, w: T, h: T, d: 0.5 });
   }
-  return _mergeBoxes(THREE, boxes);
+  return _mergeBoxes(THREE, _withProjectedUV(boxes));
 }
 
 // ── Wall ──────────────────────────────────────────────────────────────────────
@@ -558,7 +568,7 @@ function _buildWall(THREE, neighbors) {
   if (neighbors?.w) boxes.push({ x: -armC, y: armY, w: armD, h: armH, d: armW });
   if (neighbors?.e) boxes.push({ x:  armC, y: armY, w: armD, h: armH, d: armW });
 
-  return _mergeBoxes(THREE, boxes);
+  return _mergeBoxes(THREE, _withProjectedUV(boxes));
 }
 
 // ── Glass Pane / Iron Bars ────────────────────────────────────────────────────
@@ -568,10 +578,10 @@ function _buildPane(THREE, neighbors) {
 
   if (!n && !s && !w && !e) {
     // No connections: show a + cross post
-    return _mergeBoxes(THREE, [
+    return _mergeBoxes(THREE, _withProjectedUV([
       { w: T, h: 1, d: 1 },
       { w: 1, h: 1, d: T },
-    ]);
+    ]));
   }
 
   const boxes = [{ w: T, h: 1, d: T }]; // center post
@@ -594,7 +604,7 @@ function _buildPane(THREE, neighbors) {
     boxes.push({ x:  0.25, w: 0.5, h: 1, d: T });
   }
 
-  return _mergeBoxes(THREE, boxes);
+  return _mergeBoxes(THREE, _withProjectedUV(boxes));
 }
 
 // ── Trapdoor ──────────────────────────────────────────────────────────────────
@@ -949,8 +959,16 @@ function _buildRedstoneDust(THREE, states) {
   const yFloor = -0.46875; // 床面より +1/64 浮かせて Z-fight 防止 (-0.5 + 1/32)
   const H      = 0.03125;  // 1/32 厚 (ダストは薄い)
   const center = 0.3125;   // 5/16 中央パッド幅
+  const armLength = 0.5 + center / 2;
+  const armOffset = (0.5 - center / 2) / 2;
 
   const boxes = [];
+  const dotMats = [7, 7, 2, 7, 7, 7];
+  const lineMats = [7, 7, 6, 7, 7, 7];
+  // 専用 line テクスチャが無いパックで cross にフォールバックしても、
+  // 中央の縦帯だけを使って各接続先へ星形模様を反復させない。
+  const lineUv = { 2: [5, 0, 11, 16] };
+  const eastWestRotation = { 2: 1 };
   const conn4 = (
     (conn.n !== 'none' ? 1 : 0) +
     (conn.s !== 'none' ? 1 : 0) +
@@ -960,39 +978,73 @@ function _buildRedstoneDust(THREE, states) {
 
   // 中央パッド (接続 0 または 1 のとき "ドット")
   if (conn4 === 0 || conn4 === 1) {
-    boxes.push({ y: yFloor, w: center, h: H, d: center });
+    boxes.push({ y: yFloor, w: center, h: H, d: center, mats: dotMats });
   }
 
   // 各方向への帯 (side / up とも床面の帯は共通; up は追加で壁面板を伸ばす)
   if (conn.n !== 'none') {
-    boxes.push({ y: yFloor, z: -((0.5 - center / 2) / 2 + center / 4), w: center, h: H, d: 0.5 - center / 2 });
+    boxes.push({
+      y: yFloor, z: -armOffset,
+      w: center, h: H, d: armLength,
+      mats: lineMats, uv: lineUv,
+    });
     if (conn.n === 'up') {
       // 北側の壁面に縦帯 (隣接ブロック側面)
-      boxes.push({ y: yFloor + (0.5 - center / 2) / 2 + center / 4, z: -0.46875, w: center, h: 0.5 - center / 2, d: H, rx: Math.PI / 2 });
+      boxes.push({
+        y: yFloor + (0.5 - center / 2) / 2 + center / 4,
+        z: -0.46875, w: center, h: 0.5 - center / 2, d: H,
+        rx: Math.PI / 2, mats: lineMats, uv: lineUv,
+      });
     }
   }
   if (conn.s !== 'none') {
-    boxes.push({ y: yFloor, z:  ((0.5 - center / 2) / 2 + center / 4), w: center, h: H, d: 0.5 - center / 2 });
+    boxes.push({
+      y: yFloor, z: armOffset,
+      w: center, h: H, d: armLength,
+      mats: lineMats, uv: lineUv,
+    });
     if (conn.s === 'up') {
-      boxes.push({ y: yFloor + (0.5 - center / 2) / 2 + center / 4, z:  0.46875, w: center, h: 0.5 - center / 2, d: H, rx: Math.PI / 2 });
+      boxes.push({
+        y: yFloor + (0.5 - center / 2) / 2 + center / 4,
+        z: 0.46875, w: center, h: 0.5 - center / 2, d: H,
+        rx: Math.PI / 2, mats: lineMats, uv: lineUv,
+      });
     }
   }
   if (conn.e !== 'none') {
-    boxes.push({ y: yFloor, x:  ((0.5 - center / 2) / 2 + center / 4), w: 0.5 - center / 2, h: H, d: center });
+    boxes.push({
+      y: yFloor, x: armOffset,
+      w: armLength, h: H, d: center,
+      mats: lineMats, uv: lineUv, uvRotations: eastWestRotation,
+    });
     if (conn.e === 'up') {
-      boxes.push({ y: yFloor + (0.5 - center / 2) / 2 + center / 4, x:  0.46875, w: H, h: 0.5 - center / 2, d: center, rz: Math.PI / 2 });
+      boxes.push({
+        y: yFloor + (0.5 - center / 2) / 2 + center / 4,
+        x: 0.46875, w: H, h: 0.5 - center / 2, d: center,
+        rz: Math.PI / 2, mats: lineMats, uv: lineUv,
+        uvRotations: eastWestRotation,
+      });
     }
   }
   if (conn.w !== 'none') {
-    boxes.push({ y: yFloor, x: -((0.5 - center / 2) / 2 + center / 4), w: 0.5 - center / 2, h: H, d: center });
+    boxes.push({
+      y: yFloor, x: -armOffset,
+      w: armLength, h: H, d: center,
+      mats: lineMats, uv: lineUv, uvRotations: eastWestRotation,
+    });
     if (conn.w === 'up') {
-      boxes.push({ y: yFloor + (0.5 - center / 2) / 2 + center / 4, x: -0.46875, w: H, h: 0.5 - center / 2, d: center, rz: Math.PI / 2 });
+      boxes.push({
+        y: yFloor + (0.5 - center / 2) / 2 + center / 4,
+        x: -0.46875, w: H, h: 0.5 - center / 2, d: center,
+        rz: Math.PI / 2, mats: lineMats, uv: lineUv,
+        uvRotations: eastWestRotation,
+      });
     }
   }
 
   // 完全孤立かつドットも置かれなかったケースの保険
   if (boxes.length === 0) {
-    boxes.push({ y: yFloor, w: center, h: H, d: center });
+    boxes.push({ y: yFloor, w: center, h: H, d: center, mats: dotMats });
   }
 
   return _mergeBoxes(THREE, boxes);
@@ -1002,6 +1054,7 @@ function _buildRedstoneDust(THREE, states) {
 // Repeater (M-V-1) — MC モデルピクセル座標に合わせた寸法
 // ─────────────────────────────────────────────────────────────────────────────
 // Canonical north: output is -Z and input is +Z. See orientation.js.
+// 視認性アップ: top 面に入力(+Z) → 出力(-Z) を示す黒い方向矢印 (mats=9 = arrow color) を描く
 function _buildRepeater(THREE, states) {
   const delay = states?.__repeater_delay ?? 1;
   const base = { y: -0.4375, w: 1, h: 0.125, d: 1 };
@@ -1012,7 +1065,18 @@ function _buildRepeater(THREE, states) {
   const frontZ = 0.125 - (Math.max(1, Math.min(4, delay)) - 1) * 0.125;
   const backTorch  = { x: 0, y: torchY, z: backZ,  w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
   const frontTorch = { x: 0, y: torchY, z: frontZ, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
-  return _mergeBoxes(THREE, [base, backTorch, frontTorch]);
+  const circuit = {
+    x: 0, y: -0.365, z: 0, w: 0.08, h: 0.02, d: 0.78,
+    mats: [7, 7, 7, 7, 7, 7],
+  };
+  // 方向矢印 (top 面、配線の脇に並べて視認性確保)
+  //   shaft: 入力側(+Z)→出力側(-Z) へ伸びる細い線
+  //   head:  先端 (-Z) で「ハ」の字に広がる斜め2本
+  const arrowMat = [9, 9, 9, 9, 9, 9];
+  const arrowShaft = { x: 0, y: -0.354, z: 0.05, w: 0.045, h: 0.018, d: 0.42, mats: arrowMat };
+  const arrowHeadL = { x: -0.07, y: -0.354, z: -0.18, w: 0.13, h: 0.018, d: 0.045, mats: arrowMat, ry:  Math.PI / 4 };
+  const arrowHeadR = { x:  0.07, y: -0.354, z: -0.18, w: 0.13, h: 0.018, d: 0.045, mats: arrowMat, ry: -Math.PI / 4 };
+  return _mergeBoxes(THREE, [base, circuit, arrowShaft, arrowHeadL, arrowHeadR, backTorch, frontTorch]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1035,35 +1099,44 @@ function _buildComparator(THREE, states) {
   // subtract モードは back torch を一段高くする (MC では 2px 持ち上げ)
   const backH = subtract ? 0.4375 : torchH;
   const backY = subtract ? -0.15625 : torchY;
-  const backTorch  = { x:  0,    y: backY,  z:  0.1875, w: torchW, h: backH, d: torchW, mats: [6,6,6,6,6,6] };
+  // mode マーカー (mats=10): subtract なら紫、compare なら通常赤。
+  //   subtract → back torch も mode 色で塗って区別を強める
+  //   compare  → back torch は通常の赤トーチ (mats=6) のまま
+  const backMats = subtract ? [10, 10, 10, 10, 10, 10] : [6, 6, 6, 6, 6, 6];
+  const backTorch  = { x:  0,    y: backY,  z:  0.1875, w: torchW, h: backH, d: torchW, mats: backMats };
   const frontLeft  = { x: -0.25, y: torchY, z: -0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
   const frontRight = { x:  0.25, y: torchY, z: -0.1875, w: torchW, h: torchH, d: torchW, mats: [6,6,6,6,6,6] };
-  return _mergeBoxes(THREE, [base, backTorch, frontLeft, frontRight]);
+  const circuitMat = [7, 7, 7, 7, 7, 7];
+  const circuit = [
+    { x: 0, y: -0.365, z: 0.1, w: 0.08, h: 0.02, d: 0.52, mats: circuitMat },
+    { x: -0.125, y: -0.365, z: -0.11, w: 0.08, h: 0.02, d: 0.38, ry: -0.68, mats: circuitMat },
+    { x:  0.125, y: -0.365, z: -0.11, w: 0.08, h: 0.02, d: 0.38, ry:  0.68, mats: circuitMat },
+  ];
+  // subtract モード時: top 面に紫の「−」印を追加 (mode が一目で分かる)
+  const modeMarker = subtract
+    ? [{ x: 0, y: -0.354, z: 0.30, w: 0.34, h: 0.018, d: 0.07, mats: [10,10,10,10,10,10] }]
+    : [];
+  return _mergeBoxes(THREE, [base, ...circuit, ...modeMarker, backTorch, frontLeft, frontRight]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Directional Cube (Piston / Observer / Dispenser / Dropper / Crafter)
 // ─────────────────────────────────────────────────────────────────────────────
-// 通常のキューブ + 前面 (+Z) に向きマーカー (#7 で repeater/comparator と同じく
-// "facing=north 基準時に出力は +Z 側" 規約に揃えた)。
-// 回転で前面マーカーが正しい向きに動く。
+// リアルテクスチャ時は 6 面の専用テクスチャ + ブロック回転で向きを表現する
+// (そのとき mat index 6 は _buildMaterial が invisible にしてマーカーを消す)。
+// カラーモードにはテクスチャが無いため、mat index 6 のマーカー面で向きを示す。
+// 基準形 facing='north': piston/dispenser の前面(出力面) = -Z、
+// observer の赤ドット(背面=出力) = +Z。Z-fight 回避のためマーカーは面から僅かに浮かせる。
 function _buildPistonLike(THREE, blockId, variant) {
-  const boxes = [
-    // メインキューブ
-    { y: 0, w: 1, h: 1, d: 1 },
-  ];
+  const boxes = [{ y: 0, w: 1, h: 1, d: 1 }];
   const markerMat = [6, 6, 6, 6, 6, 6];
-  // ピストン: マーカー = 押し出し面 (正面)。yawByFacing は facing=north 基準 (yaw=0 で前面 -Z)
-  // なので、基準形でも push face は -Z 側にすべき。これで facing='south' (yaw=PI) →
-  // 180° 回転後 push face が +Z (south) になり、向きが一致する。
   if (variant === 'piston') {
-    boxes.push({ x: 0, y: 0, z: -0.49, w: 0.6, h: 0.6, d: 0.02, mats: markerMat });
+    boxes.push({ x: 0, y: 0, z: -0.478, w: 0.6, h: 0.6, d: 0.06, mats: markerMat });
   } else if (variant === 'observer') {
-    // オブザーバー: マーカー = 観察側 (背面) を +Z 側に置くと、現状で外向き配置が正しく描画される
-    boxes.push({ x: -0.18, y: 0.12, z: 0.49, w: 0.18, h: 0.18, d: 0.02, mats: markerMat });
-    boxes.push({ x:  0.18, y: 0.12, z: 0.49, w: 0.18, h: 0.18, d: 0.02, mats: markerMat });
+    boxes.push({ x: -0.18, y: 0.12, z: 0.478, w: 0.18, h: 0.18, d: 0.06, mats: markerMat });
+    boxes.push({ x:  0.18, y: 0.12, z: 0.478, w: 0.18, h: 0.18, d: 0.06, mats: markerMat });
   } else if (variant === 'dispenser') {
-    boxes.push({ x: 0, y: 0, z: -0.49, w: 0.35, h: 0.35, d: 0.02, mats: markerMat });
+    boxes.push({ x: 0, y: 0, z: -0.478, w: 0.35, h: 0.35, d: 0.06, mats: markerMat });
   }
   return _mergeBoxes(THREE, boxes);
 }
