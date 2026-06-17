@@ -407,69 +407,6 @@ export function readPowered(states) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shape signature — 同じ視覚状態のブロックを同じキーにまとめる (geometry キャッシュ用)
-// すべての関連 state を含むため Bedrock/Java どちらでも一意になる
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 視覚的に影響する全ての state を含む signature を返す。
- * viewer3d.js のキャッシュキー生成で使用。
- *
- * @param {string} blockId
- * @param {string} shape  - 'slab' | 'stairs' | 'trapdoor' | 'door' | ...
- * @param {object} states
- * @returns {string}
- */
-export function buildShapeSignature(blockId, shape, states) {
-  if (!states || shape === 'cube') return blockId;
-  const parts = [blockId, shape];
-  switch (shape) {
-    case 'slab':
-      parts.push('type=' + readSlabType(states));
-      break;
-    case 'stairs':
-      parts.push('f=' + readStairsFacing(states), 'h=' + readStairsHalf(states), 's=' + readStairsShape(states));
-      break;
-    case 'trapdoor':
-      parts.push('f=' + readTrapdoorFacing(states), 'h=' + readTrapdoorHalf(states), 'o=' + readTrapdoorOpen(states));
-      break;
-    case 'door':
-      parts.push('f=' + readDoorFacing(states), 'h=' + readDoorHalf(states), 'o=' + readDoorOpen(states), 'hi=' + readDoorHinge(states));
-      break;
-    case 'fence_gate':
-      parts.push('f=' + readFenceGateFacing(states), 'o=' + readFenceGateOpen(states));
-      break;
-    case 'lantern':
-      parts.push('hang=' + readHanging(states));
-      break;
-    case 'chain':
-    case 'end_rod':
-      parts.push('a=' + readAxis(states));
-      break;
-    case 'item_frame':
-      parts.push('f=' + readFacing6(states));
-      break;
-    case 'ladder':
-    case 'hopper':
-    case 'anvil':
-    case 'shelf':
-    case 'campfire':
-    case 'button':
-      parts.push('f=' + readFacing6(states));
-      break;
-    case 'snow_layer': {
-      const h = _raw(states, 'height') ?? _raw(states, 'snow_layer_height') ?? 1;
-      parts.push('h=' + h);
-      break;
-    }
-    default:
-      // 他 shape は cube 同等
-      return blockId + '|' + shape;
-  }
-  return parts.join('|');
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // 内部ヘルパーを export しておくと testing 便利
 // ─────────────────────────────────────────────────────────────────────────────
 

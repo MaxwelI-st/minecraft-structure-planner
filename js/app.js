@@ -27,6 +27,7 @@ import { exportCsv, copyAsMarkdown, exportAllProjects, exportMcStructure } from 
 import { UIMixin } from './ui/ui_events.js';
 import { convertToLitematic, mergeAndConvertToLitematic, downloadBuffer } from './main.js';
 import { snapStructure, aabbOverlaps, DIRECTION_LABELS } from './modules/logic/snap.js';
+import { getInventoryIconCandidates, resolveInventoryIconId } from './ui/item-icon-resolver.js';
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 class App {
@@ -1402,28 +1403,24 @@ class App {
             const jaName = this.langData[item.id] || rawId;
             const displayName = showId ? rawId : jaName;
             const isPrepared = prepared.has(item.id);
-            const imgId = this._bedrockToJava(rawId);
-            const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
+            const bedrockToJava = this._bedrockToJava.bind(this);
+            const imgId = resolveInventoryIconId(item.id, bedrockToJava);
             const guess = this._guessRawIdAndStates(item.id);
             let packUrl = null;
             if (ResourcePack.isLoaded()) {
-                if (imgId === 'nether_brick') {
+                if (imgId === 'nether_bricks') {
                     const faces = ResourcePack.getFaceUrls(item.id, { states: guess.states });
                     packUrl = (faces && faces.found) ? (faces.top || faces.side || faces.all)?.url : null;
                 } else {
                     packUrl = ResourcePack.getItemTextureUrl(item.id) || null;
                 }
             }
-            const isNetherBrick = (imgId === 'nether_brick');
-            const cdnBase = `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures`;
             const sources = [
-                ...(packUrl ? [packUrl] : []),
-                `https://minecraft.wiki/images/${isNetherBrick ? 'Nether_Bricks' : 'Invicon_' + wikiName}.png`,
-                `${cdnBase}/item/${imgId}.png`,
-                `${cdnBase}/block/${isNetherBrick ? 'nether_bricks' : imgId}.png`,
-                `${cdnBase}/block/${imgId}_side.png`,
-                `${cdnBase}/block/${imgId}_top.png`,
-                `/textures/${imgId}.png`,
+                ...getInventoryIconCandidates(item.id, {
+                    bedrockToJava,
+                    packUrl,
+                    includeLocal: true,
+                }),
                 `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2270%22>📦</text></svg>`
             ];
             const wikiUrl = `https://ja.minecraft.wiki/w/${encodeURIComponent(jaName)}`;
@@ -2904,4 +2901,5 @@ class App {
 Object.assign(App.prototype, UIMixin);
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
-new App();
+// window.app はデバッグ/方向テストハーネス (__dirTest) からの参照用
+window.app = new App();

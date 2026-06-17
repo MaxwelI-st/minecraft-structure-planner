@@ -3,7 +3,7 @@ import {
   readSlabType, readTrapdoorFacing, readTrapdoorHalf, readTrapdoorOpen,
   readStairsFacing, readStairsHalf, readDoorFacing, readDoorHalf,
   readDoorOpen, readDoorHinge, readFenceGateFacing, readFenceGateOpen,
-  readAxis, readFacing6, readHanging, buildShapeSignature,
+  readAxis, readFacing6, readHanging,
 } from '../js/render/state-reader.js';
 
 describe('readSlabType (Java優先 + Bedrock fallback)', () => {
@@ -78,28 +78,6 @@ describe('readAxis / readFacing6 / readHanging', () => {
   test('Bedrock hanging_bit=1', () => expect(readHanging({ hanging_bit: 1 })).toBe(true));
 });
 
-describe('buildShapeSignature (キャッシュ衝突防止)', () => {
-  test('Java top vs bottom slab → 異なる signature', () => {
-    const sigTop = buildShapeSignature('minecraft:dark_oak_slab', 'slab', { type: 'top' });
-    const sigBot = buildShapeSignature('minecraft:dark_oak_slab', 'slab', { type: 'bottom' });
-    expect(sigTop).not.toBe(sigBot);
-  });
-
-  test('Java open vs closed trapdoor → 異なる signature', () => {
-    const sigOpen = buildShapeSignature('minecraft:spruce_trapdoor', 'trapdoor',
-      { facing: 'north', half: 'bottom', open: 'true' });
-    const sigClosed = buildShapeSignature('minecraft:spruce_trapdoor', 'trapdoor',
-      { facing: 'north', half: 'bottom', open: 'false' });
-    expect(sigOpen).not.toBe(sigClosed);
-  });
-
-  test('Java と Bedrock の同じ視覚状態 → 同じ signature', () => {
-    // Per TRAPDOOR_DIR_TO_FACING = ['west', 'east', 'north', 'south']
-    // direction=2 → north (same as Java facing='north')
-    const javaSig = buildShapeSignature('minecraft:spruce_trapdoor', 'trapdoor',
-      { facing: 'north', half: 'bottom', open: 'true' });
-    const beSig   = buildShapeSignature('minecraft:spruce_trapdoor', 'trapdoor',
-      { direction: 2, upside_down_bit: 0, open_bit: 1 });
-    expect(javaSig).toBe(beSig);
-  });
-});
+// buildShapeSignature は未使用のため削除 (2026-06 組み直し)。
+// シグネチャの一意性は viewer3d.js の _shapeSignature (open/half/hinge 等の
+// トポロジーキーのみ) + per-instance 回転 (orientation.js) の構成に移行した。

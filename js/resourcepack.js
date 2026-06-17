@@ -19,6 +19,7 @@
  */
 
 import { normalizeBedrockBlock, normalizeId } from './bedrock_normalize.js';
+import { getRedstoneTextureSpec } from './render/redstone-texture-spec.js';
 
 // ─── Java版アセットの定数定義 ───────────────────────────────────────────
 const ASSETS_BASE = 'https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/';
@@ -813,6 +814,41 @@ function _expandBedrockTextures(blockId, rawId) {
 /**
  * blockId → 6面テクスチャ URL（BoxGeometry の groups 順）
  */
+function _resolveLoadedTextureNames(names) {
+    for (const name of names || []) {
+        const lower = String(name).toLowerCase().replace(/\.(png|tga)$/, '');
+        const url = _state.textures.get(lower)
+            || _state.fullPath.get(`assets/minecraft/textures/block/${lower}`)
+            || _state.fullPath.get(`textures/blocks/${lower}`)
+            || _state.fullPath.get(`resource_pack/textures/blocks/${lower}`);
+        if (url) return { url, tint: null };
+    }
+    return null;
+}
+
+function _resolveRedstoneFaces(blockId, states) {
+    const spec = getRedstoneTextureSpec(blockId, states);
+    if (!spec) return null;
+    const side = _resolveLoadedTextureNames(spec.side);
+    const top = _resolveLoadedTextureNames(spec.top) || side;
+    const bottom = _resolveLoadedTextureNames(spec.bottom) || side || top;
+    const front = _resolveLoadedTextureNames(spec.front) || side || top;
+    const back = _resolveLoadedTextureNames(spec.back) || side || top;
+    if (!top && !side && !front && !back) return null;
+    return {
+        east: side || top,
+        west: side || top,
+        top: top || side,
+        bottom: bottom || side || top,
+        north: front || side || top,
+        south: back || side || top,
+        marker: _resolveLoadedTextureNames(spec.marker),
+        line: _resolveLoadedTextureNames(spec.line),
+        baseTop: _resolveLoadedTextureNames(spec.baseTop),
+        found: true,
+    };
+}
+
 export function getFaceUrls(blockId, options = {}) {
     if (!isLoaded()) {
         return null;
@@ -838,6 +874,9 @@ export function getFaceUrls(blockId, options = {}) {
         }
     }
     local = sanitizedIdLower.replace(/^minecraft:/, '');
+
+    const redstoneFaces = _resolveRedstoneFaces(local, states);
+    if (redstoneFaces) return redstoneFaces;
 
     // ── トラップドア専用早期リターン ──────────────────────────────────────
     // bedrockBlocks に flat name エントリが無い場合、strip-suffix フォールバックが
@@ -1101,9 +1140,9 @@ export function getFaceUrls(blockId, options = {}) {
             };
         }
 
-        // ピストン: 基準形 (blockshapes _buildPistonLike, マーカー z=-0.49) は push face が
-        // -Z (north) 面、背面が +Z (south) 面。Y軸 (top/bottom) と east/west は piston_side。
-        // _applyFacingRotation の yawByFacing (north 基準) と整合し、facing 値に応じて正しく回転する。
+        // ピストン: 基準形 (blockshapes _buildPistonLike) は push face が -Z (north) 面、
+        // 背面が +Z (south) 面。Y軸 (top/bottom) と east/west は piston_side。
+        // orientation.js の eulerFor (north 基準) と整合し、facing 値に応じて正しく回転する。
         if (javaBaseId === 'piston' || javaBaseId === 'sticky_piston') {
             const sideU  = getU('piston_side');
             const backU  = getU('piston_bottom');

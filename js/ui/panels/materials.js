@@ -1,32 +1,22 @@
 import { computeShulkerPacking } from '../../modules/logic/crafting-tree.js';
 import { getBlockColor } from '../../render/viewer3d.js';
 import * as ResourcePack from '../../resourcepack.js';
-
-const CDN = 'https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures';
+import { getInventoryIconCandidates, resolveInventoryIconId } from '../item-icon-resolver.js';
 
 function _textureCandidates(app, id) {
-  const rawId = String(id || '').replace(/^minecraft:/, '');
-  const imgId = app._bedrockToJava ? app._bedrockToJava(rawId) : rawId;
-  const wikiName = imgId.split('_').map(w => w[0]?.toUpperCase() + w.slice(1)).join('_');
-  const isNetherBrick = (imgId === 'nether_brick');
+  const bedrockToJava = app._bedrockToJava?.bind(app);
+  const imgId = resolveInventoryIconId(id, bedrockToJava);
   const guess = app._guessRawIdAndStates ? app._guessRawIdAndStates(id) : { states: undefined };
   let packUrl = null;
   if (ResourcePack.isLoaded()) {
-    if (isNetherBrick) {
+    if (imgId === 'nether_bricks') {
       const faces = ResourcePack.getFaceUrls(id, { states: guess.states });
       packUrl = (faces && faces.found) ? (faces.top || faces.side || faces.all)?.url : null;
     } else {
       packUrl = ResourcePack.getItemTextureUrl(id) || null;
     }
   }
-  return [
-    ...(packUrl ? [packUrl] : []),
-    `https://minecraft.wiki/images/${isNetherBrick ? 'Nether_Bricks' : 'Invicon_' + wikiName}.png`,
-    `${CDN}/item/${imgId}.png`,
-    `${CDN}/block/${isNetherBrick ? 'nether_bricks' : imgId}.png`,
-    `${CDN}/block/${imgId}_side.png`,
-    `${CDN}/block/${imgId}_top.png`,
-  ];
+  return getInventoryIconCandidates(id, { bedrockToJava, packUrl });
 }
 
 function _colorHex(id) {

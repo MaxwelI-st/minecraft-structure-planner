@@ -7,6 +7,7 @@ import { BLOCK_CATALOG as BC_DATA } from '../block_catalog.js';
 import { normalizeId } from '../bedrock_normalize.js';
 import { ProjectManager } from '../core/project-manager.js';
 import { exportCsv, copyAsMarkdown, exportAllProjects, exportMcStructure } from '../io/export-utils.js';
+import { getInventoryIconCandidates } from './item-icon-resolver.js';
 
 /**
  * ui_events.js — プレゼンテーション層
@@ -1103,15 +1104,9 @@ export const UIMixin = {
             const packUrl = ResourcePack.getBestIconUrl(id, states);
             if (packUrl) return `<img src="${packUrl}" class="block-pick-icon" alt="${local}">`;
         }
-        const imgId = this._bedrockToJava(local);
-        const wikiName = imgId.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
-        const isBlock = /_block$|_ore$|_stone$|_planks$|_log$|_wood$|terracotta$|wool$|glass$|concrete$/.test(imgId);
-        const srcs = [
-            `https://minecraft.wiki/images/Invicon_${wikiName}.png`,
-            `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/item/${imgId}.png`,
-            `https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}.png`
-        ];
-        if (isBlock) srcs.push(`https://assets.mcasset.cloud/1.21.4/assets/minecraft/textures/block/${imgId}_top.png`);
+        const srcs = getInventoryIconCandidates(id, {
+            bedrockToJava: this._bedrockToJava.bind(this),
+        });
         const first = srcs.shift(), fb = JSON.stringify(srcs).replace(/"/g, '&quot;');
         return `<img class="block-pick-icon" src="${first}" alt="${local}" data-fb="${fb}" onerror="var fb=JSON.parse(this.dataset.fb||'[]');if(fb.length){this.src=fb.shift();this.dataset.fb=JSON.stringify(fb)}else{this.parentNode.innerHTML='📦'}">`;
     },
@@ -1143,11 +1138,11 @@ export const UIMixin = {
         if (iconWrap) {
             let resolvedUrl = imgUrl;
             if (!resolvedUrl) {
-                const rawId2 = id.replace('minecraft:', '');
-                const imgId2 = this._bedrockToJava(rawId2);
-                const wikiName2 = imgId2.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join('_');
                 const packUrl2 = ResourcePack.isLoaded() ? ResourcePack.getItemTextureUrl(id) : null;
-                resolvedUrl = packUrl2 || `https://minecraft.wiki/images/Invicon_${wikiName2}.png`;
+                resolvedUrl = getInventoryIconCandidates(id, {
+                    bedrockToJava: this._bedrockToJava.bind(this),
+                    packUrl: packUrl2,
+                })[0];
             }
             iconWrap.innerHTML = `<img src="${resolvedUrl}" style="width:20px;height:20px;image-rendering:pixelated;object-fit:contain;" onerror="this.parentNode.textContent='🧱'">`;
         }
